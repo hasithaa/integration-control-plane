@@ -1008,15 +1008,15 @@ public isolated function mapToRuntime(types:RuntimeDBRecord runtimeRecord) retur
 
     // Convert time values to string format
     string? registrationTimeStr = ();
-    time:Utc? regTime = runtimeRecord.registration_time;
-    if regTime is time:Utc {
-        registrationTimeStr = time:utcToString(regTime);
+    time:Civil? regTime = runtimeRecord.registration_time;
+    if regTime is time:Civil {
+        registrationTimeStr = time:utcToString(check convertDbDateTimeToUtc(regTime));
     }
 
     string? lastHeartbeatStr = ();
-    time:Utc? heartbeatTime = runtimeRecord.last_heartbeat;
-    if heartbeatTime is time:Utc {
-        lastHeartbeatStr = time:utcToString(heartbeatTime);
+    time:Civil? heartbeatTime = runtimeRecord.last_heartbeat;
+    if heartbeatTime is time:Civil {
+        lastHeartbeatStr = time:utcToString(check convertDbDateTimeToUtc(heartbeatTime));
     }
 
     // Get log levels for BI runtimes only (null for MI runtimes)

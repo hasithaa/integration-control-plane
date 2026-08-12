@@ -185,12 +185,15 @@ public isolated function processDeltaHeartbeat(types:DeltaHeartbeat deltaHeartbe
         // Hash doesn't match or runtime not in cache, request full heartbeat
         log:printInfo(string `Hash mismatch for runtime ${runtimeId}, requesting full heartbeat`);
 
-        // Still update the timestamp to show runtime is alive
-        sql:ExecutionResult|error result = dbClient->execute(`
-            UPDATE runtimes
-            SET last_heartbeat = CURRENT_TIMESTAMP, status = 'RUNNING'
-            WHERE runtime_id = ${runtimeId}
-        `);
+        // Still update the timestamp to show runtime is alive.
+        // Write an explicit UTC value rather than CURRENT_TIMESTAMP: the latter is
+        // evaluated in the database server's timezone, so the column would mean
+        // different things depending on where the database happens to run.
+        sql:ExecutionResult|error result = dbClient->execute(sql:queryConcat(
+            `UPDATE runtimes
+            SET last_heartbeat = `, sqlQueryFromString(timestampCast(currentTimeStr)), `, status = 'RUNNING'
+            WHERE runtime_id = ${runtimeId}`
+        ));
 
         if result is error {
             log:printError(string `Failed to update timestamp for runtime ${runtimeId}`, result);
@@ -205,12 +208,12 @@ public isolated function processDeltaHeartbeat(types:DeltaHeartbeat deltaHeartbe
 
     // Hash matches, process delta heartbeat
 
-    // Update the heartbeat timestamp
-    sql:ExecutionResult|error timestampResult = dbClient->execute(`
-        UPDATE runtimes
-        SET last_heartbeat = CURRENT_TIMESTAMP, status = 'RUNNING'
-        WHERE runtime_id = ${runtimeId}
-    `);
+    // Update the heartbeat timestamp (explicit UTC, see note above)
+    sql:ExecutionResult|error timestampResult = dbClient->execute(sql:queryConcat(
+        `UPDATE runtimes
+        SET last_heartbeat = `, sqlQueryFromString(timestampCast(currentTimeStr)), `, status = 'RUNNING'
+        WHERE runtime_id = ${runtimeId}`
+    ));
 
     boolean runtimeExists = true;
     if timestampResult is error {
@@ -569,6 +572,13 @@ isolated function upsertRuntime(types:Heartbeat heartbeat) returns string?|error
     string runtimeId = heartbeat.runtimeId;
     log:printDebug(string `Upserting runtime: id=${runtimeId}, name=${runtimeName ?: "null"}`);
 
+    // Time at which ICP observed this heartbeat, as an explicit UTC value. Deliberately
+    // server-side (not heartbeat.timestamp) so a skewed runtime clock cannot move it, and
+    // deliberately not CURRENT_TIMESTAMP, which the database server would evaluate in its
+    // own timezone and thus store a different meaning depending on where it runs.
+    string observedAtStr = check convertUtcToDbDateTime(time:utcNow());
+    string observedAt = timestampCast(observedAtStr);
+
     // Use default values if management hostname and port are not provided
     string runtimeHostname = heartbeat.runtimeHostname ?: "";
     string runtimePort = heartbeat.runtimePort ?: "";
@@ -636,7 +646,7 @@ isolated function upsertRuntime(types:Heartbeat heartbeat) returns string?|error
 
     // Atomic upsert for PostgreSQL, fallback to INSERT/UPDATE for others
     if dbType == POSTGRESQL {
-        _ = check dbClient->execute(`
+        _ = check dbClient->execute(sql:queryConcat(`
             INSERT INTO runtimes (
                 runtime_id, name, runtime_type, status, version,
                 runtime_hostname, runtime_port, callback_url, try_it_host,
@@ -645,7 +655,7 @@ isolated function upsertRuntime(types:Heartbeat heartbeat) returns string?|error
                 os_name, os_version,
                 carbon_home, java_vendor, java_version,
                 total_memory, free_memory, max_memory, used_memory,
-                os_arch, server_name, last_heartbeat
+                os_arch, server_name, registration_time, last_heartbeat
             ) VALUES (
                 ${runtimeId}, ${runtimeName}, ${heartbeat.runtimeType}, ${heartbeat.status}, ${heartbeat.version},
                 ${runtimeHostname}, ${runtimePort}, ${callbackUrl}, ${tryItHost},
@@ -654,7 +664,8 @@ isolated function upsertRuntime(types:Heartbeat heartbeat) returns string?|error
                 ${heartbeat.nodeInfo.osName}, ${heartbeat.nodeInfo.osVersion},
                 ${heartbeat.nodeInfo.carbonHome}, ${heartbeat.nodeInfo.javaVendor}, ${heartbeat.nodeInfo.javaVersion},
                 ${heartbeat.nodeInfo.totalMemory}, ${heartbeat.nodeInfo.freeMemory}, ${heartbeat.nodeInfo.maxMemory}, ${heartbeat.nodeInfo.usedMemory},
-                ${heartbeat.nodeInfo.osArch}, ${heartbeat.nodeInfo.platformName}, CURRENT_TIMESTAMP
+                ${heartbeat.nodeInfo.osArch}, ${heartbeat.nodeInfo.platformName}, `,
+            sqlQueryFromString(observedAt), `, `, sqlQueryFromString(observedAt), `
             )
             ON CONFLICT (runtime_id) DO UPDATE SET
                 name = EXCLUDED.name,
@@ -682,10 +693,10 @@ isolated function upsertRuntime(types:Heartbeat heartbeat) returns string?|error
                 used_memory = EXCLUDED.used_memory,
                 os_arch = EXCLUDED.os_arch,
                 server_name = EXCLUDED.server_name,
-                last_heartbeat = CURRENT_TIMESTAMP
-        `);
+                last_heartbeat = `, sqlQueryFromString(observedAt), `
+        `));
     } else if isNewRegistration {
-        _ = check dbClient->execute(`
+        _ = check dbClient->execute(sql:queryConcat(`
             INSERT INTO runtimes (
                 runtime_id, name, runtime_type, status, version,
                 runtime_hostname, runtime_port, callback_url, try_it_host,
@@ -694,7 +705,7 @@ isolated function upsertRuntime(types:Heartbeat heartbeat) returns string?|error
                 os_name, os_version,
                 carbon_home, java_vendor, java_version,
                 total_memory, free_memory, max_memory, used_memory,
-                os_arch, server_name, last_heartbeat
+                os_arch, server_name, registration_time, last_heartbeat
             ) VALUES (
                 ${runtimeId}, ${runtimeName}, ${heartbeat.runtimeType}, ${heartbeat.status}, ${heartbeat.version},
                 ${runtimeHostname}, ${runtimePort}, ${callbackUrl}, ${tryItHost},
@@ -703,11 +714,12 @@ isolated function upsertRuntime(types:Heartbeat heartbeat) returns string?|error
                 ${heartbeat.nodeInfo.osName}, ${heartbeat.nodeInfo.osVersion},
                 ${heartbeat.nodeInfo.carbonHome}, ${heartbeat.nodeInfo.javaVendor}, ${heartbeat.nodeInfo.javaVersion},
                 ${heartbeat.nodeInfo.totalMemory}, ${heartbeat.nodeInfo.freeMemory}, ${heartbeat.nodeInfo.maxMemory}, ${heartbeat.nodeInfo.usedMemory},
-                ${heartbeat.nodeInfo.osArch}, ${heartbeat.nodeInfo.platformName}, CURRENT_TIMESTAMP
+                ${heartbeat.nodeInfo.osArch}, ${heartbeat.nodeInfo.platformName}, `,
+            sqlQueryFromString(observedAt), `, `, sqlQueryFromString(observedAt), `
             )
-        `);
+        `));
     } else {
-        _ = check dbClient->execute(`
+        _ = check dbClient->execute(sql:queryConcat(`
             UPDATE runtimes SET
                 name = ${runtimeName},
                 runtime_type = ${heartbeat.runtimeType},
@@ -734,9 +746,9 @@ isolated function upsertRuntime(types:Heartbeat heartbeat) returns string?|error
                 used_memory = ${heartbeat.nodeInfo.usedMemory},
                 os_arch = ${heartbeat.nodeInfo.osArch},
                 server_name = ${heartbeat.nodeInfo.platformName},
-                last_heartbeat = CURRENT_TIMESTAMP
+                last_heartbeat = `, sqlQueryFromString(observedAt), `
             WHERE runtime_id = ${runtimeId}
-        `);
+        `));
     }
     return previousStatus;
 }
