@@ -97,6 +97,14 @@ public isolated function convertDbDateTimeToUtc(time:Civil civilTime) returns ti
     return time:utcFromCivil(utcCivil);
 }
 
+// "Now" as a dialect-appropriate SQL literal in UTC, for comparing against columns that
+// store UTC wall-clock. Use this instead of CURRENT_TIMESTAMP in such comparisons: the
+// database server evaluates CURRENT_TIMESTAMP in its own timezone, which would offset the
+// comparison by the difference between that timezone and UTC.
+public isolated function utcNowSqlLiteral() returns string|error {
+    return timestampCast(check convertUtcToDbDateTime(time:utcNow()));
+}
+
 // Get database-specific expression to convert a timestamp column to Unix epoch seconds
 // MySQL/H2: UNIX_TIMESTAMP(column)
 // MSSQL: DATEDIFF_BIG(SECOND, '1970-01-01 00:00:00', column)

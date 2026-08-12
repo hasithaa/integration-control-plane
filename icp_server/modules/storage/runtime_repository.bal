@@ -212,7 +212,10 @@ isolated function claimReturningIds(sql:ParameterizedQuery claimQuery) returns s
 
 public isolated function markOfflineRuntimes() returns error? {
 
-    // Use database native timestamp functions for reliable comparison
+    // Compare against an explicit UTC value, not CURRENT_TIMESTAMP: last_heartbeat holds
+    // UTC wall-clock, while the database server would evaluate CURRENT_TIMESTAMP in its own
+    // timezone, inflating or deflating the age by that offset.
+    string nowUtc = check utcNowSqlLiteral();
 
     // Pre-query stale runtimes before the DELETE/UPDATE so we can publish OFFLINE
     // events after the operation (for K8S the rows are deleted so we must read first).
@@ -223,7 +226,7 @@ public isolated function markOfflineRuntimes() returns error? {
         WHERE r.status != 'OFFLINE'
         AND r.last_heartbeat IS NOT NULL
         AND `,
-            sqlQueryFromString(getTimestampDiffSeconds("r.last_heartbeat", "CURRENT_TIMESTAMP")),
+            sqlQueryFromString(getTimestampDiffSeconds("r.last_heartbeat", nowUtc)),
             ` > ${heartbeatTimeoutSeconds}`
     );
 
@@ -266,7 +269,7 @@ public isolated function markOfflineRuntimes() returns error? {
                     WHERE status != 'OFFLINE'
                     AND last_heartbeat IS NOT NULL
                     AND `,
-                    sqlQueryFromString(getTimestampDiffSeconds("last_heartbeat", "CURRENT_TIMESTAMP")),
+                    sqlQueryFromString(getTimestampDiffSeconds("last_heartbeat", nowUtc)),
                     ` > ${heartbeatTimeoutSeconds}
                     FOR UPDATE SKIP LOCKED)
                 RETURNING runtime_id`
@@ -282,7 +285,7 @@ public isolated function markOfflineRuntimes() returns error? {
                 WHERE status != 'OFFLINE'
                 AND last_heartbeat IS NOT NULL
                 AND `,
-                    sqlQueryFromString(getTimestampDiffSeconds("last_heartbeat", "CURRENT_TIMESTAMP")),
+                    sqlQueryFromString(getTimestampDiffSeconds("last_heartbeat", nowUtc)),
                     ` > ${heartbeatTimeoutSeconds}`
             );
             sql:ExecutionResult result = check dbClient->execute(deleteQuery);
@@ -302,7 +305,7 @@ public isolated function markOfflineRuntimes() returns error? {
                     WHERE status != 'OFFLINE'
                     AND last_heartbeat IS NOT NULL
                     AND `,
-                    sqlQueryFromString(getTimestampDiffSeconds("last_heartbeat", "CURRENT_TIMESTAMP")),
+                    sqlQueryFromString(getTimestampDiffSeconds("last_heartbeat", nowUtc)),
                     ` > ${heartbeatTimeoutSeconds}
                     FOR UPDATE SKIP LOCKED)
                 RETURNING runtime_id`
@@ -319,7 +322,7 @@ public isolated function markOfflineRuntimes() returns error? {
                 WHERE status != 'OFFLINE'
                 AND last_heartbeat IS NOT NULL
                 AND `,
-                    sqlQueryFromString(getTimestampDiffSeconds("last_heartbeat", "CURRENT_TIMESTAMP")),
+                    sqlQueryFromString(getTimestampDiffSeconds("last_heartbeat", nowUtc)),
                     ` > ${heartbeatTimeoutSeconds}`
             );
             sql:ExecutionResult result = check dbClient->execute(updateQuery);
