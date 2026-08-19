@@ -199,6 +199,13 @@ function handleWorkflowRequest(string componentId, string environmentId, string[
         escapedRoles.push("admin");
     }
 
+    // The task-queue map is served from stored metadata alone, so it is answered before a tunnel
+    // target is even looked for: the console needs it to scope every other request, and it must not
+    // fail just because no runtime is currently reachable.
+    if method == http:GET && wfPath.length() == 1 && wfPath[0] == "task-queues" {
+        return handleTaskQueuesRequest(componentId, environmentId);
+    }
+
     // 4. Map the request to a management operation and tunnel it to the leader
     //    runtime — a RUNNING runtime of this component+environment that advertised
     //    the workflowCommands capability.

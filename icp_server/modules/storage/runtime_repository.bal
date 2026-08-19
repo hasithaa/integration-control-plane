@@ -1068,9 +1068,10 @@ public isolated function getOpenApiDefinitionsForRuntime(string runtimeId) retur
 public isolated function getWorkflowMetadataForRuntime(string runtimeId)
         returns types:WorkflowMetadataRecord?|error {
     types:WorkflowMetadataRecord|error metadataRecord = dbClient->queryRow(`
-        SELECT runtime_id, metadata, capabilities
-        FROM bi_workflow_metadata
-        WHERE runtime_id = ${runtimeId}
+        SELECT m.runtime_id, r.component_id, m.metadata, m.capabilities
+        FROM bi_workflow_metadata m
+        INNER JOIN runtimes r ON m.runtime_id = r.runtime_id
+        WHERE m.runtime_id = ${runtimeId}
     `);
     if metadataRecord is sql:NoRowsError {
         return ();
@@ -1087,7 +1088,7 @@ public isolated function getWorkflowMetadataForComponentEnv(string componentId, 
         returns types:WorkflowMetadataRecord[]|error {
     types:WorkflowMetadataRecord[] metadataList = [];
     stream<types:WorkflowMetadataRecord, sql:Error?> metadataStream = dbClient->query(`
-        SELECT m.runtime_id, m.metadata, m.capabilities
+        SELECT m.runtime_id, r.component_id, m.metadata, m.capabilities
         FROM bi_workflow_metadata m
         INNER JOIN runtimes r ON m.runtime_id = r.runtime_id
         WHERE r.component_id = ${componentId} AND r.environment_id = ${environmentId}
@@ -1116,7 +1117,7 @@ public isolated function getWorkflowMetadataForProjectEnv(string componentId, st
         returns types:WorkflowMetadataRecord[]|error {
     types:WorkflowMetadataRecord[] metadataList = [];
     stream<types:WorkflowMetadataRecord, sql:Error?> metadataStream = dbClient->query(`
-        SELECT m.runtime_id, m.metadata, m.capabilities
+        SELECT m.runtime_id, r.component_id, m.metadata, m.capabilities
         FROM bi_workflow_metadata m
         INNER JOIN runtimes r ON m.runtime_id = r.runtime_id
         WHERE r.environment_id = ${environmentId}
