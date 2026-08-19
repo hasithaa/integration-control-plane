@@ -176,7 +176,7 @@ function edgePath(s: PositionedNode, t: PositionedNode): string {
   return `M ${sx} ${sy} C ${sx} ${sy + dy}, ${tx} ${ty - dy}, ${tx} ${ty}`;
 }
 
-function GraphNodeCard({ node, selected, durationMs, onSelect }: { node: PositionedNode; selected: boolean; durationMs: number | null; onSelect: () => void }) {
+function GraphNodeCard({ node, selected, dimmed = false, durationMs, onSelect }: { node: PositionedNode; selected: boolean; dimmed?: boolean; durationMs: number | null; onSelect: () => void }) {
   const theme = useTheme();
   const color = paletteColor(theme, statusColorName(node.status));
   // Only the task name is shown; the workflow qualifier is dropped because every node in a graph
@@ -205,6 +205,9 @@ function GraphNodeCard({ node, selected, durationMs, onSelect }: { node: Positio
           position: 'absolute',
           left: node.x,
           top: node.y,
+          // Dimmed = outside the rail's filter. Kept in place (removal would rewire the chain)
+          // and still clickable, just pushed back.
+          opacity: dimmed ? 0.3 : 1,
           width: NODE_W,
           height: NODE_H,
           boxSizing: 'border-box',
@@ -358,23 +361,16 @@ export default function ExecutionGraph({
   const theme = useTheme();
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
-  // The filter narrows the graph before layout, so a filtered view is a clean chronological chain
-  // of just that step's executions — loop iterations in order — not a dimmed full graph.
-  const effectiveGraph = useMemo(() => {
-    if (!visibleIds) return graph;
-    const nodes = (graph.nodes ?? []).filter((n) => visibleIds.has(n.id));
-    const kept = new Set(nodes.map((n) => n.id));
-    return { nodes, edges: (graph.edges ?? []).filter((e) => kept.has(e.source) && kept.has(e.target)) };
-  }, [graph, visibleIds]);
-
-  // Resolve each node's execution detail (input / result / status / duration) once from the history.
-  const detailById = useMemo(() => new Map((effectiveGraph.nodes ?? []).map((n) => [n.id, extractNodeExecutionDetail(n, events)])), [effectiveGraph, events]);
+  // The filter DIMS rather than removes: cutting the non-matching nodes would rewire the layout —
+  // the synthetic start would link straight to the filtered step, claiming the workflow began
+  // there — while dimming keeps the chain's true shape and simply pushes everything else back.
+  const detailById = useMemo(() => new Map((graph.nodes ?? []).map((n) => [n.id, extractNodeExecutionDetail(n, events)])), [graph, events]);
   // Laid out once per graph so selecting a node doesn't re-run the layering pass.
-  const layout = useMemo(() => layoutDag(withStartNode(effectiveGraph)), [effectiveGraph]);
+  const layout = useMemo(() => layoutDag(withStartNode(graph)), [graph]);
   const nodeById = useMemo(() => new Map(layout.nodes.map((n) => [n.id, n])), [layout]);
 
-  if (!effectiveGraph.nodes || effectiveGraph.nodes.length === 0) {
-    return <Typography sx={{ py: 4, textAlign: 'center', color: 'text.secondary' }}>{visibleIds ? 'No executions match the selected step.' : 'No execution graph available.'}</Typography>;
+  if (!graph.nodes || graph.nodes.length === 0) {
+    return <Typography sx={{ py: 4, textAlign: 'center', color: 'text.secondary' }}>No execution graph available.</Typography>;
   }
 
   const selectedNode = selectedId ? nodeById.get(selectedId) : undefined;
@@ -396,7 +392,8 @@ export default function ExecutionGraph({
               const s = nodeById.get(e.source);
               const t = nodeById.get(e.target);
               if (!s || !t) return null;
-              return <path key={i} d={edgePath(s, t)} fill="none" stroke={edgeColor} strokeWidth={1.5} markerEnd={`url(#${markerId})`} />;
+              const dimmed = visibleIds != null && !(visibleIds.has(e.source) && visibleIds.has(e.target));
+              return <path key={i} d={edgePath(s, t)} fill="none" stroke={edgeColor} strokeWidth={1.5} opacity={dimmed ? 0.25 : 1} markerEnd={`url(#${markerId})`} />;
             })}
           </svg>
           {layout.nodes.map((n) =>
@@ -407,6 +404,7 @@ export default function ExecutionGraph({
                 key={n.id}
                 node={n}
                 selected={n.id === selectedId}
+                dimmed={visibleIds != null && !visibleIds.has(n.id)}
                 durationMs={detailById.get(n.id)?.durationMs ?? null}
                 onSelect={() =>
                   setSelectedId((cur) => {
