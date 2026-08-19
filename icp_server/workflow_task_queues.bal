@@ -25,9 +25,10 @@ import wso2/icp_server.types;
 //
 // A project shares one Temporal namespace, so an integration's executions are separated from its
 // neighbours' only by the TaskQueue attribute — and the queue's name lives in the integration's own
-// code, not in anything the ICP records about the component. Each runtime publishes it in the
-// workflow metadata document on its heartbeats; this reads it back from that stored document, which
-// is why the console can narrow a listing to one integration and route a row back to the
+// code, not in anything the ICP records about the component. Each runtime reports it as a field of
+// its heartbeats — runtime state beside capabilities, since the queue is chosen at program startup
+// and may differ between two runtimes of one program — and this reads it back from the stored rows,
+// which is what lets the console narrow a listing to one integration and route a row back to the
 // integration that owns it.
 //
 // Served from the database alone — no tunneled call — so it answers even while a runtime is between
@@ -43,16 +44,14 @@ isolated function handleTaskQueuesRequest(string componentId, string environment
     }
 
     // Freshest heartbeat first (the query's order), so the first queue seen per component wins.
+    // The queue arrives as its own heartbeat field — runtime state beside capabilities, since it
+    // is chosen at program startup — never from inside the metadata document.
     map<string> queues = {};
     foreach types:WorkflowMetadataRecord metadataRecord in metadataRecords {
         if queues.hasKey(metadataRecord.componentId) {
             continue;
         }
-        json|error document = metadataRecord.metadata.fromJsonString();
-        if document !is map<json> {
-            continue;
-        }
-        json taskQueue = document["taskQueue"];
+        string? taskQueue = metadataRecord.taskQueue;
         if taskQueue is string && taskQueue.length() > 0 {
             queues[metadataRecord.componentId] = taskQueue;
         }
