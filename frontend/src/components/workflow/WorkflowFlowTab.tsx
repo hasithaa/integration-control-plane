@@ -18,9 +18,9 @@
 
 import { Box, Chip, IconButton, Stack, Tooltip, Typography } from '@wso2/oxygen-ui';
 import { GitBranch, List } from '@wso2/oxygen-ui-icons-react';
-import { useMemo, useState, type ReactNode } from 'react';
+import { useMemo, useRef, useState, type ReactNode } from 'react';
 import type { ExecutionGraph as ExecutionGraphData, InstanceGraph, WorkflowInstance } from '../../api/workflows';
-import CodeViewer from '../CodeViewer';
+import StructuredValue from './StructuredValue';
 import AgentStarRail from './AgentStarRail';
 import ExecutionSummary from './ExecutionSummary';
 import FlowRail from './FlowRail';
@@ -74,11 +74,40 @@ function agentEventIds(stepId: string, executionGraph: ExecutionGraphData | unde
   return ids;
 }
 
-export default function WorkflowFlowTab({ instanceGraph, executionGraph, events, info }: { instanceGraph: InstanceGraph | undefined; executionGraph: ExecutionGraphData | undefined; events: Array<Record<string, unknown>>; info: WorkflowInstance | undefined }) {
+export default function WorkflowFlowTab({
+  instanceGraph,
+  executionGraph,
+  events,
+  info,
+  onOpenHistory,
+}: {
+  instanceGraph: InstanceGraph | undefined;
+  executionGraph: ExecutionGraphData | undefined;
+  events: Array<Record<string, unknown>>;
+  info: WorkflowInstance | undefined;
+  onOpenHistory?: () => void;
+}) {
   // The rail's selection is the filter; the right pane's selection reports back into the rail.
   const [selectedStepId, setSelectedStepId] = useState<string | null>(null);
   const [railHighlight, setRailHighlight] = useState<string | null>(null);
   const [railVariant, setRailVariant] = useState<'chart' | 'uml'>('chart');
+  // The rail's share of the split, resizable by the divider. 40/60 by default.
+  const [railPct, setRailPct] = useState(40);
+  const splitRef = useRef<HTMLDivElement>(null);
+  const startResize = (e: { preventDefault: () => void }) => {
+    e.preventDefault();
+    const move = (ev: PointerEvent) => {
+      const rect = splitRef.current?.getBoundingClientRect();
+      if (!rect || rect.width === 0) return;
+      setRailPct(Math.min(70, Math.max(20, ((ev.clientX - rect.left) / rect.width) * 100)));
+    };
+    const up = () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+  };
   const [selectedSpan, setSelectedSpan] = useState<TimelineSpan | null>(null);
 
   const isAgent = instanceGraph?.graphKind === 'agent';
@@ -144,12 +173,12 @@ export default function WorkflowFlowTab({ instanceGraph, executionGraph, events,
     <Stack direction="row" gap={1.5} sx={{ flexWrap: 'wrap', alignItems: 'flex-start' }}>
       {startInput !== null && (
         <Box sx={{ flex: 1, minWidth: 280 }}>
-          <CodeViewer code={startInput} language="json" title="Workflow input" height="18vh" expandable showLineNumbers={false} />
+          <StructuredValue title="Workflow input" raw={startInput} />
         </Box>
       )}
       {info && (
         <Box sx={{ flex: 1, minWidth: 280 }}>
-          <ExecutionSummary info={info} fallbackStartMs={historyRange?.start} fallbackEndMs={historyRange?.end} />
+          <ExecutionSummary info={info} fallbackStartMs={historyRange?.start} fallbackEndMs={historyRange?.end} onOpenHistory={onOpenHistory} />
         </Box>
       )}
     </Stack>
@@ -168,8 +197,8 @@ export default function WorkflowFlowTab({ instanceGraph, executionGraph, events,
         {selectedStepId && <Chip size="small" color="primary" variant="outlined" label={`Filtered: ${selectedStepId} · ${selectedCount} ${selectedCount === 1 ? 'execution' : 'executions'}`} onDelete={() => setSelectedStepId(null)} />}
       </Stack>
 
-      <Stack direction={{ xs: 'column', md: 'row' }} gap={2} alignItems="stretch">
-        <Box sx={{ position: 'relative', width: { xs: '100%', md: 340 }, flexShrink: 0, border: '1px solid', borderColor: 'divider', borderRadius: 1, bgcolor: 'action.hover', maxHeight: '62vh', overflow: 'hidden' }}>
+      <Stack ref={splitRef} direction={{ xs: 'column', md: 'row' }} gap={{ xs: 2, md: 0 }} alignItems="stretch">
+        <Box sx={{ position: 'relative', width: { xs: '100%', md: `${railPct}%` }, minWidth: { md: 220 }, flexShrink: 0, border: '1px solid', borderColor: 'divider', borderRadius: 1, bgcolor: 'action.hover', maxHeight: '62vh', overflow: 'hidden' }}>
           {railDisabled ? (
             <Stack alignItems="center" justifyContent="center" sx={{ height: '100%', p: 2, minHeight: 160 }}>
               <Typography variant="caption" sx={{ color: 'text.disabled', textAlign: 'center' }}>
@@ -198,6 +227,14 @@ export default function WorkflowFlowTab({ instanceGraph, executionGraph, events,
               )}
             </>
           )}
+        </Box>
+        <Box
+          role="separator"
+          aria-orientation="vertical"
+          aria-label="resize the flow pane"
+          onPointerDown={startResize}
+          sx={{ display: { xs: 'none', md: 'flex' }, width: 14, cursor: 'col-resize', alignItems: 'center', justifyContent: 'center', flexShrink: 0, '&:hover > div': { bgcolor: 'primary.main' } }}>
+          <Box sx={{ width: 3, height: 44, borderRadius: 1.5, bgcolor: 'divider', transition: 'background-color 0.15s' }} />
         </Box>
         <Box sx={{ flex: 1, minWidth: 0, display: 'flex' }}>{timelinePane}</Box>
       </Stack>

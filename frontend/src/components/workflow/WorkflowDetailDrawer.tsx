@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import { Alert, Box, Button, CircularProgress, Dialog, DialogActions, DialogContent, DialogContentText, DialogTitle, Drawer, IconButton, ListingTable, Snackbar, Stack, Tab, Tabs, TextField, Typography } from '@wso2/oxygen-ui';
+import { Alert, Box, Button, CircularProgress, Dialog, DialogActions, DialogContent, DialogContentText, DialogTitle, Drawer, IconButton, ListingTable, Snackbar, Stack, TextField, Typography } from '@wso2/oxygen-ui';
 import { Ban, OctagonX, PauseCircle, PlayCircle, X } from '@wso2/oxygen-ui-icons-react';
 import { useState } from 'react';
 import WorkflowFlowTab from './WorkflowFlowTab';
@@ -34,7 +34,7 @@ const headerSx = { px: 2, py: 1.5, borderBottom: '1px solid', borderColor: 'divi
 const emptySx = { py: 4, textAlign: 'center', color: 'text.secondary' };
 
 export default function WorkflowDetailDrawer({ scope, workflowId, onClose }: { scope: WorkflowScope; workflowId: string; onClose: () => void }) {
-  const [tab, setTab] = useState(0);
+  const [historyOpen, setHistoryOpen] = useState(false);
   const [terminateOpen, setTerminateOpen] = useState(false);
   const [reason, setReason] = useState('');
   const [toast, setToast] = useState<{ severity: 'success' | 'error'; message: string } | null>(null);
@@ -46,11 +46,11 @@ export default function WorkflowDetailDrawer({ scope, workflowId, onClose }: { s
   const { data: history = [], isLoading: loadingHistory } = useWorkflowHistory(scope, workflowId);
   // Fetched for the Execution Graph tab (1) and also the Timeline tab (0), which uses the graph's
   // authoritative node types to fix categories/icons the history alone can't determine.
-  const { data: graph, isLoading: loadingGraph } = useWorkflowExecutionGraph(scope, tab === 0 ? workflowId : null);
+  const { data: graph, isLoading: loadingGraph } = useWorkflowExecutionGraph(scope, workflowId);
   // The Flow tab (1) draws the workflow's own structure with this run's path on it. It needs the
   // published descriptor, which an integration built by an older runtime won't have — in that case
   // `graph` comes back null and the tab falls back to the node-link view of the history alone.
-  const { data: instanceGraph, isLoading: loadingInstanceGraph } = useWorkflowInstanceGraph(scope, tab === 0 ? workflowId : null);
+  const { data: instanceGraph, isLoading: loadingInstanceGraph } = useWorkflowInstanceGraph(scope, workflowId);
   const lifecycle = useWorkflowLifecycle(scope);
 
   const status = (info?.status as string | undefined) ?? '';
@@ -115,25 +115,26 @@ export default function WorkflowDetailDrawer({ scope, workflowId, onClose }: { s
         </Authorized>
       )}
 
-      <Box sx={{ px: 2 }}>
-        <Tabs value={tab} onChange={(_, v) => setTab(v)} sx={{ mb: 2, '& .MuiTabs-flexContainer': { justifyContent: 'flex-end' } }}>
-          <Tab label="Overview" />
-          <Tab label="History" />
-        </Tabs>
+      <Box sx={{ px: 2, pt: 1 }}>
+        {loadingInfo || loadingHistory || loadingGraph || loadingInstanceGraph ? (
+          <CircularProgress size={24} sx={{ display: 'block', mx: 'auto', py: 4 }} />
+        ) : infoError ? (
+          <Typography sx={emptySx}>Could not load workflow info.</Typography>
+        ) : (
+          <WorkflowFlowTab instanceGraph={instanceGraph} executionGraph={graph} events={history as Array<Record<string, unknown>>} info={info} onOpenHistory={() => setHistoryOpen(true)} />
+        )}
+      </Box>
 
-        {tab === 0 &&
-          (loadingInfo || loadingHistory || loadingGraph || loadingInstanceGraph ? (
-            <CircularProgress size={24} sx={{ display: 'block', mx: 'auto', py: 4 }} />
-          ) : infoError ? (
-            <Typography sx={emptySx}>Could not load workflow info.</Typography>
-          ) : (
-            <WorkflowFlowTab instanceGraph={instanceGraph} executionGraph={graph} events={history as Array<Record<string, unknown>>} info={info} />
-          ))}
-
-        {tab === 1 &&
-          (loadingHistory ? (
-            <CircularProgress size={24} sx={{ display: 'block', mx: 'auto', py: 4 }} />
-          ) : history.length === 0 ? (
+      {/* The raw event history: debugging material, an overlay rather than a place in the page. */}
+      <Dialog open={historyOpen} onClose={() => setHistoryOpen(false)} maxWidth="lg" fullWidth>
+        <DialogTitle sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          Event history
+          <IconButton size="small" aria-label="close event history" onClick={() => setHistoryOpen(false)}>
+            <X size={16} />
+          </IconButton>
+        </DialogTitle>
+        <DialogContent>
+          {history.length === 0 ? (
             <Typography sx={emptySx}>No history events.</Typography>
           ) : (
             <ListingTable>
@@ -158,8 +159,9 @@ export default function WorkflowDetailDrawer({ scope, workflowId, onClose }: { s
                 ))}
               </ListingTable.Body>
             </ListingTable>
-          ))}
-      </Box>
+          )}
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={terminateOpen} onClose={() => setTerminateOpen(false)} maxWidth="xs" fullWidth>
         <DialogTitle>Terminate Workflow</DialogTitle>

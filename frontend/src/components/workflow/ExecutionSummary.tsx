@@ -17,7 +17,7 @@
  */
 
 import { alpha, Box, IconButton, Stack, Tooltip, Typography } from '@wso2/oxygen-ui';
-import { Copy } from '@wso2/oxygen-ui-icons-react';
+import { Bug, Copy } from '@wso2/oxygen-ui-icons-react';
 import type { ReactElement, ReactNode } from 'react';
 import type { WorkflowInstance } from '../../api/workflows';
 import CodeViewer from '../CodeViewer';
@@ -35,11 +35,14 @@ export default function ExecutionSummary({
   info,
   fallbackStartMs,
   fallbackEndMs,
+  onOpenHistory,
 }: {
   info: WorkflowInstance;
   /** From the run's history — the instances payload itself carries no times. */
   fallbackStartMs?: number | null;
   fallbackEndMs?: number | null;
+  /** Opens the raw event history — debugging material, so it lives behind this rather than a tab. */
+  onOpenHistory?: () => void;
 }): ReactElement {
   const status = (info.status ?? '').toUpperCase();
   const closed = !['RUNNING', 'SUSPENDED', ''].includes(status);
@@ -75,11 +78,20 @@ export default function ExecutionSummary({
             </Typography>
           )}
         </Stack>
-        <Tooltip title="Copy the raw execution info">
-          <IconButton size="small" aria-label="copy raw execution info" onClick={() => navigator.clipboard.writeText(jsonPretty(info))}>
-            <Copy size={14} />
-          </IconButton>
-        </Tooltip>
+        <Stack direction="row" alignItems="center" gap={0.25}>
+          {onOpenHistory && (
+            <Tooltip title="Event history (debug)">
+              <IconButton size="small" aria-label="open event history" onClick={onOpenHistory}>
+                <Bug size={14} />
+              </IconButton>
+            </Tooltip>
+          )}
+          <Tooltip title="Copy the raw execution info">
+            <IconButton size="small" aria-label="copy raw execution info" onClick={() => navigator.clipboard.writeText(jsonPretty(info))}>
+              <Copy size={14} />
+            </IconButton>
+          </Tooltip>
+        </Stack>
       </Stack>
 
       <Stack gap={0.75} sx={{ px: 1.5, py: 1.25 }}>
