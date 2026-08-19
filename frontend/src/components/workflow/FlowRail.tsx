@@ -21,7 +21,7 @@ import { ChevronDown, ChevronRight, Diamond, GitBranch, Info, RefreshCw, Repeat,
 import { useEffect, useMemo, useRef, useState, type ComponentType, type ReactElement, type ReactNode } from 'react';
 import type { InstanceGraph, ModelGraphNode, StepExecution } from '../../api/workflows';
 import { iconForType, paletteColor, statusColorName } from './graphVisuals';
-import { isContainer, layoutFloorPlan, type PlacedNode } from './floorPlan';
+import { isContainer, layoutFloorPlan, type PlacedArm, type PlacedNode } from './floorPlan';
 
 /**
  * The flow rail: the workflow as written, rendered the way it is written — a left-aligned list,
@@ -92,6 +92,7 @@ function KeywordRow({
   onToggle,
   collapsedStatusColor,
   chart,
+  muted,
 }: {
   depth: number;
   icon?: ComponentType<{ size?: number }>;
@@ -103,6 +104,8 @@ function KeywordRow({
   /** Aggregate colour of what a collapsed row hides, so folding never hides an outcome. */
   collapsedStatusColor?: string;
   chart?: boolean;
+  /** Nothing under this keyword ran: render it quiet, so unexecuted structure stops shouting. */
+  muted?: boolean;
 }): ReactElement {
   const toggle = onToggle !== undefined;
   return (
@@ -131,7 +134,7 @@ function KeywordRow({
           <Icon size={12} />
         </Box>
       )}
-      <Typography variant="caption" sx={{ fontWeight: 700, fontSize: 11.5, fontFamily: 'monospace', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={title ?? text}>
+      <Typography variant="caption" sx={{ fontWeight: muted ? 400 : 700, fontSize: 11.5, fontFamily: 'monospace', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', color: muted ? 'text.disabled' : undefined }} title={title ?? text}>
         {text}
       </Typography>
       {collapsed && collapsedStatusColor && (
@@ -336,6 +339,7 @@ export default function FlowRail({
   const renderContainer = (t: TreeNode, depth: number, prefix = ''): ReactNode => {
     const Icon = CONSTRUCT_ICONS[constructOf(t.node)] ?? Diamond;
     const isCollapsed = collapsed.has(t.node.stepId);
+    const ranInside = aggregateStatusColor(t.arms.flatMap((a) => a.children)) !== undefined;
     const rows: ReactNode[] = [
       <KeywordRow
         key={t.node.stepId}
@@ -347,6 +351,7 @@ export default function FlowRail({
         onToggle={() => toggle(t.node.stepId)}
         collapsedStatusColor={isCollapsed ? aggregateStatusColor(t.arms.flatMap((a) => a.children)) : undefined}
         chart={chart}
+        muted={!ranInside}
       />,
     ];
     if (isCollapsed) {
@@ -362,20 +367,35 @@ export default function FlowRail({
         } else {
           // A keyword group folds exactly like a container: same chevron, same aggregate dot.
           const key = `${t.node.stepId}/else`;
-          rows.push(foldableGroup(key, arm.children, depth + 1, (folded) => <KeywordRow depth={depth} text="else" chart={chart} collapsed={folded} onToggle={() => toggle(key)} collapsedStatusColor={folded ? aggregateStatusColor(arm.children) : undefined} />));
+          rows.push(
+            foldableGroup(key, arm.children, depth + 1, (folded) => (
+              <KeywordRow depth={depth} text="else" chart={chart} collapsed={folded} onToggle={() => toggle(key)} collapsedStatusColor={folded ? aggregateStatusColor(arm.children) : undefined} muted={aggregateStatusColor(arm.children) === undefined} />
+            )),
+          );
         }
       } else if (arm.name === 'onFail') {
         const key = `${t.node.stepId}/onFail`;
         rows.push(
           foldableGroup(key, arm.children, depth + 1, (folded) => (
-            <KeywordRow depth={depth} icon={Shield} text="on fail" chart={chart} collapsed={folded} onToggle={() => toggle(key)} collapsedStatusColor={folded ? aggregateStatusColor(arm.children) : undefined} />
+            <KeywordRow
+              depth={depth}
+              icon={Shield}
+              text="on fail"
+              chart={chart}
+              collapsed={folded}
+              onToggle={() => toggle(key)}
+              collapsedStatusColor={folded ? aggregateStatusColor(arm.children) : undefined}
+              muted={aggregateStatusColor(arm.children) === undefined}
+            />
           )),
         );
       } else {
         // A match clause's patterns, or any arm name this rail does not know: a case label.
         const key = `${t.node.stepId}/${arm.name}`;
         rows.push(
-          foldableGroup(key, arm.children, depth + 2, (folded) => <KeywordRow depth={depth + 1} text={arm.name} chart={chart} collapsed={folded} onToggle={() => toggle(key)} collapsedStatusColor={folded ? aggregateStatusColor(arm.children) : undefined} />),
+          foldableGroup(key, arm.children, depth + 2, (folded) => (
+            <KeywordRow depth={depth + 1} text={arm.name} chart={chart} collapsed={folded} onToggle={() => toggle(key)} collapsedStatusColor={folded ? aggregateStatusColor(arm.children) : undefined} muted={aggregateStatusColor(arm.children) === undefined} />
+          )),
         );
       }
     }
@@ -456,6 +476,7 @@ function UmlActivityDiagram({
   if (!plan) return null;
 
   const line = theme.palette.text.disabled;
+  const armHasExecution = (arm: PlacedArm): boolean => arm.children.some((child) => steps[child.node.stepId] !== undefined || child.arms.some(armHasExecution));
   const shapes: ReactNode[] = [];
   const wires: ReactNode[] = [];
   let wireKey = 0;
@@ -535,31 +556,44 @@ function UmlActivityDiagram({
       return { x: cx, flows: true };
     }
 
-    // A container: the decision diamond top-centre, arms side by side, flow merging below.
+    // A container: arms side by side, flow merging below. An if or a loop decides, so it gets a
+    // diamond; a do/on-fail decides nothing — the do body always runs, and the handler is an
+    // error path off it — so it gets no diamond, no guard on the do arm, and no skip path.
     const construct = constructOf(node);
     const isLoop = kind === 'LOOP';
+    const isTry = kind === 'TRY';
+    const ranInside = box.arms.some((arm) => armHasExecution(arm));
     const dy = box.y + 12;
-    shapes.push(
-      <g key={node.stepId}>
-        <path d={`M ${cx} ${dy - 8} L ${cx + 8} ${dy} L ${cx} ${dy + 8} L ${cx - 8} ${dy} Z`} fill={theme.palette.background.paper} stroke={line} strokeWidth={1.25} />
-        <text x={cx + 12} y={dy + 3.5} fill={theme.palette.text.secondary} fontSize={9.5} fontWeight={700} fontFamily="monospace">
-          {(() => {
-            const t = `${construct}${node.label ? ` ${node.label}` : ''}`;
-            return t.length > 24 ? `${t.slice(0, 23)}…` : t;
-          })()}
-        </text>
-      </g>,
-    );
+    if (isTry) {
+      shapes.push(
+        <text key={node.stepId} x={cx} y={dy + 3.5} fill={ranInside ? theme.palette.text.secondary : theme.palette.text.disabled} fontSize={9.5} fontWeight={ranInside ? 700 : 400} fontFamily="monospace" textAnchor="middle">
+          do
+        </text>,
+      );
+    } else {
+      shapes.push(
+        <g key={node.stepId}>
+          <path d={`M ${cx} ${dy - 8} L ${cx + 8} ${dy} L ${cx} ${dy + 8} L ${cx - 8} ${dy} Z`} fill={theme.palette.background.paper} stroke={line} strokeWidth={1.25} />
+          <text x={cx + 12} y={dy + 3.5} fill={ranInside ? theme.palette.text.secondary : theme.palette.text.disabled} fontSize={9.5} fontWeight={ranInside ? 700 : 400} fontFamily="monospace">
+            {(() => {
+              const t = `${construct}${node.label ? ` ${node.label}` : ''}`;
+              return t.length > 24 ? `${t.slice(0, 23)}…` : t;
+            })()}
+          </text>
+        </g>,
+      );
+    }
 
     const mergeY = box.y + box.h - 4;
     let hasElse = false;
     let anyFlow = false;
     for (const arm of box.arms) {
       if (arm.name === 'else') hasElse = true;
-      const guard = `[${arm.name || 'body'}]`;
+      const isHandler = isTry && arm.name === 'onFail';
+      const guard = isTry ? (isHandler ? '[on fail]' : undefined) : `[${arm.name || 'body'}]`;
       if (arm.children.length === 0) continue;
       const first = arm.children[0];
-      elbow(cx, dy + 8, first.x + first.w / 2, first.y + 6, guard);
+      elbow(cx, dy + 8, first.x + first.w / 2, first.y + 6, guard, isHandler);
       let prev: { x: number; flows: boolean } | null = null;
       let prevBox: PlacedNode | null = null;
       for (const child of arm.children) {
@@ -592,7 +626,8 @@ function UmlActivityDiagram({
       }
     }
     // The skip path: a loop may run zero times; a branch without an else may not be entered.
-    if (isLoop || !hasElse) {
+    // A do block has no skip — its body always runs.
+    if (isLoop || (!hasElse && !isTry)) {
       wires.push(<path key={`w${wireKey++}`} d={`M ${cx - 8} ${dy} L ${box.x - 2} ${dy} L ${box.x - 2} ${mergeY} L ${cx - 2} ${mergeY}`} fill="none" stroke={line} strokeWidth={1} markerEnd="url(#uml2-arrow)" />);
       anyFlow = true;
     }

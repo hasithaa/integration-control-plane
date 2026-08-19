@@ -80,12 +80,14 @@ export default function WorkflowFlowTab({
   events,
   info,
   onOpenHistory,
+  environmentId,
 }: {
   instanceGraph: InstanceGraph | undefined;
   executionGraph: ExecutionGraphData | undefined;
   events: Array<Record<string, unknown>>;
   info: WorkflowInstance | undefined;
   onOpenHistory?: () => void;
+  environmentId?: string;
 }) {
   // The rail's selection is the filter; the right pane's selection reports back into the rail.
   const [selectedStepId, setSelectedStepId] = useState<string | null>(null);
@@ -118,6 +120,8 @@ export default function WorkflowFlowTab({
     const built = buildTimeline(events);
     return built.spans.length > 0 ? { start: built.start, end: built.end } : null;
   }, [events]);
+  // The run's real result: the instances payload reports null, the terminal event does not.
+  const workflowResult = useMemo(() => extractNodeExecutionDetail({ id: '', type: 'WORKFLOW' }, events).result, [events]);
 
   // The last executed step, for the rail's "you are here" mark. Approximate by nature.
   const currentStepId = useMemo(() => {
@@ -159,13 +163,8 @@ export default function WorkflowFlowTab({
   }, [selectedSpan, events]);
 
   const timelinePane: ReactNode = (
-    <Box sx={{ flex: 1, minWidth: 0, position: 'relative' }}>
+    <Box sx={{ flex: 1, minWidth: 0 }}>
       <WorkflowTimeline events={events} graph={executionGraph} visibleIds={visibleIds} selectedKey={selectedSpan ? (selectedSpan.eventId ?? selectedSpan.key) : null} onSelectSpan={selectSpan} />
-      {spanDetail && (
-        <Box sx={{ position: 'absolute', top: 0, right: 0, bottom: 0, width: { xs: '100%', sm: 'min(440px, 85%)' }, overflow: 'auto', boxShadow: 8, zIndex: 2, display: 'flex' }}>
-          <NodeDetailPanel node={spanDetail.node} detail={spanDetail.detail} hasHistory={events.length > 0} onClose={() => selectSpan(null)} fullWidth />
-        </Box>
-      )}
     </Box>
   );
 
@@ -173,12 +172,12 @@ export default function WorkflowFlowTab({
     <Stack direction="row" gap={1.5} sx={{ flexWrap: 'wrap', alignItems: 'flex-start' }}>
       {startInput !== null && (
         <Box sx={{ flex: 1, minWidth: 280 }}>
-          <StructuredValue title="Workflow input" raw={startInput} />
+          <StructuredValue title="Workflow input" raw={startInput} environmentId={environmentId} />
         </Box>
       )}
       {info && (
         <Box sx={{ flex: 1, minWidth: 280 }}>
-          <ExecutionSummary info={info} fallbackStartMs={historyRange?.start} fallbackEndMs={historyRange?.end} onOpenHistory={onOpenHistory} />
+          <ExecutionSummary info={info} fallbackStartMs={historyRange?.start} fallbackEndMs={historyRange?.end} onOpenHistory={onOpenHistory} fallbackResult={workflowResult} />
         </Box>
       )}
     </Stack>
@@ -197,7 +196,7 @@ export default function WorkflowFlowTab({
         {selectedStepId && <Chip size="small" color="primary" variant="outlined" label={`Filtered: ${selectedStepId} · ${selectedCount} ${selectedCount === 1 ? 'execution' : 'executions'}`} onDelete={() => setSelectedStepId(null)} />}
       </Stack>
 
-      <Stack ref={splitRef} direction={{ xs: 'column', md: 'row' }} gap={{ xs: 2, md: 0 }} alignItems="stretch">
+      <Stack ref={splitRef} direction={{ xs: 'column', md: 'row' }} gap={{ xs: 2, md: 0 }} alignItems="stretch" sx={{ position: 'relative' }}>
         <Box sx={{ position: 'relative', width: { xs: '100%', md: `${railPct}%` }, minWidth: { md: 220 }, flexShrink: 0, border: '1px solid', borderColor: 'divider', borderRadius: 1, bgcolor: 'action.hover', maxHeight: '62vh', overflow: 'hidden' }}>
           {railDisabled ? (
             <Stack alignItems="center" justifyContent="center" sx={{ height: '100%', p: 2, minHeight: 160 }}>
@@ -237,6 +236,13 @@ export default function WorkflowFlowTab({
           <Box sx={{ width: 3, height: 44, borderRadius: 1.5, bgcolor: 'divider', transition: 'background-color 0.15s' }} />
         </Box>
         <Box sx={{ flex: 1, minWidth: 0, display: 'flex' }}>{timelinePane}</Box>
+        {/* The details ride over the whole split, not over the timeline alone: a short timeline
+            would otherwise crop them. Rows never reflow either way. */}
+        {spanDetail && (
+          <Box sx={{ position: 'absolute', top: 0, right: 0, width: { xs: '100%', sm: 'min(440px, 85%)' }, maxHeight: '62vh', minHeight: 220, overflow: 'auto', boxShadow: 8, zIndex: 2, display: 'flex', borderRadius: 1 }}>
+            <NodeDetailPanel node={spanDetail.node} detail={spanDetail.detail} hasHistory={events.length > 0} onClose={() => selectSpan(null)} fullWidth environmentId={environmentId} />
+          </Box>
+        )}
       </Stack>
     </Stack>
   );

@@ -21,6 +21,7 @@ import { Braces, Copy } from '@wso2/oxygen-ui-icons-react';
 import { useState, type ReactElement } from 'react';
 import CodeViewer from '../CodeViewer';
 import { humanizeKey } from './helpers';
+import { WorkflowIdLink } from './shared';
 
 /**
  * A JSON value read the way its shape wants to be read. An object's primitive fields become
@@ -29,7 +30,9 @@ import { humanizeKey } from './helpers';
  * full-height code viewer. The braces toggle always reaches the raw JSON, because a form is a
  * rendering and a rendering can be wrong; copy always copies the raw value.
  */
-export default function StructuredValue({ title, raw }: { title: string; raw: string }): ReactElement {
+const isWorkflowId = (value: unknown): value is string => typeof value === 'string' && /^(workflow|humantask|reviewactivity)-/.test(value);
+
+export default function StructuredValue({ title, raw, environmentId }: { title: string; raw: string; environmentId?: string }): ReactElement {
   const [showRaw, setShowRaw] = useState(false);
 
   let parsed: unknown;
@@ -86,27 +89,75 @@ export default function StructuredValue({ title, raw }: { title: string; raw: st
     );
   }
 
-  const entries = Object.entries(parsed as Record<string, unknown>);
-  const flat = entries.filter(([, v]) => v === null || ['string', 'number', 'boolean'].includes(typeof v));
-  const nested = entries.filter(([k]) => !flat.some(([fk]) => fk === k));
   return (
     <Box sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 1, minWidth: 0 }}>
       {header}
-      <Stack gap={0.5} sx={{ px: 1.5, py: 1, minWidth: 0 }}>
-        {flat.map(([key, value]) => (
-          <Stack key={key} direction="row" gap={1} alignItems="baseline" sx={{ minWidth: 0 }}>
-            <Typography variant="caption" sx={{ color: 'text.secondary', width: 132, flexShrink: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={key}>
-              {humanizeKey(key)}
-            </Typography>
-            <Typography variant="body2" sx={{ minWidth: 0, wordBreak: 'break-word', fontFamily: typeof value === 'string' && /id$/i.test(key) ? 'monospace' : undefined, fontSize: 12.5 }}>
-              {value === null ? '—' : typeof value === 'boolean' ? (value ? 'yes' : 'no') : String(value === '' ? '—' : value)}
-            </Typography>
-          </Stack>
-        ))}
-        {nested.map(([key, value]) => (
-          <CodeViewer key={key} code={JSON.stringify(value, null, 2)} language="json" title={humanizeKey(key)} height="16vh" expandable showLineNumbers={false} />
-        ))}
-      </Stack>
+      <Box sx={{ px: 1.5, py: 1, minWidth: 0 }}>
+        <ObjectRows value={parsed as Record<string, unknown>} depth={0} environmentId={environmentId} />
+      </Box>
     </Box>
+  );
+}
+
+/** Whether every element is a primitive, so an array can read as one line rather than a block. */
+const isPrimitiveArray = (v: unknown): v is Array<string | number | boolean | null> => Array.isArray(v) && v.every((e) => e === null || ['string', 'number', 'boolean'].includes(typeof e));
+
+/**
+ * An object as labelled rows, recursively: nested plain objects become indented sub-forms — one
+ * consistent reading whether the value is a task envelope, its payload, or an activity's argument —
+ * with primitive arrays inline and only genuinely deep or mixed values falling back to a JSON
+ * block. Ids that name a workflow instance link to it.
+ */
+function ObjectRows({ value, depth, environmentId }: { value: Record<string, unknown>; depth: number; environmentId?: string }): ReactElement {
+  const entries = Object.entries(value);
+  return (
+    <Stack gap={0.5} sx={{ minWidth: 0, pl: depth * 1.5, borderLeft: depth > 0 ? '2px solid' : 'none', borderColor: 'divider' }}>
+      {entries.map(([key, v]) => {
+        const label = (
+          <Typography variant="caption" sx={{ color: 'text.secondary', width: 132, flexShrink: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={key}>
+            {humanizeKey(key)}
+          </Typography>
+        );
+        if (isWorkflowId(v) && environmentId) {
+          return (
+            <Stack key={key} direction="row" gap={1} alignItems="baseline" sx={{ minWidth: 0 }}>
+              {label}
+              <WorkflowIdLink workflowId={v} environmentId={environmentId} />
+            </Stack>
+          );
+        }
+        if (v === null || ['string', 'number', 'boolean'].includes(typeof v)) {
+          return (
+            <Stack key={key} direction="row" gap={1} alignItems="baseline" sx={{ minWidth: 0 }}>
+              {label}
+              <Typography variant="body2" sx={{ minWidth: 0, wordBreak: 'break-word', fontFamily: typeof v === 'string' && /id$/i.test(key) ? 'monospace' : undefined, fontSize: 12.5 }}>
+                {v === null ? '—' : typeof v === 'boolean' ? (v ? 'yes' : 'no') : String(v === '' ? '—' : v)}
+              </Typography>
+            </Stack>
+          );
+        }
+        if (isPrimitiveArray(v)) {
+          return (
+            <Stack key={key} direction="row" gap={1} alignItems="baseline" sx={{ minWidth: 0 }}>
+              {label}
+              <Typography variant="body2" sx={{ minWidth: 0, wordBreak: 'break-word', fontSize: 12.5 }}>
+                {v.length === 0 ? '—' : v.map((e) => (e === null ? '—' : String(e))).join(', ')}
+              </Typography>
+            </Stack>
+          );
+        }
+        if (v !== null && typeof v === 'object' && !Array.isArray(v) && depth < 3) {
+          return (
+            <Box key={key} sx={{ minWidth: 0 }}>
+              <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 700 }}>
+                {humanizeKey(key)}
+              </Typography>
+              <ObjectRows value={v as Record<string, unknown>} depth={depth + 1} environmentId={environmentId} />
+            </Box>
+          );
+        }
+        return <CodeViewer key={key} code={JSON.stringify(v, null, 2)} language="json" title={humanizeKey(key)} height="14vh" expandable showLineNumbers={false} />;
+      })}
+    </Stack>
   );
 }

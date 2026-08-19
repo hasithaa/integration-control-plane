@@ -25,7 +25,7 @@ import { StatusChip } from './shared';
 import { typeLabel } from './graphVisuals';
 
 /** Side panel showing a selected node's execution time, input and result, mapped from the history. */
-export default function NodeDetailPanel({ node, detail, hasHistory, onClose, fullWidth = false }: { node: ExecutionGraphNode; detail: NodeExecutionDetail; hasHistory: boolean; onClose: () => void; fullWidth?: boolean }) {
+export default function NodeDetailPanel({ node, detail, hasHistory, onClose, fullWidth = false, environmentId }: { node: ExecutionGraphNode; detail: NodeExecutionDetail; hasHistory: boolean; onClose: () => void; fullWidth?: boolean; environmentId?: string }) {
   const { task } = splitQualifiedName(node.label);
 
   return (
@@ -87,14 +87,14 @@ export default function NodeDetailPanel({ node, detail, hasHistory, onClose, ful
               </Box>
             )}
             {detail.input !== null ? (
-              <StructuredValue title="Input" raw={detail.input} />
+              <StructuredValue title="Input" raw={detail.input} environmentId={environmentId} />
             ) : (
               <Typography variant="body2" sx={{ color: 'text.secondary' }}>
                 No input recorded for this step.
               </Typography>
             )}
             {detail.result !== null ? (
-              <StructuredValue title="Result" raw={detail.result} />
+              <StructuredValue title="Result" raw={detail.result} environmentId={environmentId} />
             ) : (
               <Typography variant="body2" sx={{ color: 'text.secondary' }}>
                 {detail.status === 'COMPLETED' ? 'This step completed with no return value.' : detail.status ? 'No result — this step has not completed.' : 'No result recorded for this step.'}

@@ -121,7 +121,7 @@ export default function WorkflowDetailDrawer({ scope, workflowId, onClose }: { s
         ) : infoError ? (
           <Typography sx={emptySx}>Could not load workflow info.</Typography>
         ) : (
-          <WorkflowFlowTab instanceGraph={instanceGraph} executionGraph={graph} events={history as Array<Record<string, unknown>>} info={info} onOpenHistory={() => setHistoryOpen(true)} />
+          <WorkflowFlowTab instanceGraph={instanceGraph} executionGraph={graph} events={history as Array<Record<string, unknown>>} info={info} onOpenHistory={() => setHistoryOpen(true)} environmentId={scope.environmentId} />
         )}
       </Box>
 
