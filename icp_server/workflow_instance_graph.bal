@@ -134,6 +134,14 @@ isolated function instanceGraphResponse(string workflowType, map<json> info, jso
     // matching step at or after the last anchored one.
     int cursor = 0;
 
+    // Whether any executed node named its step. The decoding happens in the runtime that serves the
+    // read, so an integration built against a module without step ids reports none — and since a
+    // project shares one Temporal namespace, that can be a *different* integration than the one that
+    // owns the workflow. Saying so lets the console explain an unanchored drawing instead of
+    // presenting every step as "not reached", which would be wrong rather than merely unhelpful.
+    boolean sawStepId = false;
+    int executedCount = 0;
+
     foreach json node in executedNodes {
         if node !is map<json> {
             continue;
@@ -144,6 +152,10 @@ isolated function instanceGraphResponse(string workflowType, map<json> info, jso
         if NON_STEP_ACTIVITIES.indexOf(nodeName) !is () {
             // Machinery, not a step the author wrote.
             continue;
+        }
+        executedCount += 1;
+        if stepId is string {
+            sawStepId = true;
         }
 
         if nodeType == REVIEW_ACTIVITY_TYPE {
@@ -203,7 +215,11 @@ isolated function instanceGraphResponse(string workflowType, map<json> info, jso
         graph: graph,
         steps: steps.toJson(),
         takenArms: takenArms.toJson(),
-        unmatched: unmatched
+        unmatched: unmatched,
+        // False only when steps ran and not one of them was named: the run cannot be placed on the
+        // model at all. Guessing by activity name instead would draw a confident, wrong path, because
+        // the same activity is often called from several arms — which is why step ids exist.
+        stepIdsAvailable: executedCount == 0 || sawStepId
     };
     http:Response response = new;
     response.statusCode = 200;
@@ -351,8 +367,10 @@ isolated function stringField(map<json> value, string key) returns string? {
 // descriptor's checksum. Returns () when no runtime has described this type.
 isolated function workflowGraphFromStoredMetadata(string componentId, string environmentId,
         string workflowType) returns [json, string]?|error {
+    // Project-wide, not component-wide: the console may be reading through a different integration
+    // than the one that owns this workflow, and the drawing must not silently degrade because of it.
     types:WorkflowMetadataRecord[] metadataRecords =
-        check storage:getWorkflowMetadataForComponentEnv(componentId, environmentId);
+        check storage:getWorkflowMetadataForProjectEnv(componentId, environmentId);
     foreach types:WorkflowMetadataRecord metadataRecord in metadataRecords {
         json|error document = metadataRecord.metadata.fromJsonString();
         if document !is map<json> {

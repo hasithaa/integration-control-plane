@@ -1103,6 +1103,36 @@ public isolated function getWorkflowMetadataForComponentEnv(string componentId, 
     return metadataList;
 }
 
+// Get the stored workflow metadata documents of every RUNNING runtime in the same
+// *project* and environment as the given component, the given component's own first and
+// then freshest heartbeat first.
+//
+// Scoped to the project because a project shares one Temporal namespace: a console reading
+// through one integration can see instances belonging to any integration beside it, so a
+// workflow's published structure has to be findable from whichever one was asked. Ordering
+// the owning component first keeps the common case exact — two integrations that happen to
+// declare the same workflow name resolve to the one that was asked about.
+public isolated function getWorkflowMetadataForProjectEnv(string componentId, string environmentId)
+        returns types:WorkflowMetadataRecord[]|error {
+    types:WorkflowMetadataRecord[] metadataList = [];
+    stream<types:WorkflowMetadataRecord, sql:Error?> metadataStream = dbClient->query(`
+        SELECT m.runtime_id, m.metadata, m.capabilities
+        FROM bi_workflow_metadata m
+        INNER JOIN runtimes r ON m.runtime_id = r.runtime_id
+        WHERE r.environment_id = ${environmentId}
+            AND r.status = 'RUNNING'
+            AND r.project_id = (SELECT project_id FROM components WHERE component_id = ${componentId})
+        ORDER BY (r.component_id = ${componentId}) DESC, r.last_heartbeat DESC
+    `);
+
+    check from types:WorkflowMetadataRecord metadataRecord in metadataStream
+        do {
+            metadataList.push(metadataRecord);
+        };
+
+    return metadataList;
+}
+
 public isolated function getLogLevelsForRuntime(string runtimeId) returns types:RuntimeLogLevelRecord[]|error {
     types:RuntimeLogLevelRecord[] logLevelList = [];
     stream<types:RuntimeLogLevelRecord, sql:Error?> logLevelStream = dbClient->query(`

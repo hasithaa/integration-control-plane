@@ -204,6 +204,12 @@ export interface InstanceGraph {
   descriptorChecksum?: string | null;
   /** Null when no runtime has published a descriptor for this type — draw the flat history instead. */
   graph: ModelGraph | null;
+  /**
+   * False when steps ran but none named itself, so the run cannot be placed on the model. Step ids are
+   * decoded by the runtime that serves the read, and a project shares one Temporal namespace — so an
+   * integration built against an older module can answer for a workflow it doesn't own and report none.
+   */
+  stepIdsAvailable?: boolean;
   /** Keyed by step id. */
   steps: Record<string, StepExecution>;
   /** Branch/loop/try step id → the arms something actually ran inside. The only evidence of a taken path. */
