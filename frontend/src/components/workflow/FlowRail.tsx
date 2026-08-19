@@ -276,8 +276,8 @@ export default function FlowRail({
       return next;
     });
 
-  /** Aggregate status of everything under a node: the worst outcome wins, so folding hides nothing. */
-  const aggregateStatusColor = (t: TreeNode): string | undefined => {
+  /** Aggregate status of everything under these nodes: the worst outcome wins, so folding hides nothing. */
+  const aggregateStatusColor = (children: TreeNode[]): string | undefined => {
     let best: string | undefined;
     const rank = (status: string): number => (['FAILED', 'TERMINATED', 'TIMED_OUT'].includes(status) ? 3 : status === 'RUNNING' ? 2 : 1);
     let bestRank = 0;
@@ -293,8 +293,19 @@ export default function FlowRail({
       }
       n.arms.forEach((a) => a.children.forEach(walk));
     };
-    t.arms.forEach((a) => a.children.forEach(walk));
+    children.forEach(walk);
     return best;
+  };
+
+  /** One foldable group of rows: a keyword row and the children it hides when collapsed. */
+  const foldableGroup = (key: string, children: TreeNode[], childDepth: number, keyword: (folded: boolean) => ReactNode): ReactNode => {
+    const folded = collapsed.has(key);
+    return (
+      <Box key={key}>
+        {keyword(folded)}
+        {!folded && children.map((child) => renderNode(child, childDepth))}
+      </Box>
+    );
   };
 
   const renderStep = (t: TreeNode, depth: number): ReactNode => (
@@ -333,7 +344,7 @@ export default function FlowRail({
         title={`${containerTitle(t.node, prefix)} · ${t.node.stepId}`}
         collapsed={isCollapsed}
         onToggle={() => toggle(t.node.stepId)}
-        collapsedStatusColor={isCollapsed ? aggregateStatusColor(t) : undefined}
+        collapsedStatusColor={isCollapsed ? aggregateStatusColor(t.arms.flatMap((a) => a.children)) : undefined}
         chart={chart}
       />,
     ];
@@ -348,16 +359,23 @@ export default function FlowRail({
         if (only && only.node.kind.toUpperCase() === 'BRANCH' && constructOf(only.node) === 'if') {
           rows.push(renderContainer(only, depth, 'else '));
         } else {
-          rows.push(<KeywordRow key={`${t.node.stepId}/else`} depth={depth} text="else" chart={chart} />);
-          rows.push(arm.children.map((child) => renderNode(child, depth + 1)));
+          // A keyword group folds exactly like a container: same chevron, same aggregate dot.
+          const key = `${t.node.stepId}/else`;
+          rows.push(foldableGroup(key, arm.children, depth + 1, (folded) => <KeywordRow depth={depth} text="else" chart={chart} collapsed={folded} onToggle={() => toggle(key)} collapsedStatusColor={folded ? aggregateStatusColor(arm.children) : undefined} />));
         }
       } else if (arm.name === 'onFail') {
-        rows.push(<KeywordRow key={`${t.node.stepId}/onFail`} depth={depth} icon={Shield} text="on fail" chart={chart} />);
-        rows.push(arm.children.map((child) => renderNode(child, depth + 1)));
+        const key = `${t.node.stepId}/onFail`;
+        rows.push(
+          foldableGroup(key, arm.children, depth + 1, (folded) => (
+            <KeywordRow depth={depth} icon={Shield} text="on fail" chart={chart} collapsed={folded} onToggle={() => toggle(key)} collapsedStatusColor={folded ? aggregateStatusColor(arm.children) : undefined} />
+          )),
+        );
       } else {
         // A match clause's patterns, or any arm name this rail does not know: a case label.
-        rows.push(<KeywordRow key={`${t.node.stepId}/${arm.name}`} depth={depth + 1} text={arm.name} chart={chart} />);
-        rows.push(arm.children.map((child) => renderNode(child, depth + 2)));
+        const key = `${t.node.stepId}/${arm.name}`;
+        rows.push(
+          foldableGroup(key, arm.children, depth + 2, (folded) => <KeywordRow depth={depth + 1} text={arm.name} chart={chart} collapsed={folded} onToggle={() => toggle(key)} collapsedStatusColor={folded ? aggregateStatusColor(arm.children) : undefined} />),
+        );
       }
     }
     return <Box key={`c-${t.node.stepId}${prefix}`}>{rows}</Box>;

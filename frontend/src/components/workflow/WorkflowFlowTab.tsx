@@ -76,7 +76,7 @@ export default function WorkflowFlowTab({ instanceGraph, executionGraph, events 
   // The rail's selection is the filter; the execution graph's selection reports back into it.
   const [selectedStepId, setSelectedStepId] = useState<string | null>(null);
   const [railHighlight, setRailHighlight] = useState<string | null>(null);
-  const [railVariant, setRailVariant] = useState<'list' | 'chart'>('list');
+  const [railVariant, setRailVariant] = useState<'list' | 'chart'>('chart');
 
   const isAgent = instanceGraph?.graphKind === 'agent';
   const reason = flowUnavailable(instanceGraph);
