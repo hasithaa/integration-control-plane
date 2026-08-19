@@ -21,7 +21,7 @@ import { Clock, X } from '@wso2/oxygen-ui-icons-react';
 import type { ExecutionGraphNode } from '../../api/workflows';
 import StructuredValue from './StructuredValue';
 import { formatDuration, humanizeKey, splitQualifiedName, type NodeExecutionDetail } from './helpers';
-import { StatusChip } from './shared';
+import { StatusChip, WorkflowIdLink } from './shared';
 import { typeLabel } from './graphVisuals';
 
 /** Side panel showing a selected node's execution time, input and result, mapped from the history. */
@@ -54,6 +54,14 @@ export default function NodeDetailPanel({ node, detail, hasHistory, onClose, ful
       </Stack>
 
       <Stack gap={2} sx={{ p: 2 }}>
+        {detail.childWorkflowId && environmentId && (
+          <Stack direction="row" gap={1} alignItems="baseline">
+            <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+              Instance
+            </Typography>
+            <WorkflowIdLink workflowId={detail.childWorkflowId} environmentId={environmentId} />
+          </Stack>
+        )}
         {detail.callConfig && Object.keys(detail.callConfig).length > 0 && (
           <Stack direction="row" gap={1} sx={{ flexWrap: 'wrap' }}>
             {Object.entries(detail.callConfig).map(([key, value]) => {

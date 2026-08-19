@@ -640,6 +640,9 @@ export interface NodeExecutionDetail {
   /** The module's call configuration, separated from the input: stepId, retryOnError, and
    * whatever future keys ride in the __callConfig__ envelope. Null when the input carried none. */
   callConfig: Record<string, unknown> | null;
+  /** For a child-workflow span — a human task, a review, a spawned workflow — the child's own
+   * instance id, from the initiated event. The handle every management operation needs. */
+  childWorkflowId: string | null;
 }
 
 const eventTypeOf = (e: Record<string, unknown>): string => (asStr(e['eventType']) ?? '').replace(/^EVENT_TYPE_/, '').toUpperCase();
@@ -659,6 +662,7 @@ export function extractNodeExecutionDetail(node: { id: string; type: string; sta
   let open = events.find((e) => asStr(e['eventId']) === node.id);
   if (!open && nodeType === 'WORKFLOW') open = events.find((e) => eventTypeOf(e) === 'WORKFLOW_EXECUTION_STARTED');
   let inputDecoded = open ? decodePayloads(asRecord(open['attributes'])['input']) : null;
+  const childWorkflowId = open && eventTypeOf(open) === 'START_CHILD_WORKFLOW_EXECUTION_INITIATED' ? (asStr(asRecord(open['attributes'])['workflowId']) ?? null) : null;
 
   // The module appends its call configuration as the input's last element, marked __callConfig__ —
   // runtime metadata (stepId, retryOnError), not data the activity was called with. Separate the
@@ -706,6 +710,7 @@ export function extractNodeExecutionDetail(node: { id: string; type: string; sta
     startTimeMs,
     endTimeMs,
     callConfig,
+    childWorkflowId,
   };
 }
 
