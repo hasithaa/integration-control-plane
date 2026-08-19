@@ -21,6 +21,7 @@ import { ChevronDown, ChevronRight, Diamond, GitBranch, Info, RefreshCw, Repeat,
 import { useEffect, useMemo, useRef, useState, type ComponentType, type ReactElement, type ReactNode } from 'react';
 import type { InstanceGraph, ModelGraphNode, StepExecution } from '../../api/workflows';
 import { iconForType, paletteColor, statusColorName } from './graphVisuals';
+import { isContainer, layoutFloorPlan, type PlacedNode } from './floorPlan';
 
 /**
  * The flow rail: the workflow as written, rendered the way it is written — a left-aligned list,
@@ -404,7 +405,7 @@ export default function FlowRail({
   if (variant === 'uml') {
     return (
       <Box sx={{ overflow: 'auto', height: '100%', py: 1, px: 0.5 }}>
-        <UmlActivityDiagram tree={tree} steps={steps} selectedStepId={selectedStepId} currentStepId={currentStepId} onSelect={onSelect} />
+        <UmlActivityDiagram data={data} steps={steps} selectedStepId={selectedStepId} currentStepId={currentStepId} onSelect={onSelect} />
       </Box>
     );
   }
@@ -429,243 +430,208 @@ export default function FlowRail({
 
 // ── UML activity diagram ─────────────────────────────────────────────────────
 
-const UML_ROW_H = 30;
-const UML_BOX_H = 22;
-const UML_INDENT = 16;
-const UML_X0 = 26;
-const UML_W = 300;
-
-interface UmlRow {
-  kind: 'start' | 'end' | 'action' | 'decision' | 'final';
-  node?: ModelGraphNode;
-  depth: number;
-  text: string;
-  tooltip?: string;
-  dashed?: boolean;
-}
-
 /**
- * The same structure as a UML activity diagram, kept exactly as compact as the chart: one element
- * per row, arms as guarded edges rather than label rows, decisions as diamonds, exits as final
- * nodes, and a loop's repetition drawn as a gutter edge back to its head.
- *
- * Edges follow the block tree, not the row order: a decision fans out to each of its arms with the
- * guard on that edge, sequential edges exist only within an arm, an exit terminates its path, and
- * whatever flows out of a construct — every arm's tail, plus the diamond itself when an arm is
- * missing — connects to what follows. Drawing row-to-row instead is what left arms floating.
+ * A balanced UML activity diagram: sibling arms sit side by side under their decision diamond and
+ * merge below it, laid out by the same recursive box-packing the floor plan used — a workflow body
+ * is single-threaded, so its shape is always a tree of blocks and never needs general graph layout.
+ * Guards ride the arm-entry edges; a loop's repetition returns up its left side; exits are final
+ * nodes; code runs are dashed. The pane scrolls when a wide branch needs it.
  */
 function UmlActivityDiagram({
-  tree,
+  data,
   steps,
   selectedStepId,
   currentStepId,
   onSelect,
 }: {
-  tree: TreeNode[];
+  data: InstanceGraph;
   steps: Record<string, StepExecution>;
   selectedStepId: string | null;
   currentStepId: string | null;
   onSelect: (stepId: string | null) => void;
-}): ReactElement {
+}): ReactElement | null {
   const theme = useTheme();
+  const graph = data.graph;
+  const plan = useMemo(() => (graph && graph.nodes && graph.nodes.length > 0 ? layoutFloorPlan(graph) : null), [graph]);
+  if (!plan) return null;
 
-  const rows: UmlRow[] = [];
-  const edges: { from: number; to: number; guard?: string; back?: boolean }[] = [];
-  type Incoming = { from: number; guard?: string };
+  const line = theme.palette.text.disabled;
+  const shapes: ReactNode[] = [];
+  const wires: ReactNode[] = [];
+  let wireKey = 0;
 
-  const connect = (incoming: Incoming[], to: number) => {
-    for (const inc of incoming) edges.push({ from: inc.from, to, guard: inc.guard });
+  const elbow = (x1: number, y1: number, x2: number, y2: number, guard?: string, dashed?: boolean) => {
+    const midY = y1 + Math.max(5, (y2 - y1) / 2);
+    wires.push(
+      <g key={`w${wireKey++}`}>
+        <path d={x1 === x2 ? `M ${x1} ${y1} L ${x2} ${y2}` : `M ${x1} ${y1} L ${x1} ${midY} L ${x2} ${midY} L ${x2} ${y2}`} fill="none" stroke={line} strokeWidth={1} strokeDasharray={dashed ? '3 3' : undefined} markerEnd="url(#uml2-arrow)" />
+        {guard && (
+          <text x={x2 + 5} y={y2 - 3} fill={theme.palette.text.secondary} fontSize={8.5} fontFamily="monospace">
+            {guard}
+          </text>
+        )}
+      </g>,
+    );
   };
 
-  /** Walks one sequence; returns the row indexes its flow leaves from (empty when it always exits). */
-  const walkSeq = (nodes: TreeNode[], depth: number, incoming: Incoming[]): number[] => {
-    let current = incoming;
-    for (const t of nodes) {
-      const kind = t.node.kind.toUpperCase();
-      if (kind === 'CODE') {
-        rows.push({ kind: 'action', node: t.node, depth, text: 'data processing', tooltip: t.node.label ?? undefined, dashed: true });
-        const i = rows.length - 1;
-        connect(current, i);
-        current = [{ from: i }];
-      } else if (kind === 'EXIT') {
-        rows.push({ kind: 'final', node: t.node, depth, text: (t.node as { mode?: string }).mode ?? 'exit' });
-        connect(current, rows.length - 1);
-        current = [];
-      } else if (kind === 'BRANCH' || kind === 'LOOP' || kind === 'TRY') {
-        const isLoop = kind === 'LOOP';
-        rows.push({ kind: 'decision', node: t.node, depth, text: `${constructOf(t.node)}${t.node.label ? ` ${t.node.label}` : ''}` });
-        const diamond = rows.length - 1;
-        connect(current, diamond);
-        const exits: number[] = [];
-        let hasElse = false;
-        for (const arm of t.arms) {
-          if (arm.name === 'else') hasElse = true;
-          const guard = `[${arm.name || 'body'}]`;
-          const armExits = walkSeq(arm.children, depth + 1, [{ from: diamond, guard }]);
-          if (isLoop) {
-            for (const tail of armExits) {
-              if (tail !== diamond) edges.push({ from: tail, to: diamond, back: true });
-            }
-          } else {
-            exits.push(...armExits);
-          }
+  /** Draws one node; returns the x of its flow line and whether flow continues past it. */
+  const draw = (box: PlacedNode): { x: number; flows: boolean } => {
+    const node = box.node;
+    const kind = node.kind.toUpperCase();
+    const cx = box.x + box.w / 2;
+
+    if (!isContainer(kind)) {
+      const exec = steps[node.stepId];
+      const ran = exec !== undefined;
+      const statusColor = ran ? paletteColor(theme, statusColorName(exec.status)) : theme.palette.divider;
+      if (kind === 'EXIT') {
+        shapes.push(
+          <g key={node.stepId}>
+            <circle cx={cx} cy={box.y + box.h / 2} r={6} fill="none" stroke={line} strokeWidth={1.25} />
+            <circle cx={cx} cy={box.y + box.h / 2} r={3} fill={line} />
+            <text x={cx + 10} y={box.y + box.h / 2 + 3.5} fill={theme.palette.text.disabled} fontSize={9.5} fontStyle="italic">
+              {(node as { mode?: string }).mode ?? 'exit'}
+            </text>
+          </g>,
+        );
+        return { x: cx, flows: false };
+      }
+      const dashed = kind === 'CODE';
+      const text = dashed ? 'data processing' : (node.target ?? node.stepId);
+      const selected = selectedStepId === node.stepId;
+      const isCurrent = currentStepId === node.stepId;
+      const clickable = !dashed;
+      shapes.push(
+        <g
+          key={node.stepId}
+          role={clickable ? 'button' : undefined}
+          tabIndex={clickable ? 0 : undefined}
+          onClick={clickable ? () => onSelect(selected ? null : node.stepId) : undefined}
+          onKeyDown={clickable ? (e) => ((e as unknown as { key: string }).key === 'Enter' ? onSelect(selected ? null : node.stepId) : undefined) : undefined}
+          style={{ cursor: clickable ? 'pointer' : 'default' }}>
+          <title>{dashed ? (node.label ?? 'data processing') : `${text} · ${node.stepId}${ran ? ` · ${exec.status ?? ''}` : ' · not executed'}`}</title>
+          <rect
+            x={box.x + 4}
+            y={box.y + 6}
+            width={box.w - 8}
+            height={box.h - 12}
+            rx={(box.h - 12) / 2}
+            fill={selected ? alpha(theme.palette.primary.main, 0.12) : theme.palette.background.paper}
+            stroke={selected ? theme.palette.primary.main : statusColor}
+            strokeWidth={selected ? 1.75 : ran ? 1.5 : 1}
+            strokeDasharray={dashed ? '3 3' : ran ? undefined : '4 3'}
+          />
+          {isCurrent && <circle cx={box.x + box.w - 14} cy={box.y + box.h / 2} r={3} fill={statusColor} />}
+          <text x={cx} y={box.y + box.h / 2 + 3.5} fill={ran ? theme.palette.text.primary : theme.palette.text.disabled} fontSize={10.5} fontWeight={ran ? 600 : 400} fontStyle={dashed ? 'italic' : undefined} textAnchor="middle">
+            {text.length > Math.floor((box.w - 20) / 6) ? `${text.slice(0, Math.floor((box.w - 20) / 6) - 1)}…` : text}
+          </text>
+          {exec && exec.count > 1 && (
+            <text x={box.x + box.w - 10} y={box.y + 14} fill={statusColor} fontSize={8.5} fontWeight={700} textAnchor="end">
+              ×{exec.count}
+            </text>
+          )}
+        </g>,
+      );
+      return { x: cx, flows: true };
+    }
+
+    // A container: the decision diamond top-centre, arms side by side, flow merging below.
+    const construct = constructOf(node);
+    const isLoop = kind === 'LOOP';
+    const dy = box.y + 12;
+    shapes.push(
+      <g key={node.stepId}>
+        <path d={`M ${cx} ${dy - 8} L ${cx + 8} ${dy} L ${cx} ${dy + 8} L ${cx - 8} ${dy} Z`} fill={theme.palette.background.paper} stroke={line} strokeWidth={1.25} />
+        <text x={cx + 12} y={dy + 3.5} fill={theme.palette.text.secondary} fontSize={9.5} fontWeight={700} fontFamily="monospace">
+          {(() => {
+            const t = `${construct}${node.label ? ` ${node.label}` : ''}`;
+            return t.length > 24 ? `${t.slice(0, 23)}…` : t;
+          })()}
+        </text>
+      </g>,
+    );
+
+    const mergeY = box.y + box.h - 4;
+    let hasElse = false;
+    let anyFlow = false;
+    for (const arm of box.arms) {
+      if (arm.name === 'else') hasElse = true;
+      const guard = `[${arm.name || 'body'}]`;
+      if (arm.children.length === 0) continue;
+      const first = arm.children[0];
+      elbow(cx, dy + 8, first.x + first.w / 2, first.y + 6, guard);
+      let prev: { x: number; flows: boolean } | null = null;
+      let prevBox: PlacedNode | null = null;
+      for (const child of arm.children) {
+        const drawn = draw(child);
+        if (prev && prevBox && prev.flows) {
+          elbow(prev.x, prevBox.y + prevBox.h - 6, drawn.x, child.y + 6);
         }
+        prev = drawn;
+        prevBox = child;
+      }
+      // The arm's tail: back to the loop head, or down to the merge.
+      if (prev && prevBox && prev.flows) {
         if (isLoop) {
-          current = [{ from: diamond }];
+          const gx = box.x + 2;
+          wires.push(
+            <path
+              key={`w${wireKey++}`}
+              d={`M ${prev.x - (prevBox.w - 8) / 2} ${prevBox.y + prevBox.h / 2} L ${gx} ${prevBox.y + prevBox.h / 2} L ${gx} ${dy} L ${cx - 9} ${dy}`}
+              fill="none"
+              stroke={line}
+              strokeWidth={1}
+              strokeDasharray="3 3"
+              markerEnd="url(#uml2-arrow)"
+            />,
+          );
         } else {
-          // A branch without an else can be skipped entirely, so the diamond itself flows on.
-          if (!hasElse || kind === 'TRY') exits.push(diamond);
-          current = [...new Set(exits)].map((from) => ({ from }));
+          elbow(prev.x, prevBox.y + prevBox.h - 6, cx, mergeY);
+          anyFlow = true;
         }
-      } else {
-        rows.push({ kind: 'action', node: t.node, depth, text: t.node.target ?? t.node.stepId });
-        const i = rows.length - 1;
-        connect(current, i);
-        current = [{ from: i }];
       }
     }
-    return current.map((c) => c.from);
+    // The skip path: a loop may run zero times; a branch without an else may not be entered.
+    if (isLoop || !hasElse) {
+      wires.push(<path key={`w${wireKey++}`} d={`M ${cx - 8} ${dy} L ${box.x - 2} ${dy} L ${box.x - 2} ${mergeY} L ${cx - 2} ${mergeY}`} fill="none" stroke={line} strokeWidth={1} markerEnd="url(#uml2-arrow)" />);
+      anyFlow = true;
+    }
+    return { x: cx, flows: anyFlow || isLoop };
   };
 
-  rows.push({ kind: 'start', depth: 0, text: '' });
-  const tails = walkSeq(tree, 0, [{ from: 0 }]);
-  rows.push({ kind: 'end', depth: 0, text: '' });
-  for (const tail of tails) edges.push({ from: tail, to: rows.length - 1 });
-
-  const height = rows.length * UML_ROW_H + 8;
-  const xOf = (row: UmlRow) => UML_X0 + row.depth * UML_INDENT;
-  const yOf = (i: number) => i * UML_ROW_H + 4;
-  const line = theme.palette.text.disabled;
+  // The top-level sequence, bracketed by the UML start and end dots on the centre line.
+  let prevX = plan.axis;
+  let prevBottom = plan.start.y + 14;
+  shapes.push(<circle key="start" cx={plan.axis} cy={plan.start.y + 7} r={6} fill={theme.palette.text.primary} />);
+  let flowing = true;
+  for (const box of plan.nodes) {
+    const drawn = draw(box);
+    if (flowing) {
+      elbow(prevX, prevBottom, drawn.x, box.y + 6);
+    }
+    prevX = drawn.x;
+    prevBottom = box.y + box.h - 6;
+    flowing = drawn.flows;
+  }
+  if (flowing) {
+    elbow(prevX, prevBottom, plan.axis, plan.end.y);
+  }
+  shapes.push(
+    <g key="end">
+      <circle cx={plan.axis} cy={plan.end.y + 7} r={7} fill="none" stroke={theme.palette.text.primary} strokeWidth={1.25} />
+      <circle cx={plan.axis} cy={plan.end.y + 7} r={4} fill={theme.palette.text.primary} />
+    </g>,
+  );
 
   return (
-    <svg width={UML_W} height={height} viewBox={`0 0 ${UML_W} ${height}`} role="img" aria-label="UML activity diagram" style={{ display: 'block' }}>
+    <svg width={plan.width} height={plan.height} viewBox={`0 0 ${plan.width} ${plan.height}`} role="img" aria-label="UML activity diagram" style={{ display: 'block', margin: '0 auto' }}>
       <defs>
-        <marker id="uml-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+        <marker id="uml2-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
           <path d="M 0 0 L 10 5 L 0 10 z" fill={line} />
         </marker>
       </defs>
-
-      {edges.map((e, i) => {
-        const from = rows[e.from];
-        const to = rows[e.to];
-        const x1 = xOf(from) + 9;
-        const x2 = xOf(to) + 9;
-        if (e.back) {
-          // A loop's repetition: out the left, up the gutter, back into its head.
-          const gx = Math.min(x1, x2) - 8;
-          const y1 = yOf(e.from) + UML_BOX_H / 2;
-          const y2 = yOf(e.to) + UML_BOX_H / 2;
-          return <path key={i} d={`M ${xOf(from) + 1} ${y1} L ${gx} ${y1} L ${gx} ${y2} L ${xOf(to) + 1} ${y2}`} fill="none" stroke={line} strokeWidth={1} strokeDasharray="3 3" markerEnd="url(#uml-arrow)" />;
-        }
-        if (e.to > e.from + 1) {
-          const gx = Math.min(xOf(from), xOf(to)) - 6 - (i % 3) * 3;
-          const y1 = yOf(e.from) + UML_BOX_H / 2;
-          const y2 = yOf(e.to) + UML_BOX_H / 2;
-          return (
-            <g key={i}>
-              <path d={`M ${xOf(from) + 2} ${y1} L ${gx} ${y1} L ${gx} ${y2} L ${xOf(to) + 1} ${y2}`} fill="none" stroke={line} strokeWidth={1} markerEnd="url(#uml-arrow)" />
-              {e.guard && (
-                <text x={xOf(to) + 4} y={y2 - 6} fill={theme.palette.text.secondary} fontSize={8.5} fontFamily="monospace">
-                  {e.guard}
-                </text>
-              )}
-            </g>
-          );
-        }
-        const y1 = yOf(e.from) + UML_BOX_H;
-        const y2 = yOf(e.to);
-        const midY = Math.max(y1 + 4, y2 - 6);
-        const d = x1 === x2 ? `M ${x1} ${y1} L ${x2} ${y2}` : `M ${x1} ${y1} L ${x1} ${midY} L ${x2} ${midY} L ${x2} ${y2}`;
-        return (
-          <g key={i}>
-            <path d={d} fill="none" stroke={line} strokeWidth={1} markerEnd="url(#uml-arrow)" />
-            {e.guard && (
-              <text x={x2 + 12} y={y2 - 2} fill={theme.palette.text.secondary} fontSize={8.5} fontFamily="monospace">
-                {e.guard}
-              </text>
-            )}
-          </g>
-        );
-      })}
-
-      {rows.map((row, i) => {
-        const y = yOf(i);
-        const x = xOf(row);
-        if (row.kind === 'start') {
-          return <circle key={i} cx={x + 9} cy={y + UML_BOX_H / 2} r={5.5} fill={theme.palette.text.primary} />;
-        }
-        if (row.kind === 'end') {
-          return (
-            <g key={i}>
-              <circle cx={x + 9} cy={y + UML_BOX_H / 2} r={6.5} fill="none" stroke={theme.palette.text.primary} strokeWidth={1.25} />
-              <circle cx={x + 9} cy={y + UML_BOX_H / 2} r={3.5} fill={theme.palette.text.primary} />
-            </g>
-          );
-        }
-        if (row.kind === 'final') {
-          return (
-            <g key={i}>
-              <circle cx={x + 9} cy={y + UML_BOX_H / 2} r={6} fill="none" stroke={line} strokeWidth={1.25} />
-              <circle cx={x + 9} cy={y + UML_BOX_H / 2} r={3} fill={line} />
-              <text x={x + 20} y={y + UML_BOX_H / 2 + 3.5} fill={theme.palette.text.disabled} fontSize={10} fontStyle="italic">
-                {row.text}
-              </text>
-            </g>
-          );
-        }
-        if (row.kind === 'decision') {
-          const cx = x + 9;
-          const cy = y + UML_BOX_H / 2;
-          const r = 7;
-          return (
-            <g key={i}>
-              <path d={`M ${cx} ${cy - r} L ${cx + r} ${cy} L ${cx} ${cy + r} L ${cx - r} ${cy} Z`} fill={theme.palette.background.paper} stroke={line} strokeWidth={1.25} />
-              <text x={x + 22} y={cy + 3.5} fill={theme.palette.text.secondary} fontSize={10} fontWeight={700} fontFamily="monospace">
-                {row.text.length > 34 ? `${row.text.slice(0, 33)}…` : row.text}
-              </text>
-            </g>
-          );
-        }
-        const node = row.node;
-        const exec = node ? steps[node.stepId] : undefined;
-        const ran = exec !== undefined;
-        const statusColor = ran ? paletteColor(theme, statusColorName(exec.status)) : theme.palette.divider;
-        const selected = node != null && selectedStepId === node.stepId;
-        const isCurrent = node != null && currentStepId === node.stepId;
-        const w = Math.min(UML_W - x - 24, Math.max(90, row.text.length * 6.4 + 24));
-        const clickable = node != null && !row.dashed;
-        return (
-          <g
-            key={i}
-            role={clickable ? 'button' : undefined}
-            tabIndex={clickable ? 0 : undefined}
-            onClick={clickable ? () => onSelect(selected ? null : node.stepId) : undefined}
-            onKeyDown={clickable ? (e) => ((e as unknown as { key: string }).key === 'Enter' ? onSelect(selected ? null : node.stepId) : undefined) : undefined}
-            style={{ cursor: clickable ? 'pointer' : 'default' }}>
-            <title>{row.tooltip ?? (node ? `${row.text} · ${node.stepId}${ran ? ` · ${exec.status ?? ''}` : ' · not executed'}` : row.text)}</title>
-            <rect
-              x={x}
-              y={y}
-              width={w}
-              height={UML_BOX_H}
-              rx={UML_BOX_H / 2}
-              fill={selected ? alpha(theme.palette.primary.main, 0.12) : theme.palette.background.paper}
-              stroke={selected ? theme.palette.primary.main : statusColor}
-              strokeWidth={selected ? 1.75 : ran ? 1.5 : 1}
-              strokeDasharray={row.dashed ? '3 3' : ran ? undefined : '4 3'}
-            />
-            {isCurrent && <circle cx={x + w - 10} cy={y + UML_BOX_H / 2} r={3} fill={statusColor} />}
-            <text x={x + 10} y={y + UML_BOX_H / 2 + 3.5} fill={ran ? theme.palette.text.primary : theme.palette.text.disabled} fontSize={10.5} fontWeight={ran ? 600 : 400} fontStyle={row.dashed ? 'italic' : undefined}>
-              {row.text.length > Math.floor(w / 6.4) ? `${row.text.slice(0, Math.floor(w / 6.4) - 1)}…` : row.text}
-            </text>
-            {exec && exec.count > 1 && (
-              <text x={x + w - (isCurrent ? 20 : 8)} y={y + UML_BOX_H / 2 + 3.5} fill={statusColor} fontSize={9} fontWeight={700} textAnchor="end">
-                ×{exec.count}
-              </text>
-            )}
-          </g>
-        );
-      })}
+      {wires}
+      {shapes}
     </svg>
   );
 }

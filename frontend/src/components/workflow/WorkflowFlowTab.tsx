@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import { Alert, Box, Chip, IconButton, Stack, Tooltip, Typography } from '@wso2/oxygen-ui';
+import { Box, Chip, IconButton, Stack, Tooltip, Typography } from '@wso2/oxygen-ui';
 import { GitBranch, List } from '@wso2/oxygen-ui-icons-react';
 import { useMemo, useState, type ReactNode } from 'react';
 import type { ExecutionGraph as ExecutionGraphData, InstanceGraph, WorkflowInstance } from '../../api/workflows';
@@ -121,15 +121,22 @@ export default function WorkflowFlowTab({ instanceGraph, executionGraph, events,
     setRailHighlight(span?.eventId ? (stepOfEvent.get(span.eventId) ?? null) : null);
   };
 
-  // The execution's details, rendered inline under its own lane — the lane IS the execution.
-  const renderSpanDetail = (span: TimelineSpan): ReactNode => {
-    const node = { id: span.eventId ?? span.key, label: span.label, type: span.category, status: span.status };
-    return <NodeDetailPanel node={node} detail={extractNodeExecutionDetail(node, events)} hasHistory={events.length > 0} onClose={() => selectSpan(null)} fullWidth />;
-  };
+  // The details ride in an overlay pinned to the pane's right edge, so opening one never reflows
+  // the lanes — clicking down the timeline keeps every row exactly where it was.
+  const spanDetail = useMemo(() => {
+    if (!selectedSpan) return null;
+    const node = { id: selectedSpan.eventId ?? selectedSpan.key, label: selectedSpan.label, type: selectedSpan.category, status: selectedSpan.status };
+    return { node, detail: extractNodeExecutionDetail(node, events) };
+  }, [selectedSpan, events]);
 
   const timelinePane: ReactNode = (
-    <Box sx={{ flex: 1, minWidth: 0 }}>
-      <WorkflowTimeline events={events} graph={executionGraph} visibleIds={visibleIds} selectedKey={selectedSpan ? (selectedSpan.eventId ?? selectedSpan.key) : null} onSelectSpan={selectSpan} renderDetail={renderSpanDetail} />
+    <Box sx={{ flex: 1, minWidth: 0, position: 'relative' }}>
+      <WorkflowTimeline events={events} graph={executionGraph} visibleIds={visibleIds} selectedKey={selectedSpan ? (selectedSpan.eventId ?? selectedSpan.key) : null} onSelectSpan={selectSpan} />
+      {spanDetail && (
+        <Box sx={{ position: 'absolute', top: 0, right: 0, bottom: 0, width: { xs: '100%', sm: 'min(440px, 85%)' }, overflow: 'auto', boxShadow: 8, zIndex: 2, display: 'flex' }}>
+          <NodeDetailPanel node={spanDetail.node} detail={spanDetail.detail} hasHistory={events.length > 0} onClose={() => selectSpan(null)} fullWidth />
+        </Box>
+      )}
     </Box>
   );
 
@@ -148,18 +155,8 @@ export default function WorkflowFlowTab({ instanceGraph, executionGraph, events,
     </Stack>
   );
 
-  // No model to draw: the run's own views stand alone, full width, and say why.
-  if (reason || !instanceGraph) {
-    return (
-      <Stack gap={2}>
-        {cards}
-        <Alert severity="info">{reason ?? 'The workflow structure could not be loaded.'}</Alert>
-        {timelinePane}
-      </Stack>
-    );
-  }
-
   const selectedCount = visibleIds?.size ?? 0;
+  const railDisabled = reason != null || !instanceGraph;
 
   return (
     <Stack gap={1.5}>
@@ -169,23 +166,37 @@ export default function WorkflowFlowTab({ instanceGraph, executionGraph, events,
           {isAgent ? 'The agent as declared. Reference only.' : 'Approximation of execution flow. Reference only.'}
         </Typography>
         {selectedStepId && <Chip size="small" color="primary" variant="outlined" label={`Filtered: ${selectedStepId} · ${selectedCount} ${selectedCount === 1 ? 'execution' : 'executions'}`} onDelete={() => setSelectedStepId(null)} />}
-        <Stack direction="row" alignItems="center" sx={{ ml: 'auto' }}>
-          {!isAgent && (
-            <Tooltip title={railVariant === 'chart' ? 'Show as a UML activity diagram' : 'Show as a compact chart'}>
-              <IconButton size="small" aria-label="toggle flow style" onClick={() => setRailVariant((v) => (v === 'chart' ? 'uml' : 'chart'))}>
-                {railVariant === 'chart' ? <GitBranch size={14} /> : <List size={14} />}
-              </IconButton>
-            </Tooltip>
-          )}
-        </Stack>
       </Stack>
 
       <Stack direction={{ xs: 'column', md: 'row' }} gap={2} alignItems="stretch">
-        <Box sx={{ width: { xs: '100%', md: 320 }, flexShrink: 0, border: '1px solid', borderColor: 'divider', borderRadius: 1, bgcolor: 'action.hover', maxHeight: '62vh', overflow: 'hidden' }}>
-          {isAgent ? (
-            <AgentStarRail data={instanceGraph} selectedStepId={selectedStepId} onSelect={setSelectedStepId} />
+        <Box sx={{ position: 'relative', width: { xs: '100%', md: 340 }, flexShrink: 0, border: '1px solid', borderColor: 'divider', borderRadius: 1, bgcolor: 'action.hover', maxHeight: '62vh', overflow: 'hidden' }}>
+          {railDisabled ? (
+            <Stack alignItems="center" justifyContent="center" sx={{ height: '100%', p: 2, minHeight: 160 }}>
+              <Typography variant="caption" sx={{ color: 'text.disabled', textAlign: 'center' }}>
+                No flow details available.
+                <br />
+                {reason ?? 'The workflow structure could not be loaded.'}
+              </Typography>
+            </Stack>
           ) : (
-            <FlowRail data={instanceGraph} selectedStepId={selectedStepId ?? railHighlight} currentStepId={currentStepId} onSelect={setSelectedStepId} variant={railVariant} />
+            <>
+              {!isAgent && (
+                <Tooltip title={railVariant === 'chart' ? 'Show as a UML activity diagram' : 'Show as a compact chart'}>
+                  <IconButton
+                    size="small"
+                    aria-label="toggle flow style"
+                    onClick={() => setRailVariant((v) => (v === 'chart' ? 'uml' : 'chart'))}
+                    sx={{ position: 'absolute', top: 4, right: 4, zIndex: 1, bgcolor: 'background.paper', border: '1px solid', borderColor: 'divider', '&:hover': { bgcolor: 'background.paper' } }}>
+                    {railVariant === 'chart' ? <GitBranch size={14} /> : <List size={14} />}
+                  </IconButton>
+                </Tooltip>
+              )}
+              {isAgent ? (
+                <AgentStarRail data={instanceGraph!} selectedStepId={selectedStepId} onSelect={setSelectedStepId} />
+              ) : (
+                <FlowRail data={instanceGraph!} selectedStepId={selectedStepId ?? railHighlight} currentStepId={currentStepId} onSelect={setSelectedStepId} variant={railVariant} />
+              )}
+            </>
           )}
         </Box>
         <Box sx={{ flex: 1, minWidth: 0, display: 'flex' }}>{timelinePane}</Box>

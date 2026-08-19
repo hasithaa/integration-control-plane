@@ -17,7 +17,7 @@
  */
 
 import { alpha, Box, colors, Stack, Tooltip, Typography } from '@wso2/oxygen-ui';
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useState } from 'react';
 import type { ExecutionGraph } from '../../api/workflows';
 import { buildTimeline, formatDuration, formatStopwatch, splitQualifiedName, type ChipColor, type SpanCategory, type TimelineSpan } from './helpers';
 import { iconForType, statusColorName, typeLabel } from './graphVisuals';
@@ -120,7 +120,6 @@ export default function WorkflowTimeline({
   visibleIds = null,
   selectedKey = null,
   onSelectSpan,
-  renderDetail,
 }: {
   events: ReadonlyArray<Record<string, unknown>>;
   graph?: ExecutionGraph;
@@ -130,8 +129,6 @@ export default function WorkflowTimeline({
   selectedKey?: string | null;
   /** Clicking a span row reports it; clicking the selected one again reports null. */
   onSelectSpan?: (span: TimelineSpan | null) => void;
-  /** Rendered inline under the selected span's lane — the execution's details, in the lane itself. */
-  renderDetail?: (span: TimelineSpan) => ReactNode;
 }) {
   const built = buildTimeline(events);
   const { start, end } = built;
@@ -231,7 +228,6 @@ export default function WorkflowTimeline({
                     <SpanBar span={s} total={total} rangeStart={start} now={now} />
                   </Box>
                 </Box>
-                {selected && renderDetail && <Box sx={{ p: 1, bgcolor: 'background.default' }}>{renderDetail(s)}</Box>}
               </Box>
             );
           })}

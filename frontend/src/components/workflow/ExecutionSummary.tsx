@@ -83,6 +83,21 @@ export default function ExecutionSummary({
       </Stack>
 
       <Stack gap={0.75} sx={{ px: 1.5, py: 1.25 }}>
+        {row(
+          'Instance ID',
+          info.workflowId ? (
+            <Stack direction="row" alignItems="center" gap={0.5} sx={{ minWidth: 0 }}>
+              <Box component="span" sx={{ fontFamily: 'monospace', fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {info.workflowId}
+              </Box>
+              <Tooltip title="Copy instance ID">
+                <IconButton size="small" aria-label="copy instance id" onClick={() => navigator.clipboard.writeText(info.workflowId)} sx={{ p: 0.25 }}>
+                  <Copy size={12} />
+                </IconButton>
+              </Tooltip>
+            </Stack>
+          ) : null,
+        )}
         {row('Workflow name', info.workflowType)}
         {row('Started', Number.isFinite(startMs) ? formatTime(new Date(startMs).toISOString()) : null)}
         {row('Closed', Number.isFinite(closeMs) ? formatTime(new Date(closeMs).toISOString()) : null)}
