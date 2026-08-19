@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useInfiniteQuery, useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
 import { authenticatedFetch } from '../auth/tokenManager';
 import { workflowApiUrl } from '../config/api';
 
@@ -299,6 +299,40 @@ export function useWorkflowInstances(s: Scope, filters: WorkflowFilters) {
     queryKey: ['wf', 'instances', s.componentId, s.environmentId, filters],
     queryFn: () => fetchWorkflowInstances(s.componentId, s.environmentId, filters),
     enabled: enabledFor(s),
+  });
+}
+
+/**
+ * The instance listing as forward-only pages, the way Temporal's visibility API pages: each page
+ * hands back an opaque token for the next, so "load more" appends rather than jumping to an offset.
+ * `pageToken` is owned by the pagination, which is why the caller's filters cannot carry one.
+ */
+export function useWorkflowInstancesInfinite(s: Scope, filters: Omit<WorkflowFilters, 'pageToken'>) {
+  return useInfiniteQuery({
+    queryKey: ['wf', 'instances', s.componentId, s.environmentId, filters],
+    queryFn: ({ pageParam }) => fetchWorkflowInstances(s.componentId, s.environmentId, { ...filters, pageToken: pageParam || undefined }),
+    initialPageParam: '',
+    getNextPageParam: (last) => (last.hasMore && last.nextPageToken ? last.nextPageToken : undefined),
+    enabled: enabledFor(s),
+  });
+}
+
+/**
+ * The Temporal task queue of every workflow integration in the gateway component's project and
+ * environment, keyed by component id — read from the metadata each runtime publishes on heartbeat.
+ *
+ * This is the only place the console can learn which queue an integration's worker actually serves:
+ * the component "handler" is just the component's name, and the two are unrelated strings. An
+ * integration built against a module that predates the field has no entry, so callers fall back to
+ * not narrowing rather than filtering by a queue that does not exist.
+ */
+export function useWorkflowTaskQueues(s: Scope) {
+  return useQuery({
+    queryKey: ['wf', 'task-queues', s.componentId, s.environmentId],
+    queryFn: () => wfRequest<{ taskQueues: Record<string, string> }>(s.componentId, s.environmentId, 'task-queues').then((d) => d.taskQueues ?? {}),
+    enabled: enabledFor(s),
+    // Queues change on redeploy, not per interaction; a stale map self-corrects on the next fetch.
+    staleTime: 60000,
   });
 }
 

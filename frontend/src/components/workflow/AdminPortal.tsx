@@ -35,7 +35,7 @@ import {
   useReviewDecision,
   useStartWorkflow,
   useWorkflowDefinitionsAcross,
-  useWorkflowInstances,
+  useWorkflowInstancesInfinite,
   type Owned,
   type ReviewDecision,
   type WorkflowDefinition,
@@ -251,8 +251,9 @@ function WorkflowsAdmin({
     startTimeTo: timeFilter.bounds.startTimeTo,
     limit: 50,
   };
-  const { data: page, isLoading, error, refetch, isFetching } = useWorkflowInstances(gatewayScope(scope), filters);
-  const items = sortByStartTimeDesc(page?.items ?? []);
+  // Paged the way Temporal's visibility API pages — forward-only tokens — so "Load more" appends.
+  const { data, isLoading, error, refetch, isFetching, hasNextPage, fetchNextPage, isFetchingNextPage } = useWorkflowInstancesInfinite(gatewayScope(scope), filters);
+  const items = sortByStartTimeDesc((data?.pages ?? []).flatMap((p) => p.items ?? []));
   const hasFilters = status !== 'All' || !!selectedType || !!search || !!integration || timeFilter.active;
 
   return (
@@ -340,11 +341,19 @@ function WorkflowsAdmin({
               ))}
             </ListingTable.Body>
           </ListingTable>
-          {page?.hasMore && (
-            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1, textAlign: 'center' }}>
-              Showing the first {items.length}. Refine filters to narrow results.
+          {/* Always states how much is on screen — a page that happens to be complete is otherwise
+              indistinguishable from one that was silently cut off. */}
+          <Stack direction="row" alignItems="center" justifyContent="center" gap={1.5} sx={{ mt: 1.5 }}>
+            <Typography variant="caption" color="text.secondary">
+              Showing {items.length} {items.length === 1 ? 'instance' : 'instances'}
+              {hasNextPage ? ' — more available' : ''}
             </Typography>
-          )}
+            {hasNextPage && (
+              <Button size="small" variant="outlined" disabled={isFetchingNextPage} onClick={() => fetchNextPage()}>
+                {isFetchingNextPage ? 'Loading…' : 'Load more'}
+              </Button>
+            )}
+          </Stack>
         </>
       )}
 
