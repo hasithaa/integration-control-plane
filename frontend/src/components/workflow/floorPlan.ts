@@ -34,25 +34,25 @@
 import type { ModelGraph, ModelGraphNode } from '../../api/workflows';
 
 // ── Geometry (px) ──
-export const STEP_W = 208;
-export const STEP_H = 58;
+export const STEP_W = 148;
+export const STEP_H = 40;
 /** Between siblings in a sequence — the gap the connector line is drawn in. */
-export const V_GAP = 26;
+export const V_GAP = 18;
 /** Between the arms of a branch or do/on-fail block, laid side by side. */
-export const ARM_GAP = 22;
+export const ARM_GAP = 14;
 /** Container padding: the top leaves room for the block's own header row, above its arm labels. */
-export const PAD_X = 16;
-export const PAD_TOP = 32;
-export const PAD_BOTTOM = 18;
+export const PAD_X = 10;
+export const PAD_TOP = 26;
+export const PAD_BOTTOM = 12;
 /** The arm's label chip ("then", "else", "onFail"), drawn at the top of the arm's column. */
-export const ARM_LABEL_H = 22;
+export const ARM_LABEL_H = 18;
 /** An arm with no steps in it still needs a slot, or the block collapses and reads as if it had one arm. */
-export const EMPTY_ARM_W = 96;
-export const EMPTY_ARM_H = 26;
+export const EMPTY_ARM_W = 72;
+export const EMPTY_ARM_H = 20;
 /** The Start and End pills that bracket the whole plan. */
-export const PILL_W = 108;
-export const PILL_H = 30;
-export const CANVAS_PAD = 20;
+export const PILL_W = 84;
+export const PILL_H = 24;
+export const CANVAS_PAD = 14;
 
 /** Kinds that contain other nodes. Everything else is a step and draws as a single box. */
 const CONTAINER_KINDS = new Set(['BRANCH', 'LOOP', 'TRY']);

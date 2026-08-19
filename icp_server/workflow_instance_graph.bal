@@ -101,7 +101,8 @@ isolated function handleInstanceGraphRequest(string componentId, string environm
     map<json>? tree = jsonObjectOf(treeResponse);
     json[] executedNodes = tree is map<json> && tree["nodes"] is json[] ? <json[]>tree["nodes"] : [];
 
-    [json, string]?|error model = workflowGraphFromStoredMetadata(componentId, environmentId, workflowType);
+    [json, string, string]?|error model = workflowGraphFromStoredMetadata(componentId, environmentId,
+            workflowType);
     if model is error {
         log:printError("Failed to read the stored workflow model", 'error = model,
                 workflowType = workflowType);
@@ -111,15 +112,24 @@ isolated function handleInstanceGraphRequest(string componentId, string environm
         // No runtime of this component has published a descriptor describing this type — an older
         // integration, or an instance of a workflow this component no longer declares. The history
         // is still worth returning; the console can draw it as a chain.
-        return instanceGraphResponse(workflowType, info, (), (), executedNodes, []);
+        return instanceGraphResponse(workflowType, info, (), (), "workflow", executedNodes, []);
     }
-    return instanceGraphResponse(workflowType, info, model[0], model[1], executedNodes,
+    if model[2] == "agent" {
+        // An agent's loop is driven by the model, not by lexical call sites, so its executions
+        // carry no step ids and the by-id join would only report noise. The star is returned as
+        // the map; the console matches executions to it client-side, by what each node names.
+        return instanceGraphResponse(workflowType, info, model[0], model[1], "agent", executedNodes, []);
+    }
+    return instanceGraphResponse(workflowType, info, model[0], model[1], "workflow", executedNodes,
             graphNodesOf(model[0]));
 }
 
-// Builds the response: the model as published, plus one entry per step that ran.
+// Builds the response: the model as published, plus one entry per step that ran. For an agent
+// the join is skipped entirely (modelNodes is empty and graphKind says why): its executions are
+// matched to the star client-side, so reporting them as unmatched would be noise, not warning.
 isolated function instanceGraphResponse(string workflowType, map<json> info, json? graph,
-        string? checksum, json[] executedNodes, json[] modelNodes) returns http:Response {
+        string? checksum, string graphKind, json[] executedNodes, json[] modelNodes)
+        returns http:Response {
 
     // stepId -> what happened to that step. A repeated id is a loop iteration or a re-run, so the
     // entry counts rather than duplicating: one graph node, one badge.
@@ -205,8 +215,27 @@ isolated function instanceGraphResponse(string workflowType, map<json> info, jso
         }
     }
 
+    if graphKind == "agent" {
+        map<json> agentPayload = {
+            workflowType: workflowType,
+            status: stringField(info, "status") ?: "UNKNOWN",
+            descriptorChecksum: checksum,
+            graphKind: graphKind,
+            graph: graph,
+            steps: {},
+            takenArms: {},
+            unmatched: [],
+            stepIdsAvailable: true
+        };
+        http:Response agentResponse = new;
+        agentResponse.statusCode = 200;
+        agentResponse.setJsonPayload(agentPayload);
+        return agentResponse;
+    }
+
     map<json> payload = {
         workflowType: workflowType,
+        graphKind: graphKind,
         status: stringField(info, "status") ?: "UNKNOWN",
         // The model comes from the *current* metadata, which a redeploy may have moved on from.
         // The checksum lets a console say "this run predates the current version" instead of
@@ -363,10 +392,11 @@ isolated function stringField(map<json> value, string key) returns string? {
     return raw is string ? raw : ();
 }
 
-// The graph of one workflow type, from any RUNNING runtime's published descriptor, with the
-// descriptor's checksum. Returns () when no runtime has described this type.
+// The graph of one workflow type — a workflow's control flow or an agent's star — from any
+// RUNNING runtime's published descriptor, with the descriptor's checksum and which of the two
+// it is. Returns () when no runtime has described this type.
 isolated function workflowGraphFromStoredMetadata(string componentId, string environmentId,
-        string workflowType) returns [json, string]?|error {
+        string workflowType) returns [json, string, string]?|error {
     // Project-wide, not component-wide: the console may be reading through a different integration
     // than the one that owns this workflow, and the drawing must not silently degrade because of it.
     types:WorkflowMetadataRecord[] metadataRecords =
@@ -380,18 +410,29 @@ isolated function workflowGraphFromStoredMetadata(string componentId, string env
         if descriptor !is map<json> {
             continue;
         }
-        json workflows = descriptor["workflows"];
-        if workflows !is json[] {
-            continue;
-        }
         string checksum = descriptor["checksum"] is string ? <string>descriptor["checksum"] : "";
-        foreach json workflow in workflows {
-            if workflow !is map<json> || stringField(workflow, "name") != workflowType {
-                continue;
+        json workflows = descriptor["workflows"];
+        if workflows is json[] {
+            foreach json workflow in workflows {
+                if workflow is map<json> && stringField(workflow, "name") == workflowType {
+                    json graph = workflow["graph"];
+                    if graph is map<json> {
+                        return [graph, checksum, "workflow"];
+                    }
+                }
             }
-            json graph = workflow["graph"];
-            if graph is map<json> {
-                return [graph, checksum];
+        }
+        // A durable agent's runner registers under the agent's own name, so an instance of it
+        // asks for this same graph — the star the compiler drew, not lexical control flow.
+        json agents = descriptor["agents"];
+        if agents is json[] {
+            foreach json agent in agents {
+                if agent is map<json> && stringField(agent, "name") == workflowType {
+                    json graph = agent["graph"];
+                    if graph is map<json> {
+                        return [graph, checksum, "agent"];
+                    }
+                }
             }
         }
     }

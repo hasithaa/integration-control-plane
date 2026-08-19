@@ -200,6 +200,9 @@ export interface UnmatchedNode {
 export interface InstanceGraph {
   workflowType: string;
   status: string;
+  /** What the model describes: a workflow's control flow, or an agent's star. An agent's executions
+   * carry no step ids (the model, not code, decides what runs), so they are matched client-side. */
+  graphKind?: 'workflow' | 'agent';
   /** Checksum of the descriptor the model was read from; a redeploy may have moved on from the run. */
   descriptorChecksum?: string | null;
   /** Null when no runtime has published a descriptor for this type — draw the flat history instead. */

@@ -342,18 +342,39 @@ function NodeDetailPanel({ node, detail, hasHistory, onClose }: { node: Executio
  * Clicking a node opens a side panel with that step's input and result, recovered from `events`
  * (the raw workflow history) by matching the node to its scheduled/initiated + close events.
  */
-export default function ExecutionGraph({ graph, events = [] }: { graph: ExecutionGraph; events?: Array<Record<string, unknown>> }) {
+export default function ExecutionGraph({
+  graph,
+  events = [],
+  visibleIds = null,
+  onSelectedStepChange,
+}: {
+  graph: ExecutionGraph;
+  events?: Array<Record<string, unknown>>;
+  /** When set, only these history nodes are drawn — the flow rail's filter. Null draws everything. */
+  visibleIds?: ReadonlySet<string> | null;
+  /** The reverse link: reports the selected node's step id (or null), so a rail can highlight it. */
+  onSelectedStepChange?: (stepId: string | null) => void;
+}) {
   const theme = useTheme();
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
+  // The filter narrows the graph before layout, so a filtered view is a clean chronological chain
+  // of just that step's executions — loop iterations in order — not a dimmed full graph.
+  const effectiveGraph = useMemo(() => {
+    if (!visibleIds) return graph;
+    const nodes = (graph.nodes ?? []).filter((n) => visibleIds.has(n.id));
+    const kept = new Set(nodes.map((n) => n.id));
+    return { nodes, edges: (graph.edges ?? []).filter((e) => kept.has(e.source) && kept.has(e.target)) };
+  }, [graph, visibleIds]);
+
   // Resolve each node's execution detail (input / result / status / duration) once from the history.
-  const detailById = useMemo(() => new Map((graph.nodes ?? []).map((n) => [n.id, extractNodeExecutionDetail(n, events)])), [graph, events]);
+  const detailById = useMemo(() => new Map((effectiveGraph.nodes ?? []).map((n) => [n.id, extractNodeExecutionDetail(n, events)])), [effectiveGraph, events]);
   // Laid out once per graph so selecting a node doesn't re-run the layering pass.
-  const layout = useMemo(() => layoutDag(withStartNode(graph)), [graph]);
+  const layout = useMemo(() => layoutDag(withStartNode(effectiveGraph)), [effectiveGraph]);
   const nodeById = useMemo(() => new Map(layout.nodes.map((n) => [n.id, n])), [layout]);
 
-  if (!graph.nodes || graph.nodes.length === 0) {
-    return <Typography sx={{ py: 4, textAlign: 'center', color: 'text.secondary' }}>No execution graph available.</Typography>;
+  if (!effectiveGraph.nodes || effectiveGraph.nodes.length === 0) {
+    return <Typography sx={{ py: 4, textAlign: 'center', color: 'text.secondary' }}>{visibleIds ? 'No executions match the selected step.' : 'No execution graph available.'}</Typography>;
   }
 
   const selectedNode = selectedId ? nodeById.get(selectedId) : undefined;
@@ -382,7 +403,19 @@ export default function ExecutionGraph({ graph, events = [] }: { graph: Executio
             n.id === START_NODE_ID ? (
               <StartNodeMarker key={n.id} node={n} />
             ) : (
-              <GraphNodeCard key={n.id} node={n} selected={n.id === selectedId} durationMs={detailById.get(n.id)?.durationMs ?? null} onSelect={() => setSelectedId((cur) => (cur === n.id ? null : n.id))} />
+              <GraphNodeCard
+                key={n.id}
+                node={n}
+                selected={n.id === selectedId}
+                durationMs={detailById.get(n.id)?.durationMs ?? null}
+                onSelect={() =>
+                  setSelectedId((cur) => {
+                    const next = cur === n.id ? null : n.id;
+                    onSelectedStepChange?.(next === null ? null : ((n.metadata?.['stepId'] as string | undefined) ?? null));
+                    return next;
+                  })
+                }
+              />
             ),
           )}
         </Box>
