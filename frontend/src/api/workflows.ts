@@ -123,6 +123,94 @@ export interface ExecutionGraph {
   edges: ExecutionGraphEdge[];
 }
 
+// ── Instance graph (the workflow's own structure, joined to one run) ──
+//
+// The execution graph above is a run's history in the order it happened: it cannot say which branch
+// of an `if` was taken, that three history nodes are one loop body running three times, or that a
+// step was never reached. The instance graph answers all three by returning the workflow's published
+// structure alongside the run, keyed on the step ids the compiler assigned to each call site.
+
+/** A node of the workflow's *structure* — every step and control-flow block, whether or not it ran. */
+export interface ModelGraphNode {
+  /** Identity of this call site within its workflow, e.g. `reserveStock#2`, `if#1`, or an author-chosen `reserve-express`. */
+  stepId: string;
+  /** ACTIVITY | HUMAN_TASK | CHILD_WORKFLOW | EVENT_WAIT | SLEEP | AWAIT_RESULT | BRANCH | LOOP | TRY. */
+  kind: string;
+  /** What the node names — the activity, task, or child workflow. Absent for control flow. */
+  target?: string;
+  /** Display text: a branch condition, a looped expression. Never part of the identity. */
+  label?: string;
+  /** Step id of the enclosing control-flow node. Absent at the top level. */
+  parent?: string;
+  /** Which arm of `parent` this node sits in: `then`, `else`, `body`, `do`, `onFail`, or match patterns. */
+  branch?: string;
+  line?: number;
+  column?: number;
+}
+
+export interface ModelGraphEdge {
+  from: string;
+  to: string;
+  /** Why this edge is taken: an arm name, loop `body`/`repeat`. */
+  when?: string;
+}
+
+export interface ModelGraph {
+  /** Source file the workflow body was read from. */
+  file?: string;
+  nodes: ModelGraphNode[];
+  edges: ModelGraphEdge[];
+}
+
+/** A review task drawn on the step it gates, rather than as a step of its own. */
+export interface StepReview {
+  taskId?: string;
+  label?: string;
+  status?: string;
+  startTime?: string;
+  endTime?: string;
+}
+
+/** What happened at one step of the model during this run. A step that never ran has no entry at all. */
+export interface StepExecution {
+  /** Executions of this one call site: >1 means a loop iterated, or the step was retried past a failure. */
+  count: number;
+  /** History event id per execution, in order, so a particular iteration's input and result can be recovered. */
+  eventIds: string[];
+  type?: string;
+  label?: string;
+  status?: string;
+  attempt?: number;
+  startTime?: string;
+  endTime?: string;
+  failure?: string;
+  childWorkflowId?: string;
+  reviews?: StepReview[];
+}
+
+/** An executed node that could not be placed on the model — a real gap, reported rather than hidden. */
+export interface UnmatchedNode {
+  label?: string;
+  type?: string;
+  status?: string;
+  stepId?: string | null;
+  reason?: string;
+}
+
+export interface InstanceGraph {
+  workflowType: string;
+  status: string;
+  /** Checksum of the descriptor the model was read from; a redeploy may have moved on from the run. */
+  descriptorChecksum?: string | null;
+  /** Null when no runtime has published a descriptor for this type — draw the flat history instead. */
+  graph: ModelGraph | null;
+  /** Keyed by step id. */
+  steps: Record<string, StepExecution>;
+  /** Branch/loop/try step id → the arms something actually ran inside. The only evidence of a taken path. */
+  takenArms: Record<string, string[]>;
+  unmatched: UnmatchedNode[];
+}
+
 // ── Low-level request helper (mirrors logs.ts: timeout + error extraction) ──
 
 async function wfRequest<T>(componentId: string, environmentId: string, subpath: string, init: RequestInit = {}): Promise<T> {
@@ -228,6 +316,14 @@ export function useWorkflowExecutionGraph(s: Scope, workflowId: string | null) {
   return useQuery({
     queryKey: ['wf', 'graph', s.componentId, s.environmentId, workflowId],
     queryFn: () => wfRequest<ExecutionGraph>(s.componentId, s.environmentId, `workflows/${encodeURIComponent(workflowId!)}/execution-graph`),
+    enabled: enabledFor(s) && !!workflowId,
+  });
+}
+
+export function useWorkflowInstanceGraph(s: Scope, workflowId: string | null) {
+  return useQuery({
+    queryKey: ['wf', 'instanceGraph', s.componentId, s.environmentId, workflowId],
+    queryFn: () => wfRequest<InstanceGraph>(s.componentId, s.environmentId, `workflows/${encodeURIComponent(workflowId!)}/instance-graph`),
     enabled: enabledFor(s) && !!workflowId,
   });
 }

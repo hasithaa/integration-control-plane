@@ -214,9 +214,14 @@ isolated function instanceGraphResponse(string workflowType, map<json> info, jso
 // Accumulates one execution onto its step: the count is what a loop's badge shows, and the status
 // is the latest one, so a step that failed and then succeeded on review reads as succeeded.
 isolated function recordExecution(map<map<json>> steps, string stepId, map<json> node) {
-    map<json> step = steps.hasKey(stepId) ? steps.get(stepId) : {count: 0};
+    map<json> step = steps.hasKey(stepId) ? steps.get(stepId) : {count: 0, eventIds: []};
     int count = step["count"] is int ? <int>step["count"] : 0;
     step["count"] = count + 1;
+    // Every history event this step produced, in order, so a consumer can pull the input and result
+    // of a particular iteration: a step inside a loop has one entry per pass, not one per node.
+    json[] eventIds = step["eventIds"] is json[] ? <json[]>step["eventIds"] : [];
+    eventIds.push(node["id"]);
+    step["eventIds"] = eventIds;
     step["type"] = node["type"];
     step["label"] = node["name"];
     step["status"] = node["status"];
