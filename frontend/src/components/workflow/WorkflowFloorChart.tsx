@@ -407,8 +407,6 @@ export default function WorkflowFloorChart({ data, events = [] }: { data: Instan
   const lineColor = theme.palette.text.disabled;
   const endColor = runFinished ? paletteColor(theme, statusColorName(data.status)) : theme.palette.text.disabled;
   const unmatched = data.unmatched ?? [];
-  // Every step would be drawn as "not reached", which is not what happened — so say why instead.
-  const unanchored = data.stepIdsAvailable === false;
 
   return (
     <Stack gap={1.5}>
@@ -420,17 +418,9 @@ export default function WorkflowFloorChart({ data, events = [] }: { data: Instan
             </Typography>
           )}
           <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-            {unanchored ? "This is the workflow's structure; this run could not be placed on it." : 'Highlighted arms are the paths this run took. Greyed steps did not run.'}
+            Highlighted arms are the paths this run took. Greyed steps did not run.
           </Typography>
-          {unanchored && (
-            <Tooltip title="Step ids are read by the runtime that answers this request. A project shares one Temporal engine, so this run may have been read through an integration built against an older workflow module. Redeploy that integration to see the path taken.">
-              <Stack direction="row" alignItems="center" gap={0.5} sx={{ color: 'warning.main' }}>
-                <TriangleAlert size={13} />
-                <Typography variant="caption">Run not anchored</Typography>
-              </Stack>
-            </Tooltip>
-          )}
-          {unmatched.length > 0 && !unanchored && (
+          {unmatched.length > 0 && (
             // Reported, not hidden: an unplaceable step means the run and the drawing disagree, which
             // an operator needs to know before trusting the picture.
             <Tooltip title={unmatched.map((u) => `${u.label ?? 'step'} — ${u.reason ?? 'unmatched'}`).join('\n')}>

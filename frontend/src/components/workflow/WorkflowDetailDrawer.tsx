@@ -21,7 +21,7 @@ import { Ban, OctagonX, PauseCircle, PlayCircle, X } from '@wso2/oxygen-ui-icons
 import { useState } from 'react';
 import CodeViewer from '../CodeViewer';
 import ExecutionGraph from './ExecutionGraph';
-import WorkflowFloorChart from './WorkflowFloorChart';
+import WorkflowFlowTab from './WorkflowFlowTab';
 import WorkflowTimeline from './WorkflowTimeline';
 import { useWorkflowExecutionGraph, useWorkflowHistory, useWorkflowInfo, useWorkflowInstanceGraph, useWorkflowLifecycle, type WorkflowLifecycleAction } from '../../api/workflows';
 import { extractWorkflowInput, jsonPretty } from './helpers';
@@ -50,7 +50,7 @@ export default function WorkflowDetailDrawer({ scope, workflowId, onClose }: { s
   const { data: history = [], isLoading: loadingHistory } = useWorkflowHistory(scope, workflowId);
   // Fetched for the Execution Graph tab (1) and also the Timeline tab (0), which uses the graph's
   // authoritative node types to fix categories/icons the history alone can't determine.
-  const { data: graph, isLoading: loadingGraph } = useWorkflowExecutionGraph(scope, tab === 0 || tab === 1 ? workflowId : null);
+  const { data: graph, isLoading: loadingGraph } = useWorkflowExecutionGraph(scope, tab === 0 || tab === 1 || tab === 2 ? workflowId : null);
   // The Flow tab (1) draws the workflow's own structure with this run's path on it. It needs the
   // published descriptor, which an integration built by an older runtime won't have — in that case
   // `graph` comes back null and the tab falls back to the node-link view of the history alone.
@@ -124,6 +124,7 @@ export default function WorkflowDetailDrawer({ scope, workflowId, onClose }: { s
         <Tabs value={tab} onChange={(_, v) => setTab(v)} sx={{ mb: 2, '& .MuiTabs-flexContainer': { justifyContent: 'flex-end' } }}>
           <Tab label="Timeline" />
           <Tab label="Flow" />
+          <Tab label="Execution Graph" />
           <Tab label="History" />
         </Tabs>
 
@@ -156,7 +157,7 @@ export default function WorkflowDetailDrawer({ scope, workflowId, onClose }: { s
           </Stack>
         )}
 
-        {tab === 2 &&
+        {tab === 3 &&
           (loadingHistory ? (
             <CircularProgress size={24} sx={{ display: 'block', mx: 'auto', py: 4 }} />
           ) : history.length === 0 ? (
@@ -187,14 +188,14 @@ export default function WorkflowDetailDrawer({ scope, workflowId, onClose }: { s
           ))}
 
         {tab === 1 &&
-          (loadingGraph || loadingInstanceGraph ? (
+          (loadingGraph || loadingInstanceGraph ? <CircularProgress size={24} sx={{ display: 'block', mx: 'auto', py: 4 }} /> : <WorkflowFlowTab instanceGraph={instanceGraph} executionGraph={graph} events={history as Array<Record<string, unknown>>} />)}
+
+        {tab === 2 &&
+          (loadingGraph ? (
             <CircularProgress size={24} sx={{ display: 'block', mx: 'auto', py: 4 }} />
-          ) : instanceGraph?.graph ? (
-            <WorkflowFloorChart data={instanceGraph} events={history as Array<Record<string, unknown>>} />
           ) : !graph ? (
             <Typography sx={emptySx}>No execution graph available.</Typography>
           ) : (
-            // No published structure to draw against, so the run's own history is all there is.
             <ExecutionGraph graph={graph} events={history as Array<Record<string, unknown>>} />
           ))}
       </Box>

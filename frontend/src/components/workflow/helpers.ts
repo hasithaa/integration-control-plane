@@ -19,7 +19,7 @@
 // Pure helpers for the workflow feature. Kept separate from the component module
 // (shared.tsx) so React Fast Refresh works and concerns stay separated.
 
-import { targetForTaskQueue, type WorkflowTarget } from '../../api/workflows';
+import { targetForTaskQueue, type InstanceGraph, type WorkflowTarget } from '../../api/workflows';
 
 // ── Portal scope ──
 //
@@ -683,4 +683,18 @@ export function extractNodeExecutionDetail(node: { id: string; type: string; sta
     startTimeMs,
     endTimeMs,
   };
+}
+
+/** Why the structural view can't be drawn — null when it can. */
+export function flowUnavailable(data: InstanceGraph | undefined): string | null {
+  if (!data) return "The workflow's structure could not be loaded, so this run is shown as its history.";
+  if (!data.graph) {
+    return "This integration hasn't published the workflow's structure, so this run is shown as its history. Redeploy it with a current runtime to see the flow.";
+  }
+  if (data.stepIdsAvailable === false) {
+    // The structure exists but nothing can be pinned to it; drawing it would show every step as
+    // "not reached", which is a wrong statement rather than a missing one.
+    return 'This run could not be placed on the workflow’s structure, so it is shown as its history. It was read through an integration built against an older workflow module — redeploy it to see the path taken.';
+  }
+  return null;
 }
