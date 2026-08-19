@@ -637,6 +637,9 @@ export interface NodeExecutionDetail {
   startTimeMs: number | null;
   /** Epoch ms of the close event, or null when still running. */
   endTimeMs: number | null;
+  /** The module's call configuration, separated from the input: stepId, retryOnError, and
+   * whatever future keys ride in the __callConfig__ envelope. Null when the input carried none. */
+  callConfig: Record<string, unknown> | null;
 }
 
 const eventTypeOf = (e: Record<string, unknown>): string => (asStr(e['eventType']) ?? '').replace(/^EVENT_TYPE_/, '').toUpperCase();
@@ -655,7 +658,21 @@ export function extractNodeExecutionDetail(node: { id: string; type: string; sta
   const nodeType = (node.type ?? '').toUpperCase();
   let open = events.find((e) => asStr(e['eventId']) === node.id);
   if (!open && nodeType === 'WORKFLOW') open = events.find((e) => eventTypeOf(e) === 'WORKFLOW_EXECUTION_STARTED');
-  const inputDecoded = open ? decodePayloads(asRecord(open['attributes'])['input']) : null;
+  let inputDecoded = open ? decodePayloads(asRecord(open['attributes'])['input']) : null;
+
+  // The module appends its call configuration as the input's last element, marked __callConfig__ —
+  // runtime metadata (stepId, retryOnError), not data the activity was called with. Separate the
+  // two: the reader gets the arguments as the author passed them, and the metadata gets its own
+  // section instead of masquerading as an argument.
+  let callConfig: Record<string, unknown> | null = null;
+  if (Array.isArray(inputDecoded) && inputDecoded.length > 0) {
+    const last = inputDecoded[inputDecoded.length - 1];
+    if (last !== null && typeof last === 'object' && !Array.isArray(last) && (last as Record<string, unknown>)['__callConfig__'] === true) {
+      callConfig = Object.fromEntries(Object.entries(last as Record<string, unknown>).filter(([k]) => k !== '__callConfig__'));
+      const args = inputDecoded.slice(0, -1);
+      inputDecoded = args.length === 0 ? null : args.length === 1 ? args[0] : args;
+    }
+  }
 
   const isCloseType = (t: string) => t in ACTIVITY_CLOSE_STATUS || t in CHILD_CLOSE_STATUS;
   const close =
@@ -688,6 +705,7 @@ export function extractNodeExecutionDetail(node: { id: string; type: string; sta
     durationMs,
     startTimeMs,
     endTimeMs,
+    callConfig,
   };
 }
 

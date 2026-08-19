@@ -20,7 +20,7 @@ import { alpha, Box, IconButton, Stack, Typography } from '@wso2/oxygen-ui';
 import { Clock, X } from '@wso2/oxygen-ui-icons-react';
 import type { ExecutionGraphNode } from '../../api/workflows';
 import CodeViewer from '../CodeViewer';
-import { formatDuration, splitQualifiedName, type NodeExecutionDetail } from './helpers';
+import { formatDuration, humanizeKey, splitQualifiedName, type NodeExecutionDetail } from './helpers';
 import { StatusChip } from './shared';
 import { typeLabel } from './graphVisuals';
 
@@ -54,6 +54,22 @@ export default function NodeDetailPanel({ node, detail, hasHistory, onClose, ful
       </Stack>
 
       <Stack gap={2} sx={{ p: 2 }}>
+        {detail.callConfig && Object.keys(detail.callConfig).length > 0 && (
+          <Stack direction="row" gap={1} sx={{ flexWrap: 'wrap' }}>
+            {Object.entries(detail.callConfig).map(([key, value]) => {
+              const label = key === 'stepId' ? 'Step' : key === 'retryOnError' ? 'Retries on error' : humanizeKey(key);
+              const text = typeof value === 'boolean' ? (value ? 'yes' : 'no') : String(value);
+              return (
+                <Typography key={key} variant="caption" sx={{ px: 1, py: 0.25, border: '1px solid', borderColor: 'divider', borderRadius: 1, color: 'text.secondary' }}>
+                  {label}:{' '}
+                  <Box component="span" sx={{ fontFamily: key === 'stepId' ? 'monospace' : undefined, color: 'text.primary' }}>
+                    {text}
+                  </Box>
+                </Typography>
+              );
+            })}
+          </Stack>
+        )}
         {!hasHistory ? (
           <Typography variant="body2" sx={{ color: 'text.secondary' }}>
             History is not available, so this step's input and result can't be shown.

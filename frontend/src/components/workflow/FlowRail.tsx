@@ -432,7 +432,7 @@ export default function FlowRail({
 const UML_ROW_H = 30;
 const UML_BOX_H = 22;
 const UML_INDENT = 16;
-const UML_X0 = 16;
+const UML_X0 = 26;
 const UML_W = 300;
 
 interface UmlRow {
@@ -556,6 +556,21 @@ function UmlActivityDiagram({
           const y1 = yOf(e.from) + UML_BOX_H / 2;
           const y2 = yOf(e.to) + UML_BOX_H / 2;
           return <path key={i} d={`M ${xOf(from) + 1} ${y1} L ${gx} ${y1} L ${gx} ${y2} L ${xOf(to) + 1} ${y2}`} fill="none" stroke={line} strokeWidth={1} strokeDasharray="3 3" markerEnd="url(#uml-arrow)" />;
+        }
+        if (e.to > e.from + 1) {
+          const gx = Math.min(xOf(from), xOf(to)) - 6 - (i % 3) * 3;
+          const y1 = yOf(e.from) + UML_BOX_H / 2;
+          const y2 = yOf(e.to) + UML_BOX_H / 2;
+          return (
+            <g key={i}>
+              <path d={`M ${xOf(from) + 2} ${y1} L ${gx} ${y1} L ${gx} ${y2} L ${xOf(to) + 1} ${y2}`} fill="none" stroke={line} strokeWidth={1} markerEnd="url(#uml-arrow)" />
+              {e.guard && (
+                <text x={xOf(to) + 4} y={y2 - 6} fill={theme.palette.text.secondary} fontSize={8.5} fontFamily="monospace">
+                  {e.guard}
+                </text>
+              )}
+            </g>
+          );
         }
         const y1 = yOf(e.from) + UML_BOX_H;
         const y2 = yOf(e.to);
