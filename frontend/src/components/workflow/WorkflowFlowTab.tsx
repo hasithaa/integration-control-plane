@@ -16,7 +16,8 @@
  * under the License.
  */
 
-import { Alert, Box, Chip, Stack, Typography } from '@wso2/oxygen-ui';
+import { Alert, Box, Chip, IconButton, Stack, Tooltip, Typography } from '@wso2/oxygen-ui';
+import { List, Workflow } from '@wso2/oxygen-ui-icons-react';
 import { useMemo, useState, type ReactNode } from 'react';
 import type { ExecutionGraph as ExecutionGraphData, InstanceGraph } from '../../api/workflows';
 import AgentStarRail from './AgentStarRail';
@@ -75,6 +76,7 @@ export default function WorkflowFlowTab({ instanceGraph, executionGraph, events 
   // The rail's selection is the filter; the execution graph's selection reports back into it.
   const [selectedStepId, setSelectedStepId] = useState<string | null>(null);
   const [railHighlight, setRailHighlight] = useState<string | null>(null);
+  const [railVariant, setRailVariant] = useState<'list' | 'chart'>('list');
 
   const isAgent = instanceGraph?.graphKind === 'agent';
   const reason = flowUnavailable(instanceGraph);
@@ -125,6 +127,13 @@ export default function WorkflowFlowTab({ instanceGraph, executionGraph, events 
           {isAgent ? 'The agent as declared. Click a node to filter its executions on the right.' : 'The workflow as written — an approximation of execution flow. Click a step to filter its executions on the right.'}
         </Typography>
         {selectedStepId && <Chip size="small" color="primary" variant="outlined" label={`Filtered: ${selectedStepId} · ${selectedCount} ${selectedCount === 1 ? 'execution' : 'executions'}`} onDelete={() => setSelectedStepId(null)} />}
+        {!isAgent && (
+          <Tooltip title={railVariant === 'list' ? 'Show as a compact flow chart' : 'Show as a list'}>
+            <IconButton size="small" aria-label="toggle flow style" onClick={() => setRailVariant((v) => (v === 'list' ? 'chart' : 'list'))} sx={{ ml: 'auto' }}>
+              {railVariant === 'list' ? <Workflow size={14} /> : <List size={14} />}
+            </IconButton>
+          </Tooltip>
+        )}
       </Stack>
 
       <Stack direction={{ xs: 'column', md: 'row' }} gap={2} alignItems="stretch">
@@ -132,7 +141,7 @@ export default function WorkflowFlowTab({ instanceGraph, executionGraph, events 
           {isAgent ? (
             <AgentStarRail data={instanceGraph} selectedStepId={selectedStepId} onSelect={setSelectedStepId} />
           ) : (
-            <FlowRail data={instanceGraph} selectedStepId={selectedStepId ?? railHighlight} currentStepId={currentStepId} onSelect={setSelectedStepId} />
+            <FlowRail data={instanceGraph} selectedStepId={selectedStepId ?? railHighlight} currentStepId={currentStepId} onSelect={setSelectedStepId} variant={railVariant} />
           )}
         </Box>
         <Box sx={{ flex: 1, minWidth: 0, maxHeight: '62vh', overflow: 'auto' }}>{history}</Box>

@@ -17,8 +17,8 @@
  */
 
 import { alpha, Box, Stack, Tooltip, Typography, useTheme } from '@wso2/oxygen-ui';
-import { Diamond, GitBranch, Info, RefreshCw, Repeat, Shield } from '@wso2/oxygen-ui-icons-react';
-import { useEffect, useMemo, useRef, type ComponentType, type ReactElement, type ReactNode } from 'react';
+import { ChevronDown, ChevronRight, Diamond, GitBranch, Info, RefreshCw, Repeat, Shield } from '@wso2/oxygen-ui-icons-react';
+import { useEffect, useMemo, useRef, useState, type ComponentType, type ReactElement, type ReactNode } from 'react';
 import type { InstanceGraph, ModelGraphNode, StepExecution } from '../../api/workflows';
 import { iconForType, paletteColor, statusColorName } from './graphVisuals';
 
@@ -82,9 +82,49 @@ function containerTitle(node: ModelGraphNode, prefix = ''): string {
   return `${prefix}${construct}${node.label ? ` ${node.label}` : ''}`;
 }
 
-function KeywordRow({ depth, icon: Icon, text, title }: { depth: number; icon?: ComponentType<{ size?: number }>; text: string; title?: string }): ReactElement {
+function KeywordRow({
+  depth,
+  icon: Icon,
+  text,
+  title,
+  collapsed,
+  onToggle,
+  collapsedStatusColor,
+  chart,
+}: {
+  depth: number;
+  icon?: ComponentType<{ size?: number }>;
+  text: string;
+  title?: string;
+  /** Present only on rows that can collapse; undefined renders a plain keyword row. */
+  collapsed?: boolean;
+  onToggle?: () => void;
+  /** Aggregate colour of what a collapsed row hides, so folding never hides an outcome. */
+  collapsedStatusColor?: string;
+  chart?: boolean;
+}): ReactElement {
+  const toggle = onToggle !== undefined;
   return (
-    <Stack direction="row" alignItems="center" gap={0.75} sx={{ pl: 1 + depth * 1.5, pr: 1, py: 0.4, color: 'text.secondary', minWidth: 0 }}>
+    <Stack
+      direction="row"
+      alignItems="center"
+      gap={0.5}
+      role={toggle ? 'button' : undefined}
+      tabIndex={toggle ? 0 : undefined}
+      onClick={onToggle}
+      onKeyDown={toggle ? (e) => (e.key === 'Enter' ? onToggle?.() : undefined) : undefined}
+      sx={{
+        pl: chart ? 0.75 : 1 + depth * 1.5,
+        pr: 1,
+        py: 0.4,
+        color: 'text.secondary',
+        minWidth: 0,
+        cursor: toggle ? 'pointer' : 'default',
+        borderRadius: 1,
+        ...(chart && { border: '1px dashed', borderColor: 'divider', ml: 0.5 + depth * 1.5, pl: 0.75, my: 0.25, width: 'fit-content', maxWidth: '100%' }),
+        '&:hover': toggle ? { bgcolor: (t) => alpha(t.palette.primary.main, 0.05) } : undefined,
+      }}>
+      {toggle && <Box sx={{ display: 'flex', flexShrink: 0 }}>{collapsed ? <ChevronRight size={12} /> : <ChevronDown size={12} />}</Box>}
       {Icon && (
         <Box sx={{ flexShrink: 0, display: 'flex' }}>
           <Icon size={12} />
@@ -93,6 +133,11 @@ function KeywordRow({ depth, icon: Icon, text, title }: { depth: number; icon?: 
       <Typography variant="caption" sx={{ fontWeight: 700, fontSize: 11.5, fontFamily: 'monospace', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={title ?? text}>
         {text}
       </Typography>
+      {collapsed && collapsedStatusColor && (
+        <Tooltip title="Steps inside ran — expand to see them">
+          <Box sx={{ width: 7, height: 7, borderRadius: '50%', bgcolor: collapsedStatusColor, flexShrink: 0 }} />
+        </Tooltip>
+      )}
     </Stack>
   );
 }
@@ -105,6 +150,7 @@ function StepRow({
   isCurrent,
   onSelect,
   rowRef,
+  chart = false,
 }: {
   node: ModelGraphNode;
   exec: StepExecution | undefined;
@@ -113,6 +159,7 @@ function StepRow({
   isCurrent: boolean;
   onSelect: () => void;
   rowRef: (el: HTMLDivElement | null) => void;
+  chart?: boolean;
 }): ReactElement {
   const theme = useTheme();
   const ran = exec !== undefined;
@@ -134,7 +181,7 @@ function StepRow({
         display: 'flex',
         alignItems: 'center',
         gap: 0.75,
-        pl: 1 + depth * 1.5,
+        pl: chart ? 0.75 : 1 + depth * 1.5,
         pr: 1,
         py: 0.5,
         cursor: 'pointer',
@@ -142,6 +189,19 @@ function StepRow({
         // The execution path as a line down the rail: executed rows carry their status colour.
         borderLeft: '3px solid',
         borderLeftColor: ran ? statusColor : 'transparent',
+        // Chart mode: each line is one boxed item, indented by nesting — a single-column flowchart.
+        ...(chart && {
+          border: '1px solid',
+          borderColor: ran ? statusColor : 'divider',
+          borderLeft: '3px solid',
+          bgcolor: 'background.paper',
+          ml: 0.5 + depth * 1.5,
+          pl: 0.75,
+          my: 0.25,
+          width: 'fit-content',
+          maxWidth: '100%',
+          minWidth: 140,
+        }),
         bgcolor: selected ? (t) => alpha(t.palette.primary.main, 0.12) : 'transparent',
         outline: selected ? '1px solid' : 'none',
         outlineColor: 'primary.main',
@@ -178,10 +238,26 @@ function StepRow({
   );
 }
 
-export default function FlowRail({ data, selectedStepId, currentStepId, onSelect }: { data: InstanceGraph; selectedStepId: string | null; currentStepId: string | null; onSelect: (stepId: string | null) => void }): ReactElement | null {
+export default function FlowRail({
+  data,
+  selectedStepId,
+  currentStepId,
+  onSelect,
+  variant = 'list',
+}: {
+  data: InstanceGraph;
+  selectedStepId: string | null;
+  currentStepId: string | null;
+  onSelect: (stepId: string | null) => void;
+  /** 'list' reads like source; 'chart' boxes each row and draws nesting guides — still one item per row. */
+  variant?: 'list' | 'chart';
+}): ReactElement | null {
+  const theme = useTheme();
   const graph = data.graph;
   const tree = useMemo(() => (graph && graph.nodes ? buildTree(graph.nodes) : []), [graph]);
   const rowRefs = useRef(new Map<string, HTMLDivElement>());
+  const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set());
+  const chart = variant === 'chart';
 
   // The reverse link: when the execution graph names a step, bring its row into view.
   useEffect(() => {
@@ -192,6 +268,35 @@ export default function FlowRail({ data, selectedStepId, currentStepId, onSelect
   if (tree.length === 0) return null;
   const steps = data.steps ?? {};
 
+  const toggle = (stepId: string) =>
+    setCollapsed((cur) => {
+      const next = new Set(cur);
+      if (next.has(stepId)) next.delete(stepId);
+      else next.add(stepId);
+      return next;
+    });
+
+  /** Aggregate status of everything under a node: the worst outcome wins, so folding hides nothing. */
+  const aggregateStatusColor = (t: TreeNode): string | undefined => {
+    let best: string | undefined;
+    const rank = (status: string): number => (['FAILED', 'TERMINATED', 'TIMED_OUT'].includes(status) ? 3 : status === 'RUNNING' ? 2 : 1);
+    let bestRank = 0;
+    const walk = (n: TreeNode) => {
+      const exec = steps[n.node.stepId];
+      if (exec) {
+        const status = (exec.status ?? '').toUpperCase();
+        const r = rank(status);
+        if (r > bestRank) {
+          bestRank = r;
+          best = paletteColor(theme, statusColorName(status));
+        }
+      }
+      n.arms.forEach((a) => a.children.forEach(walk));
+    };
+    t.arms.forEach((a) => a.children.forEach(walk));
+    return best;
+  };
+
   const renderStep = (t: TreeNode, depth: number): ReactNode => (
     <StepRow
       key={t.node.stepId}
@@ -201,6 +306,7 @@ export default function FlowRail({ data, selectedStepId, currentStepId, onSelect
       selected={selectedStepId === t.node.stepId}
       isCurrent={currentStepId === t.node.stepId}
       onSelect={() => onSelect(selectedStepId === t.node.stepId ? null : t.node.stepId)}
+      chart={chart}
       rowRef={(el) => {
         if (el) rowRefs.current.set(t.node.stepId, el);
         else rowRefs.current.delete(t.node.stepId);
@@ -217,7 +323,23 @@ export default function FlowRail({ data, selectedStepId, currentStepId, onSelect
    */
   const renderContainer = (t: TreeNode, depth: number, prefix = ''): ReactNode => {
     const Icon = CONSTRUCT_ICONS[constructOf(t.node)] ?? Diamond;
-    const rows: ReactNode[] = [<KeywordRow key={t.node.stepId} depth={depth} icon={Icon} text={containerTitle(t.node, prefix)} title={`${containerTitle(t.node, prefix)} · ${t.node.stepId}`} />];
+    const isCollapsed = collapsed.has(t.node.stepId);
+    const rows: ReactNode[] = [
+      <KeywordRow
+        key={t.node.stepId}
+        depth={depth}
+        icon={Icon}
+        text={containerTitle(t.node, prefix)}
+        title={`${containerTitle(t.node, prefix)} · ${t.node.stepId}`}
+        collapsed={isCollapsed}
+        onToggle={() => toggle(t.node.stepId)}
+        collapsedStatusColor={isCollapsed ? aggregateStatusColor(t) : undefined}
+        chart={chart}
+      />,
+    ];
+    if (isCollapsed) {
+      return <Box key={`c-${t.node.stepId}${prefix}`}>{rows}</Box>;
+    }
     for (const arm of t.arms) {
       if (arm.name === 'then' || arm.name === 'body' || arm.name === 'do' || arm.name === '') {
         rows.push(arm.children.map((child) => renderNode(child, depth + 1)));
@@ -226,15 +348,15 @@ export default function FlowRail({ data, selectedStepId, currentStepId, onSelect
         if (only && only.node.kind.toUpperCase() === 'BRANCH' && constructOf(only.node) === 'if') {
           rows.push(renderContainer(only, depth, 'else '));
         } else {
-          rows.push(<KeywordRow key={`${t.node.stepId}/else`} depth={depth} text="else" />);
+          rows.push(<KeywordRow key={`${t.node.stepId}/else`} depth={depth} text="else" chart={chart} />);
           rows.push(arm.children.map((child) => renderNode(child, depth + 1)));
         }
       } else if (arm.name === 'onFail') {
-        rows.push(<KeywordRow key={`${t.node.stepId}/onFail`} depth={depth} icon={Shield} text="on fail" />);
+        rows.push(<KeywordRow key={`${t.node.stepId}/onFail`} depth={depth} icon={Shield} text="on fail" chart={chart} />);
         rows.push(arm.children.map((child) => renderNode(child, depth + 1)));
       } else {
         // A match clause's patterns, or any arm name this rail does not know: a case label.
-        rows.push(<KeywordRow key={`${t.node.stepId}/${arm.name}`} depth={depth + 1} text={arm.name} />);
+        rows.push(<KeywordRow key={`${t.node.stepId}/${arm.name}`} depth={depth + 1} text={arm.name} chart={chart} />);
         rows.push(arm.children.map((child) => renderNode(child, depth + 2)));
       }
     }

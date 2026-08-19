@@ -20,10 +20,11 @@ import { Alert, Box, Button, CircularProgress, Dialog, DialogActions, DialogCont
 import { Ban, OctagonX, PauseCircle, PlayCircle, X } from '@wso2/oxygen-ui-icons-react';
 import { useState } from 'react';
 import CodeViewer from '../CodeViewer';
+import ExecutionSummary from './ExecutionSummary';
 import WorkflowFlowTab from './WorkflowFlowTab';
 import WorkflowTimeline from './WorkflowTimeline';
 import { useWorkflowExecutionGraph, useWorkflowHistory, useWorkflowInfo, useWorkflowInstanceGraph, useWorkflowLifecycle, type WorkflowLifecycleAction } from '../../api/workflows';
-import { extractWorkflowInput, jsonPretty } from './helpers';
+import { extractWorkflowInput } from './helpers';
 import { StatusChip, type WorkflowScope } from './shared';
 import Authorized from '../Authorized';
 import { Permissions } from '../../constants/permissions';
@@ -141,7 +142,7 @@ export default function WorkflowDetailDrawer({ scope, workflowId, onClose }: { s
                   </Box>
                 )}
                 <Box sx={{ flex: 1, minWidth: 280 }}>
-                  <CodeViewer code={jsonPretty(info)} language="json" title="Execution info" height="20vh" expandable showLineNumbers={false} />
+                  <ExecutionSummary info={info} />
                 </Box>
               </Stack>
             )}
