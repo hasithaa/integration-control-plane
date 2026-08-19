@@ -115,8 +115,26 @@ function SpanBar({ span, total, rangeStart, now }: { span: TimelineSpan; total: 
   );
 }
 
-/** Renders a workflow's history as a Gantt timeline: one duration bar per activity / human task / timer. */
-export default function WorkflowTimeline({ events, graph }: { events: ReadonlyArray<Record<string, unknown>>; graph?: ExecutionGraph }) {
+/**
+ * Renders a workflow's history as a Gantt timeline: one duration bar per activity / human task /
+ * timer. Spans are keyed by their scheduled-event id — the same id the instance-graph endpoint
+ * reports per step — which is what lets a flow rail filter this view and a click here name a step.
+ */
+export default function WorkflowTimeline({
+  events,
+  graph,
+  visibleIds = null,
+  selectedKey = null,
+  onSelectSpan,
+}: {
+  events: ReadonlyArray<Record<string, unknown>>;
+  graph?: ExecutionGraph;
+  /** When set, spans outside the set are dimmed — the flow rail's filter. */
+  visibleIds?: ReadonlySet<string> | null;
+  selectedKey?: string | null;
+  /** Clicking a span's name (or bar) reports it; clicking the selected one again reports null. */
+  onSelectSpan?: (span: TimelineSpan | null) => void;
+}) {
   const built = buildTimeline(events);
   const { start, end } = built;
 
@@ -153,9 +171,12 @@ export default function WorkflowTimeline({ events, graph }: { events: ReadonlyAr
   // The axis extends to the live clock while running so growing bars stay within range.
   const rangeEnd = isLive ? Math.max(end, now) : end;
   const total = Math.max(1, rangeEnd - start);
+  // Sub-minute runs get millisecond-scale labels: a stopwatch that floors to seconds renders an
+  // 84ms run as a row of 0:00, which reads as "no data" rather than "fast".
+  const tickLabel = (ms: number) => (total < 60_000 ? formatDuration(ms) : formatStopwatch(ms));
   const ticks = Array.from({ length: TICK_COUNT }, (_, i) => {
     const pct = (i / (TICK_COUNT - 1)) * 100;
-    return { pct, label: formatStopwatch((total * i) / (TICK_COUNT - 1)), anchor: i === 0 ? 'left' : i === TICK_COUNT - 1 ? 'right' : 'center' };
+    return { pct, label: tickLabel((total * i) / (TICK_COUNT - 1)), anchor: i === 0 ? 'left' : i === TICK_COUNT - 1 ? 'right' : 'center' };
   });
 
   return (
@@ -171,8 +192,27 @@ export default function WorkflowTimeline({ events, graph }: { events: ReadonlyAr
               const { workflow, task } = splitQualifiedName(s.label);
               const Icon = iconForType(s.category);
               const color = spanShades(s).accent;
+              const dimmed = visibleIds != null && !visibleIds.has(s.key);
+              const selected = selectedKey === s.key;
               return (
-                <Stack key={s.key} direction="row" alignItems="center" gap={0.75} sx={{ height: ROW_H, px: 1, minWidth: 0 }}>
+                <Stack
+                  key={s.key}
+                  direction="row"
+                  alignItems="center"
+                  gap={0.75}
+                  role={onSelectSpan ? 'button' : undefined}
+                  tabIndex={onSelectSpan ? 0 : undefined}
+                  onClick={onSelectSpan ? () => onSelectSpan(selected ? null : s) : undefined}
+                  onKeyDown={onSelectSpan ? (e) => (e.key === 'Enter' ? onSelectSpan(selected ? null : s) : undefined) : undefined}
+                  sx={{
+                    height: ROW_H,
+                    px: 1,
+                    minWidth: 0,
+                    opacity: dimmed ? 0.35 : 1,
+                    cursor: onSelectSpan ? 'pointer' : 'default',
+                    bgcolor: selected ? (t) => alpha(t.palette.primary.main, 0.1) : 'transparent',
+                    '&:hover': onSelectSpan ? { bgcolor: (t) => alpha(t.palette.primary.main, 0.06) } : undefined,
+                  }}>
                   <Box sx={{ color, display: 'flex', flexShrink: 0 }}>
                     <Icon size={14} />
                   </Box>
@@ -195,9 +235,14 @@ export default function WorkflowTimeline({ events, graph }: { events: ReadonlyAr
                 // spill past the edge and spawn a horizontal scrollbar.
                 <Box key={t.pct} sx={{ position: 'absolute', top: 0, bottom: 0, width: '1px', bgcolor: 'divider', opacity: 0.6, ...(t.anchor === 'right' ? { right: 0 } : { left: `${t.pct}%` }) }} />
               ))}
-              {spans.map((s) => (
-                <SpanBar key={s.key} span={s} total={total} rangeStart={start} now={now} />
-              ))}
+              {spans.map((s) => {
+                const dimmed = visibleIds != null && !visibleIds.has(s.key);
+                return (
+                  <Box key={s.key} onClick={onSelectSpan ? () => onSelectSpan(selectedKey === s.key ? null : s) : undefined} sx={{ opacity: dimmed ? 0.3 : 1, cursor: onSelectSpan ? 'pointer' : 'default' }}>
+                    <SpanBar span={s} total={total} rangeStart={start} now={now} />
+                  </Box>
+                );
+              })}
             </Box>
             <Box sx={{ position: 'relative', height: AXIS_H, borderTop: '1px solid', borderColor: 'divider' }}>
               {ticks.map((t) => (

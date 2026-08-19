@@ -16,13 +16,12 @@
  * under the License.
  */
 
-import { alpha, Box, IconButton, Stack, Tooltip, Typography, useTheme } from '@wso2/oxygen-ui';
-import { Clock, Play, X } from '@wso2/oxygen-ui-icons-react';
+import { alpha, Box, Stack, Tooltip, Typography, useTheme } from '@wso2/oxygen-ui';
+import { Clock, Play } from '@wso2/oxygen-ui-icons-react';
 import { useMemo, useState } from 'react';
 import type { ExecutionGraph, ExecutionGraphEdge, ExecutionGraphNode } from '../../api/workflows';
-import CodeViewer from '../CodeViewer';
-import { extractNodeExecutionDetail, formatDuration, humanizeKey, splitQualifiedName, type NodeExecutionDetail } from './helpers';
-import { StatusChip } from './shared';
+import NodeDetailPanel from './NodeDetailPanel';
+import { extractNodeExecutionDetail, formatDuration, humanizeKey, splitQualifiedName } from './helpers';
 import { iconForType, paletteColor, statusColorName, typeLabel } from './graphVisuals';
 
 // ── Layout constants (px). The graph flows top→bottom, one row per dependency layer, and each row is
@@ -268,73 +267,6 @@ function StartNodeMarker({ node }: { node: PositionedNode }) {
         <Typography variant="caption" sx={{ fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.4 }}>
           {node.label}
         </Typography>
-      </Stack>
-    </Box>
-  );
-}
-
-/** Side panel showing a selected node's execution time, input and result, mapped from the history. */
-function NodeDetailPanel({ node, detail, hasHistory, onClose }: { node: ExecutionGraphNode; detail: NodeExecutionDetail; hasHistory: boolean; onClose: () => void }) {
-  const { task } = splitQualifiedName(node.label);
-
-  return (
-    <Box sx={{ width: { xs: '100%', md: '45%' }, flexShrink: 0, border: '1px solid', borderColor: 'divider', borderRadius: 1, bgcolor: 'background.paper', alignSelf: 'stretch' }}>
-      <Stack direction="row" alignItems="flex-start" justifyContent="space-between" gap={1} sx={{ px: 2, py: 1.5, borderBottom: '1px solid', borderColor: 'divider' }}>
-        <Stack sx={{ minWidth: 0 }}>
-          <Typography variant="subtitle2" sx={{ fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={node.label}>
-            {task ?? node.label}
-          </Typography>
-          <Stack direction="row" alignItems="center" gap={1} sx={{ mt: 0.5 }}>
-            <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-              {typeLabel(node.type)}
-            </Typography>
-            {detail.status && <StatusChip status={detail.status} />}
-            {detail.durationMs != null && (
-              <Typography variant="caption" sx={{ color: 'text.secondary', display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                <Clock size={13} />
-                {formatDuration(detail.durationMs)}
-              </Typography>
-            )}
-          </Stack>
-        </Stack>
-        <IconButton size="small" aria-label="close node details" onClick={onClose}>
-          <X size={16} />
-        </IconButton>
-      </Stack>
-
-      <Stack gap={2} sx={{ p: 2 }}>
-        {!hasHistory ? (
-          <Typography variant="body2" sx={{ color: 'text.secondary' }}>
-            History is not available, so this step's input and result can't be shown.
-          </Typography>
-        ) : (
-          <>
-            {detail.error && (
-              <Box sx={{ px: 1.5, py: 1, borderRadius: 1, border: '1px solid', borderColor: 'error.main', color: 'error.main', bgcolor: (t) => alpha(t.palette.error.main, 0.08) }}>
-                <Typography variant="caption" sx={{ fontWeight: 700, display: 'block' }}>
-                  Error
-                </Typography>
-                <Typography variant="body2" sx={{ wordBreak: 'break-word' }}>
-                  {detail.error}
-                </Typography>
-              </Box>
-            )}
-            {detail.input !== null ? (
-              <CodeViewer code={detail.input} language="json" title="Input" height="30vh" expandable showLineNumbers={false} />
-            ) : (
-              <Typography variant="body2" sx={{ color: 'text.secondary' }}>
-                No input recorded for this step.
-              </Typography>
-            )}
-            {detail.result !== null ? (
-              <CodeViewer code={detail.result} language="json" title="Result" height="30vh" expandable showLineNumbers={false} />
-            ) : (
-              <Typography variant="body2" sx={{ color: 'text.secondary' }}>
-                {detail.status === 'COMPLETED' ? 'This step completed with no return value.' : detail.status ? 'No result — this step has not completed.' : 'No result recorded for this step.'}
-              </Typography>
-            )}
-          </>
-        )}
       </Stack>
     </Box>
   );
