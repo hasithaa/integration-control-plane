@@ -343,6 +343,9 @@ export type SpanCategory = 'WORKFLOW' | 'ACTIVITY' | 'HUMAN_TASK' | 'TIMER' | 'C
 
 export interface TimelineSpan {
   key: string;
+  /** The open (scheduled/initiated/started) history event's id — what joins this span to a step's
+   * eventIds and to the detail extractor. Absent only where no single event opens the span. */
+  eventId?: string;
   label: string;
   category: SpanCategory;
   /** Normalized upper-case status (COMPLETED, FAILED, RUNNING, …), shared with StatusChip colours. */
@@ -425,6 +428,8 @@ interface Group {
   start: number;
   end?: number;
   status?: string;
+  /** The opening event's id, carried through to the span for joins with per-step eventIds. */
+  eventId?: string;
 }
 
 /**
@@ -438,7 +443,7 @@ function collectDurationGroups(parsed: ParsedEvent[], openType: string, closeSta
     if (p.time === null) continue;
     if (p.type === openType) {
       const key = openKey(p);
-      if (key) groups.set(key, make(p, p.time));
+      if (key) groups.set(key, { ...make(p, p.time), eventId: p.id });
     } else if (p.type in closeStatus) {
       const g = groups.get(closeKey(p));
       if (g) {
@@ -483,7 +488,7 @@ export function buildTimeline(events: ReadonlyArray<Record<string, unknown>>): T
   const spans: TimelineSpan[] = [];
   const pushGroup = (key: string, g: Group) => {
     const running = g.end === undefined;
-    spans.push({ key, label: g.label, category: g.category, status: running ? 'RUNNING' : (g.status ?? 'COMPLETED'), start: g.start, end: g.end ?? overallEnd, running });
+    spans.push({ key, eventId: g.eventId, label: g.label, category: g.category, status: running ? 'RUNNING' : (g.status ?? 'COMPLETED'), start: g.start, end: g.end ?? overallEnd, running });
   };
 
   // Root workflow span: started → terminal event (or still running to the last event).
@@ -491,6 +496,7 @@ export function buildTimeline(events: ReadonlyArray<Record<string, unknown>>): T
   if (startEv) {
     const terminal = [...parsed].reverse().find((p) => p.type in WF_TERMINAL_STATUS);
     pushGroup('workflow', {
+      eventId: startEv.id,
       label: asStr(asRecord(startEv.attrs['workflowType'])['name']) ?? 'Workflow',
       category: 'WORKFLOW',
       start: startEv.time ?? overallStart,

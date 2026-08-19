@@ -243,21 +243,21 @@ export default function FlowRail({
   selectedStepId,
   currentStepId,
   onSelect,
-  variant = 'list',
+  variant = 'chart',
 }: {
   data: InstanceGraph;
   selectedStepId: string | null;
   currentStepId: string | null;
   onSelect: (stepId: string | null) => void;
-  /** 'list' reads like source; 'chart' boxes each row and draws nesting guides — still one item per row. */
-  variant?: 'list' | 'chart';
+  /** 'chart' boxes each row, one item per row; 'uml' draws the same rows as a UML activity diagram. */
+  variant?: 'chart' | 'uml';
 }): ReactElement | null {
   const theme = useTheme();
   const graph = data.graph;
   const tree = useMemo(() => (graph && graph.nodes ? buildTree(graph.nodes) : []), [graph]);
   const rowRefs = useRef(new Map<string, HTMLDivElement>());
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set());
-  const chart = variant === 'chart';
+  const chart = true; // rows are always boxed now; 'uml' swaps the whole renderer below
 
   // The reverse link: when the execution graph names a step, bring its row into view.
   useEffect(() => {
@@ -384,9 +384,13 @@ export default function FlowRail({
   const renderNode = (t: TreeNode, depth: number): ReactNode => {
     const kind = t.node.kind.toUpperCase();
     if (MARK_KINDS.has(kind)) {
-      const label = kind === 'EXIT' ? `↩ ${(t.node as { mode?: string }).mode ?? 'exit'}` : (t.node.label ?? 'code');
+      const label = kind === 'EXIT' ? `↩ ${(t.node as { mode?: string }).mode ?? 'exit'}` : 'data processing';
       return (
-        <Typography key={t.node.stepId} variant="caption" sx={{ display: 'block', pl: 1 + depth * 1.5 + 2.5, py: 0.25, color: 'text.disabled', fontStyle: 'italic', fontSize: 11, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+        <Typography
+          key={t.node.stepId}
+          variant="caption"
+          title={t.node.label ?? undefined}
+          sx={{ display: 'block', pl: 1 + depth * 1.5 + 2.5, py: 0.25, color: 'text.disabled', fontStyle: 'italic', fontSize: 11, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
           {label}
         </Typography>
       );
@@ -397,5 +401,215 @@ export default function FlowRail({
     return renderStep(t, depth);
   };
 
+  if (variant === 'uml') {
+    return (
+      <Box sx={{ overflow: 'auto', height: '100%', py: 1, px: 0.5 }}>
+        <UmlActivityDiagram tree={tree} steps={steps} selectedStepId={selectedStepId} currentStepId={currentStepId} onSelect={onSelect} />
+      </Box>
+    );
+  }
+
   return <Stack sx={{ overflow: 'auto', height: '100%', py: 1, px: 0.5 }}>{tree.map((t) => renderNode(t, 0))}</Stack>;
+}
+
+// ── UML activity diagram ─────────────────────────────────────────────────────
+
+const UML_ROW_H = 30;
+const UML_BOX_H = 22;
+const UML_INDENT = 16;
+const UML_X0 = 16;
+const UML_W = 300;
+
+interface UmlRow {
+  kind: 'start' | 'end' | 'action' | 'decision' | 'final';
+  node?: ModelGraphNode;
+  depth: number;
+  /** Guard on the incoming edge — `[then]`, `[else]`, `[body]`, a pattern. */
+  guard?: string;
+  text: string;
+  tooltip?: string;
+  dashed?: boolean;
+  /** For loop rows: indexes of the body's rows, so the back edge knows where it leaves from. */
+  loop?: boolean;
+  terminal?: boolean;
+}
+
+/**
+ * The same structure as a UML activity diagram, kept exactly as compact as the chart: one element
+ * per row, arms as guarded edges rather than label rows, decisions as diamonds, exits as final
+ * nodes, and a loop's repetition drawn as a gutter edge back to its head.
+ */
+function UmlActivityDiagram({
+  tree,
+  steps,
+  selectedStepId,
+  currentStepId,
+  onSelect,
+}: {
+  tree: TreeNode[];
+  steps: Record<string, StepExecution>;
+  selectedStepId: string | null;
+  currentStepId: string | null;
+  onSelect: (stepId: string | null) => void;
+}): ReactElement {
+  const theme = useTheme();
+
+  // Flatten the tree into rows, guards riding on the first row of each arm.
+  const rows: UmlRow[] = [{ kind: 'start', depth: 0, text: '' }];
+  const loopBacks: { from: number; to: number }[] = [];
+  const walk = (nodes: TreeNode[], depth: number, guard?: string) => {
+    let pendingGuard = guard;
+    for (const t of nodes) {
+      const kind = t.node.kind.toUpperCase();
+      if (kind === 'CODE') {
+        rows.push({ kind: 'action', node: t.node, depth, guard: pendingGuard, text: 'data processing', tooltip: t.node.label ?? undefined, dashed: true });
+      } else if (kind === 'EXIT') {
+        rows.push({ kind: 'final', node: t.node, depth, guard: pendingGuard, text: (t.node as { mode?: string }).mode ?? 'exit', terminal: true });
+      } else if (kind === 'BRANCH' || kind === 'LOOP' || kind === 'TRY') {
+        const construct = constructOf(t.node);
+        const isLoop = kind === 'LOOP';
+        rows.push({ kind: 'decision', node: t.node, depth, guard: pendingGuard, text: `${construct}${t.node.label ? ` ${t.node.label}` : ''}`, loop: isLoop });
+        const headIndex = rows.length - 1;
+        for (const arm of t.arms) {
+          const armGuard = arm.name === '' || arm.name === 'then' || arm.name === 'body' || arm.name === 'do' ? (isLoop ? '[body]' : arm.name === 'do' ? undefined : `[${arm.name || 'in'}]`) : `[${arm.name}]`;
+          walk(arm.children, depth + 1, armGuard);
+        }
+        if (isLoop && rows.length - 1 > headIndex) {
+          loopBacks.push({ from: rows.length - 1, to: headIndex });
+        }
+      } else {
+        rows.push({ kind: 'action', node: t.node, depth, guard: pendingGuard, text: t.node.target ?? t.node.stepId });
+      }
+      pendingGuard = undefined;
+    }
+  };
+  walk(tree, 0);
+  rows.push({ kind: 'end', depth: 0, text: '' });
+
+  const height = rows.length * UML_ROW_H + 8;
+  const xOf = (row: UmlRow) => UML_X0 + row.depth * UML_INDENT;
+  const yOf = (i: number) => i * UML_ROW_H + 4;
+  const line = theme.palette.text.disabled;
+
+  return (
+    <svg width={UML_W} height={height} viewBox={`0 0 ${UML_W} ${height}`} role="img" aria-label="UML activity diagram" style={{ display: 'block' }}>
+      <defs>
+        <marker id="uml-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+          <path d="M 0 0 L 10 5 L 0 10 z" fill={line} />
+        </marker>
+      </defs>
+
+      {/* Edges: each non-terminal row flows to the next, jogging when the indent changes. */}
+      {rows.map((row, i) => {
+        const next = rows[i + 1];
+        if (!next || row.terminal) return null;
+        const x1 = xOf(row) + 9;
+        const x2 = xOf(next) + 9;
+        const y1 = yOf(i) + UML_BOX_H;
+        const y2 = yOf(i + 1);
+        const midY = (y1 + y2) / 2;
+        const d = x1 === x2 ? `M ${x1} ${y1} L ${x2} ${y2}` : `M ${x1} ${y1} L ${x1} ${midY} L ${x2} ${midY} L ${x2} ${y2}`;
+        return (
+          <g key={`e-${i}`}>
+            <path d={d} fill="none" stroke={line} strokeWidth={1} markerEnd="url(#uml-arrow)" />
+            {next.guard && (
+              <text x={Math.max(x1, x2) + 6} y={midY + 3} fill={theme.palette.text.secondary} fontSize={8.5} fontFamily="monospace">
+                {next.guard}
+              </text>
+            )}
+          </g>
+        );
+      })}
+
+      {/* Loop back edges, in the gutter left of the loop's head. */}
+      {loopBacks.map(({ from, to }, i) => {
+        const gx = xOf(rows[to]) - 6;
+        const y1 = yOf(from) + UML_BOX_H / 2;
+        const y2 = yOf(to) + UML_BOX_H / 2;
+        const xFrom = xOf(rows[from]) + 2;
+        const xTo = xOf(rows[to]) + 2;
+        return <path key={`lb-${i}`} d={`M ${xFrom} ${y1} L ${gx} ${y1} L ${gx} ${y2} L ${xTo} ${y2}`} fill="none" stroke={line} strokeWidth={1} strokeDasharray="3 3" markerEnd="url(#uml-arrow)" />;
+      })}
+
+      {rows.map((row, i) => {
+        const y = yOf(i);
+        const x = xOf(row);
+        if (row.kind === 'start') {
+          return <circle key={i} cx={x + 9} cy={y + UML_BOX_H / 2} r={5.5} fill={theme.palette.text.primary} />;
+        }
+        if (row.kind === 'end') {
+          return (
+            <g key={i}>
+              <circle cx={x + 9} cy={y + UML_BOX_H / 2} r={6.5} fill="none" stroke={theme.palette.text.primary} strokeWidth={1.25} />
+              <circle cx={x + 9} cy={y + UML_BOX_H / 2} r={3.5} fill={theme.palette.text.primary} />
+            </g>
+          );
+        }
+        if (row.kind === 'final') {
+          return (
+            <g key={i}>
+              <circle cx={x + 9} cy={y + UML_BOX_H / 2} r={6} fill="none" stroke={line} strokeWidth={1.25} />
+              <circle cx={x + 9} cy={y + UML_BOX_H / 2} r={3} fill={line} />
+              <text x={x + 20} y={y + UML_BOX_H / 2 + 3.5} fill={theme.palette.text.disabled} fontSize={10} fontStyle="italic">
+                {row.text}
+              </text>
+            </g>
+          );
+        }
+        if (row.kind === 'decision') {
+          const cx = x + 9;
+          const cy = y + UML_BOX_H / 2;
+          const r = 7;
+          return (
+            <g key={i}>
+              <path d={`M ${cx} ${cy - r} L ${cx + r} ${cy} L ${cx} ${cy + r} L ${cx - r} ${cy} Z`} fill={theme.palette.background.paper} stroke={line} strokeWidth={1.25} />
+              <text x={x + 22} y={cy + 3.5} fill={theme.palette.text.secondary} fontSize={10} fontWeight={700} fontFamily="monospace">
+                {row.text.length > 34 ? `${row.text.slice(0, 33)}…` : row.text}
+              </text>
+            </g>
+          );
+        }
+        // An action: the rounded rectangle, status-coloured when it ran.
+        const node = row.node;
+        const exec = node ? steps[node.stepId] : undefined;
+        const ran = exec !== undefined;
+        const statusColor = ran ? paletteColor(theme, statusColorName(exec.status)) : theme.palette.divider;
+        const selected = node != null && selectedStepId === node.stepId;
+        const isCurrent = node != null && currentStepId === node.stepId;
+        const w = Math.min(UML_W - x - 24, Math.max(90, row.text.length * 6.4 + 24));
+        const clickable = node != null && !row.dashed;
+        return (
+          <g
+            key={i}
+            role={clickable ? 'button' : undefined}
+            tabIndex={clickable ? 0 : undefined}
+            onClick={clickable ? () => onSelect(selected ? null : node.stepId) : undefined}
+            onKeyDown={clickable ? (e) => ((e as unknown as { key: string }).key === 'Enter' ? onSelect(selected ? null : node.stepId) : undefined) : undefined}
+            style={{ cursor: clickable ? 'pointer' : 'default' }}>
+            <title>{row.tooltip ?? (node ? `${row.text} · ${node.stepId}${ran ? ` · ${exec.status ?? ''}` : ' · not executed'}` : row.text)}</title>
+            <rect
+              x={x}
+              y={y}
+              width={w}
+              height={UML_BOX_H}
+              rx={UML_BOX_H / 2}
+              fill={selected ? alpha(theme.palette.primary.main, 0.12) : theme.palette.background.paper}
+              stroke={selected ? theme.palette.primary.main : statusColor}
+              strokeWidth={selected ? 1.75 : ran ? 1.5 : 1}
+              strokeDasharray={row.dashed ? '3 3' : ran ? undefined : '4 3'}
+            />
+            {isCurrent && <circle cx={x + w - 10} cy={y + UML_BOX_H / 2} r={3} fill={statusColor} />}
+            <text x={x + 10} y={y + UML_BOX_H / 2 + 3.5} fill={ran ? theme.palette.text.primary : theme.palette.text.disabled} fontSize={10.5} fontWeight={ran ? 600 : 400} fontStyle={row.dashed ? 'italic' : undefined}>
+              {row.text.length > Math.floor(w / 6.4) ? `${row.text.slice(0, Math.floor(w / 6.4) - 1)}…` : row.text}
+            </text>
+            {exec && exec.count > 1 && (
+              <text x={x + w - (isCurrent ? 20 : 8)} y={y + UML_BOX_H / 2 + 3.5} fill={statusColor} fontSize={9} fontWeight={700} textAnchor="end">
+                ×{exec.count}
+              </text>
+            )}
+          </g>
+        );
+      })}
+    </svg>
+  );
 }

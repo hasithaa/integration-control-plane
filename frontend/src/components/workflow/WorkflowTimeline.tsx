@@ -17,7 +17,7 @@
  */
 
 import { alpha, Box, colors, Stack, Tooltip, Typography } from '@wso2/oxygen-ui';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import type { ExecutionGraph } from '../../api/workflows';
 import { buildTimeline, formatDuration, formatStopwatch, splitQualifiedName, type ChipColor, type SpanCategory, type TimelineSpan } from './helpers';
 import { iconForType, statusColorName, typeLabel } from './graphVisuals';
@@ -126,14 +126,18 @@ export default function WorkflowTimeline({
   visibleIds = null,
   selectedKey = null,
   onSelectSpan,
+  renderDetail,
 }: {
   events: ReadonlyArray<Record<string, unknown>>;
   graph?: ExecutionGraph;
-  /** When set, spans outside the set are dimmed — the flow rail's filter. */
+  /** When set, spans whose opening EVENT id is outside the set are dimmed — the flow rail's filter. */
   visibleIds?: ReadonlySet<string> | null;
+  /** The selected span's opening event id. */
   selectedKey?: string | null;
-  /** Clicking a span's name (or bar) reports it; clicking the selected one again reports null. */
+  /** Clicking a span row reports it; clicking the selected one again reports null. */
   onSelectSpan?: (span: TimelineSpan | null) => void;
+  /** Rendered inline under the selected span's lane — the execution's details, in the lane itself. */
+  renderDetail?: (span: TimelineSpan) => ReactNode;
 }) {
   const built = buildTimeline(events);
   const { start, end } = built;
@@ -181,70 +185,66 @@ export default function WorkflowTimeline({
 
   return (
     <Stack gap={1}>
-      <Typography variant="caption" color="text.secondary">
-        Started {new Date(start).toLocaleString()} · {isLive ? `Running for ${formatStopwatch(total)}` : `Total ${formatDuration(total)}`}
-      </Typography>
-      <Box sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 1, overflowX: 'auto', maxHeight: '60vh', overflowY: 'auto', bgcolor: 'action.hover' }}>
-        <Box sx={{ display: 'flex', minWidth: LABEL_W + 360 }}>
-          {/* Left column: span labels */}
-          <Box sx={{ width: LABEL_W, flexShrink: 0, borderRight: '1px solid', borderColor: 'divider' }}>
-            {spans.map((s) => {
-              const { workflow, task } = splitQualifiedName(s.label);
-              const Icon = iconForType(s.category);
-              const color = spanShades(s).accent;
-              const dimmed = visibleIds != null && !visibleIds.has(s.key);
-              const selected = selectedKey === s.key;
-              return (
-                <Stack
-                  key={s.key}
-                  direction="row"
-                  alignItems="center"
-                  gap={0.75}
+      {isLive && (
+        <Typography variant="caption" color="text.secondary" sx={{ textAlign: 'right' }}>
+          Running for {formatStopwatch(total)}
+        </Typography>
+      )}
+      <Box sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 1, overflowX: 'auto', maxHeight: '62vh', overflowY: 'auto', bgcolor: 'action.hover' }}>
+        <Box sx={{ minWidth: LABEL_W + 360 }}>
+          {spans.map((s) => {
+            const joinId = s.eventId ?? s.key;
+            const dimmed = visibleIds != null && !visibleIds.has(joinId);
+            const selected = selectedKey === joinId;
+            const { workflow, task } = splitQualifiedName(s.label);
+            const Icon = iconForType(s.category);
+            const color = spanShades(s).accent;
+            const durationMs = (s.running ? Math.max(s.start, now) : s.end) - s.start;
+            return (
+              <Box key={s.key}>
+                <Box
                   role={onSelectSpan ? 'button' : undefined}
                   tabIndex={onSelectSpan ? 0 : undefined}
                   onClick={onSelectSpan ? () => onSelectSpan(selected ? null : s) : undefined}
                   onKeyDown={onSelectSpan ? (e) => (e.key === 'Enter' ? onSelectSpan(selected ? null : s) : undefined) : undefined}
                   sx={{
-                    height: ROW_H,
-                    px: 1,
-                    minWidth: 0,
+                    display: 'flex',
+                    alignItems: 'stretch',
                     opacity: dimmed ? 0.35 : 1,
                     cursor: onSelectSpan ? 'pointer' : 'default',
-                    bgcolor: selected ? (t) => alpha(t.palette.primary.main, 0.1) : 'transparent',
-                    '&:hover': onSelectSpan ? { bgcolor: (t) => alpha(t.palette.primary.main, 0.06) } : undefined,
+                    bgcolor: selected ? (t) => alpha(t.palette.primary.main, 0.08) : 'transparent',
+                    '&:hover': onSelectSpan ? { bgcolor: (t) => alpha(t.palette.primary.main, 0.05) } : undefined,
                   }}>
-                  <Box sx={{ color, display: 'flex', flexShrink: 0 }}>
-                    <Icon size={14} />
-                  </Box>
-                  <Tooltip title={workflow ? `${workflow}.${task ?? s.label}` : (task ?? s.label)} placement="top">
-                    <Typography variant="caption" sx={{ fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                      {task ?? s.label}
+                  {/* Lane label: name, then the execution's own facts — status colour and duration. */}
+                  <Stack direction="row" alignItems="center" gap={0.75} sx={{ width: LABEL_W, flexShrink: 0, px: 1, borderRight: '1px solid', borderColor: 'divider', minWidth: 0 }}>
+                    <Box sx={{ color, display: 'flex', flexShrink: 0 }}>
+                      <Icon size={14} />
+                    </Box>
+                    <Tooltip title={workflow ? `${workflow}.${task ?? s.label}` : (task ?? s.label)} placement="top">
+                      <Typography variant="caption" sx={{ fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0, flex: 1 }}>
+                        {task ?? s.label}
+                      </Typography>
+                    </Tooltip>
+                    <Typography variant="caption" sx={{ color, fontSize: 10, flexShrink: 0, fontVariantNumeric: 'tabular-nums' }}>
+                      {s.running ? formatStopwatch(durationMs) : formatDuration(durationMs)}
                     </Typography>
-                  </Tooltip>
-                </Stack>
-              );
-            })}
-            <Box sx={{ height: AXIS_H }} />
-          </Box>
-
-          {/* Right column: gridlines, bars, and the time axis */}
-          <Box sx={{ flex: 1, position: 'relative', minWidth: 360 }}>
-            <Box sx={{ position: 'relative', height: spans.length * ROW_H, overflow: 'hidden' }}>
-              {ticks.map((t) => (
-                // The rightmost gridline is pinned to right:0 (not left:100%) so its 1px width doesn't
-                // spill past the edge and spawn a horizontal scrollbar.
-                <Box key={t.pct} sx={{ position: 'absolute', top: 0, bottom: 0, width: '1px', bgcolor: 'divider', opacity: 0.6, ...(t.anchor === 'right' ? { right: 0 } : { left: `${t.pct}%` }) }} />
-              ))}
-              {spans.map((s) => {
-                const dimmed = visibleIds != null && !visibleIds.has(s.key);
-                return (
-                  <Box key={s.key} onClick={onSelectSpan ? () => onSelectSpan(selectedKey === s.key ? null : s) : undefined} sx={{ opacity: dimmed ? 0.3 : 1, cursor: onSelectSpan ? 'pointer' : 'default' }}>
+                  </Stack>
+                  {/* Bar cell: gridlines at the shared tick positions, then the span bar. */}
+                  <Box sx={{ flex: 1, position: 'relative', minWidth: 360 }}>
+                    {ticks.map((t) => (
+                      <Box key={t.pct} sx={{ position: 'absolute', top: 0, bottom: 0, width: '1px', bgcolor: 'divider', opacity: 0.5, ...(t.anchor === 'right' ? { right: 0 } : { left: `${t.pct}%` }) }} />
+                    ))}
                     <SpanBar span={s} total={total} rangeStart={start} now={now} />
                   </Box>
-                );
-              })}
-            </Box>
-            <Box sx={{ position: 'relative', height: AXIS_H, borderTop: '1px solid', borderColor: 'divider' }}>
+                </Box>
+                {selected && renderDetail && <Box sx={{ p: 1, bgcolor: 'background.default' }}>{renderDetail(s)}</Box>}
+              </Box>
+            );
+          })}
+          {/* The time axis */}
+          <Box sx={{ display: 'flex' }}>
+            <Box sx={{ width: LABEL_W, flexShrink: 0, borderRight: '1px solid', borderColor: 'divider', height: AXIS_H }} />
+            <Box sx={{ flex: 1, position: 'relative', height: AXIS_H, borderTop: '1px solid', borderColor: 'divider', minWidth: 360 }}>
               {ticks.map((t) => (
                 <Typography
                   key={t.pct}

@@ -25,11 +25,11 @@ import { StatusChip } from './shared';
 import { typeLabel } from './graphVisuals';
 
 /** Side panel showing a selected node's execution time, input and result, mapped from the history. */
-export default function NodeDetailPanel({ node, detail, hasHistory, onClose }: { node: ExecutionGraphNode; detail: NodeExecutionDetail; hasHistory: boolean; onClose: () => void }) {
+export default function NodeDetailPanel({ node, detail, hasHistory, onClose, fullWidth = false }: { node: ExecutionGraphNode; detail: NodeExecutionDetail; hasHistory: boolean; onClose: () => void; fullWidth?: boolean }) {
   const { task } = splitQualifiedName(node.label);
 
   return (
-    <Box sx={{ width: { xs: '100%', md: '45%' }, flexShrink: 0, border: '1px solid', borderColor: 'divider', borderRadius: 1, bgcolor: 'background.paper', alignSelf: 'stretch' }}>
+    <Box sx={{ width: fullWidth ? '100%' : { xs: '100%', md: '45%' }, flexShrink: 0, border: '1px solid', borderColor: 'divider', borderRadius: 1, bgcolor: 'background.paper', alignSelf: 'stretch' }}>
       <Stack direction="row" alignItems="flex-start" justifyContent="space-between" gap={1} sx={{ px: 2, py: 1.5, borderBottom: '1px solid', borderColor: 'divider' }}>
         <Stack sx={{ minWidth: 0 }}>
           <Typography variant="subtitle2" sx={{ fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={node.label}>
