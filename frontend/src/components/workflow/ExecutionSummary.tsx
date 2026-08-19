@@ -31,10 +31,20 @@ import { StatusChip } from './shared';
  * in the timeline below and the Flow tab's step details; this card keeps only what describes the
  * run as a whole. The raw payload stays one copy-click away.
  */
-export default function ExecutionSummary({ info }: { info: WorkflowInstance }): ReactElement {
+export default function ExecutionSummary({
+  info,
+  fallbackStartMs,
+  fallbackEndMs,
+}: {
+  info: WorkflowInstance;
+  /** From the run's history — the instances payload itself carries no times. */
+  fallbackStartMs?: number | null;
+  fallbackEndMs?: number | null;
+}): ReactElement {
   const status = (info.status ?? '').toUpperCase();
-  const startMs = info.startTime ? Date.parse(info.startTime) : NaN;
-  const closeMs = info.closeTime ? Date.parse(info.closeTime) : NaN;
+  const closed = !['RUNNING', 'SUSPENDED', ''].includes(status);
+  const startMs = info.startTime ? Date.parse(info.startTime) : (fallbackStartMs ?? NaN);
+  const closeMs = info.closeTime ? Date.parse(info.closeTime) : closed ? (fallbackEndMs ?? NaN) : NaN;
   const durationMs = Number.isFinite(startMs) && Number.isFinite(closeMs) ? closeMs - startMs : null;
   const result = info['result'];
   const errorMessage = typeof info['errorMessage'] === 'string' ? (info['errorMessage'] as string) : null;
@@ -73,9 +83,9 @@ export default function ExecutionSummary({ info }: { info: WorkflowInstance }): 
       </Stack>
 
       <Stack gap={0.75} sx={{ px: 1.5, py: 1.25 }}>
-        {row('Type', info.workflowType)}
-        {row('Started', info.startTime ? formatTime(info.startTime) : null)}
-        {row('Closed', info.closeTime ? formatTime(info.closeTime) : null)}
+        {row('Workflow name', info.workflowType)}
+        {row('Started', Number.isFinite(startMs) ? formatTime(new Date(startMs).toISOString()) : null)}
+        {row('Closed', Number.isFinite(closeMs) ? formatTime(new Date(closeMs).toISOString()) : null)}
         {row('Task queue', info.taskQueue)}
         {errorMessage && (
           <Box sx={{ px: 1.25, py: 0.75, borderRadius: 1, border: '1px solid', borderColor: 'error.main', color: 'error.main', bgcolor: (t) => alpha(t.palette.error.main, 0.08) }}>

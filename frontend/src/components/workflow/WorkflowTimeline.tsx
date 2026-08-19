@@ -42,16 +42,10 @@ const HUE_BY_STATUS: Record<ChipColor, Hue> = {
   default: colors.blueGrey,
 };
 
-// Bar/marker colour. Colour normally encodes status, but successful ACTIVITY and HUMAN_TASK spans
-// use distinct hues (indigo / dark purple) so they stand out from other completed spans; failed,
-// warned or running spans keep their status colour (red/amber, or blue + the running animation).
+// Bar/marker colour: status, and only status — green completed, blue running, red failed — the
+// same vocabulary as the rail and the summary chip, so one glance reads the same everywhere.
 function spanShades(span: Pick<TimelineSpan, 'category' | 'status'>): { main: string; accent: string } {
-  const status = statusColorName(span.status);
-  if (status === 'success') {
-    if (span.category === 'ACTIVITY') return { main: colors.indigo[500], accent: colors.indigo[600] };
-    if (span.category === 'HUMAN_TASK') return { main: colors.deepPurple[700], accent: colors.deepPurple[800] };
-  }
-  const hue = HUE_BY_STATUS[status] ?? colors.blueGrey;
+  const hue = HUE_BY_STATUS[statusColorName(span.status)] ?? colors.blueGrey;
   return { main: hue[500], accent: hue[600] };
 }
 

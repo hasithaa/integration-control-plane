@@ -409,7 +409,22 @@ export default function FlowRail({
     );
   }
 
-  return <Stack sx={{ overflow: 'auto', height: '100%', py: 1, px: 0.5 }}>{tree.map((t) => renderNode(t, 0))}</Stack>;
+  const terminusRow = (label: string, filled: boolean): ReactNode => (
+    <Stack direction="row" alignItems="center" gap={0.75} sx={{ pl: 1, py: 0.5, color: 'text.secondary', minWidth: 0 }}>
+      <Box sx={{ width: 11, height: 11, borderRadius: '50%', flexShrink: 0, ...(filled ? { bgcolor: 'text.primary' } : { border: '2px solid', borderColor: 'text.primary' }) }} />
+      <Typography variant="caption" sx={{ fontWeight: 700, fontSize: 11, fontFamily: 'monospace', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+        {label}
+      </Typography>
+    </Stack>
+  );
+
+  return (
+    <Stack sx={{ overflow: 'auto', height: '100%', py: 1, px: 0.5 }}>
+      {terminusRow(data.workflowType, true)}
+      {tree.map((t) => renderNode(t, 0))}
+      {terminusRow('end', false)}
+    </Stack>
+  );
 }
 
 // ── UML activity diagram ─────────────────────────────────────────────────────
@@ -424,20 +439,20 @@ interface UmlRow {
   kind: 'start' | 'end' | 'action' | 'decision' | 'final';
   node?: ModelGraphNode;
   depth: number;
-  /** Guard on the incoming edge — `[then]`, `[else]`, `[body]`, a pattern. */
-  guard?: string;
   text: string;
   tooltip?: string;
   dashed?: boolean;
-  /** For loop rows: indexes of the body's rows, so the back edge knows where it leaves from. */
-  loop?: boolean;
-  terminal?: boolean;
 }
 
 /**
  * The same structure as a UML activity diagram, kept exactly as compact as the chart: one element
  * per row, arms as guarded edges rather than label rows, decisions as diamonds, exits as final
  * nodes, and a loop's repetition drawn as a gutter edge back to its head.
+ *
+ * Edges follow the block tree, not the row order: a decision fans out to each of its arms with the
+ * guard on that edge, sequential edges exist only within an arm, an exit terminates its path, and
+ * whatever flows out of a construct — every arm's tail, plus the diamond itself when an arm is
+ * missing — connects to what follows. Drawing row-to-row instead is what left arms floating.
  */
 function UmlActivityDiagram({
   tree,
@@ -454,37 +469,68 @@ function UmlActivityDiagram({
 }): ReactElement {
   const theme = useTheme();
 
-  // Flatten the tree into rows, guards riding on the first row of each arm.
-  const rows: UmlRow[] = [{ kind: 'start', depth: 0, text: '' }];
-  const loopBacks: { from: number; to: number }[] = [];
-  const walk = (nodes: TreeNode[], depth: number, guard?: string) => {
-    let pendingGuard = guard;
+  const rows: UmlRow[] = [];
+  const edges: { from: number; to: number; guard?: string; back?: boolean }[] = [];
+  type Incoming = { from: number; guard?: string };
+
+  const connect = (incoming: Incoming[], to: number) => {
+    for (const inc of incoming) edges.push({ from: inc.from, to, guard: inc.guard });
+  };
+
+  /** Walks one sequence; returns the row indexes its flow leaves from (empty when it always exits). */
+  const walkSeq = (nodes: TreeNode[], depth: number, incoming: Incoming[]): number[] => {
+    let current = incoming;
     for (const t of nodes) {
       const kind = t.node.kind.toUpperCase();
       if (kind === 'CODE') {
-        rows.push({ kind: 'action', node: t.node, depth, guard: pendingGuard, text: 'data processing', tooltip: t.node.label ?? undefined, dashed: true });
+        rows.push({ kind: 'action', node: t.node, depth, text: 'data processing', tooltip: t.node.label ?? undefined, dashed: true });
+        const i = rows.length - 1;
+        connect(current, i);
+        current = [{ from: i }];
       } else if (kind === 'EXIT') {
-        rows.push({ kind: 'final', node: t.node, depth, guard: pendingGuard, text: (t.node as { mode?: string }).mode ?? 'exit', terminal: true });
+        rows.push({ kind: 'final', node: t.node, depth, text: (t.node as { mode?: string }).mode ?? 'exit' });
+        connect(current, rows.length - 1);
+        current = [];
       } else if (kind === 'BRANCH' || kind === 'LOOP' || kind === 'TRY') {
-        const construct = constructOf(t.node);
         const isLoop = kind === 'LOOP';
-        rows.push({ kind: 'decision', node: t.node, depth, guard: pendingGuard, text: `${construct}${t.node.label ? ` ${t.node.label}` : ''}`, loop: isLoop });
-        const headIndex = rows.length - 1;
+        rows.push({ kind: 'decision', node: t.node, depth, text: `${constructOf(t.node)}${t.node.label ? ` ${t.node.label}` : ''}` });
+        const diamond = rows.length - 1;
+        connect(current, diamond);
+        const exits: number[] = [];
+        let hasElse = false;
         for (const arm of t.arms) {
-          const armGuard = arm.name === '' || arm.name === 'then' || arm.name === 'body' || arm.name === 'do' ? (isLoop ? '[body]' : arm.name === 'do' ? undefined : `[${arm.name || 'in'}]`) : `[${arm.name}]`;
-          walk(arm.children, depth + 1, armGuard);
+          if (arm.name === 'else') hasElse = true;
+          const guard = `[${arm.name || 'body'}]`;
+          const armExits = walkSeq(arm.children, depth + 1, [{ from: diamond, guard }]);
+          if (isLoop) {
+            for (const tail of armExits) {
+              if (tail !== diamond) edges.push({ from: tail, to: diamond, back: true });
+            }
+          } else {
+            exits.push(...armExits);
+          }
         }
-        if (isLoop && rows.length - 1 > headIndex) {
-          loopBacks.push({ from: rows.length - 1, to: headIndex });
+        if (isLoop) {
+          current = [{ from: diamond }];
+        } else {
+          // A branch without an else can be skipped entirely, so the diamond itself flows on.
+          if (!hasElse || kind === 'TRY') exits.push(diamond);
+          current = [...new Set(exits)].map((from) => ({ from }));
         }
       } else {
-        rows.push({ kind: 'action', node: t.node, depth, guard: pendingGuard, text: t.node.target ?? t.node.stepId });
+        rows.push({ kind: 'action', node: t.node, depth, text: t.node.target ?? t.node.stepId });
+        const i = rows.length - 1;
+        connect(current, i);
+        current = [{ from: i }];
       }
-      pendingGuard = undefined;
     }
+    return current.map((c) => c.from);
   };
-  walk(tree, 0);
+
+  rows.push({ kind: 'start', depth: 0, text: '' });
+  const tails = walkSeq(tree, 0, [{ from: 0 }]);
   rows.push({ kind: 'end', depth: 0, text: '' });
+  for (const tail of tails) edges.push({ from: tail, to: rows.length - 1 });
 
   const height = rows.length * UML_ROW_H + 8;
   const xOf = (row: UmlRow) => UML_X0 + row.depth * UML_INDENT;
@@ -499,36 +545,32 @@ function UmlActivityDiagram({
         </marker>
       </defs>
 
-      {/* Edges: each non-terminal row flows to the next, jogging when the indent changes. */}
-      {rows.map((row, i) => {
-        const next = rows[i + 1];
-        if (!next || row.terminal) return null;
-        const x1 = xOf(row) + 9;
-        const x2 = xOf(next) + 9;
-        const y1 = yOf(i) + UML_BOX_H;
-        const y2 = yOf(i + 1);
-        const midY = (y1 + y2) / 2;
+      {edges.map((e, i) => {
+        const from = rows[e.from];
+        const to = rows[e.to];
+        const x1 = xOf(from) + 9;
+        const x2 = xOf(to) + 9;
+        if (e.back) {
+          // A loop's repetition: out the left, up the gutter, back into its head.
+          const gx = Math.min(x1, x2) - 8;
+          const y1 = yOf(e.from) + UML_BOX_H / 2;
+          const y2 = yOf(e.to) + UML_BOX_H / 2;
+          return <path key={i} d={`M ${xOf(from) + 1} ${y1} L ${gx} ${y1} L ${gx} ${y2} L ${xOf(to) + 1} ${y2}`} fill="none" stroke={line} strokeWidth={1} strokeDasharray="3 3" markerEnd="url(#uml-arrow)" />;
+        }
+        const y1 = yOf(e.from) + UML_BOX_H;
+        const y2 = yOf(e.to);
+        const midY = Math.max(y1 + 4, y2 - 6);
         const d = x1 === x2 ? `M ${x1} ${y1} L ${x2} ${y2}` : `M ${x1} ${y1} L ${x1} ${midY} L ${x2} ${midY} L ${x2} ${y2}`;
         return (
-          <g key={`e-${i}`}>
+          <g key={i}>
             <path d={d} fill="none" stroke={line} strokeWidth={1} markerEnd="url(#uml-arrow)" />
-            {next.guard && (
-              <text x={Math.max(x1, x2) + 6} y={midY + 3} fill={theme.palette.text.secondary} fontSize={8.5} fontFamily="monospace">
-                {next.guard}
+            {e.guard && (
+              <text x={x2 + 12} y={y2 - 2} fill={theme.palette.text.secondary} fontSize={8.5} fontFamily="monospace">
+                {e.guard}
               </text>
             )}
           </g>
         );
-      })}
-
-      {/* Loop back edges, in the gutter left of the loop's head. */}
-      {loopBacks.map(({ from, to }, i) => {
-        const gx = xOf(rows[to]) - 6;
-        const y1 = yOf(from) + UML_BOX_H / 2;
-        const y2 = yOf(to) + UML_BOX_H / 2;
-        const xFrom = xOf(rows[from]) + 2;
-        const xTo = xOf(rows[to]) + 2;
-        return <path key={`lb-${i}`} d={`M ${xFrom} ${y1} L ${gx} ${y1} L ${gx} ${y2} L ${xTo} ${y2}`} fill="none" stroke={line} strokeWidth={1} strokeDasharray="3 3" markerEnd="url(#uml-arrow)" />;
       })}
 
       {rows.map((row, i) => {
@@ -569,7 +611,6 @@ function UmlActivityDiagram({
             </g>
           );
         }
-        // An action: the rounded rectangle, status-coloured when it ran.
         const node = row.node;
         const exec = node ? steps[node.stepId] : undefined;
         const ran = exec !== undefined;

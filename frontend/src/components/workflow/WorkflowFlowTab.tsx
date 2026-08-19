@@ -26,7 +26,7 @@ import ExecutionSummary from './ExecutionSummary';
 import FlowRail from './FlowRail';
 import NodeDetailPanel from './NodeDetailPanel';
 import WorkflowTimeline from './WorkflowTimeline';
-import { extractNodeExecutionDetail, extractWorkflowInput, flowUnavailable, type TimelineSpan } from './helpers';
+import { buildTimeline, extractNodeExecutionDetail, extractWorkflowInput, flowUnavailable, type TimelineSpan } from './helpers';
 
 /**
  * The instance's Overview: everything an operator reads first, on one page.
@@ -84,6 +84,11 @@ export default function WorkflowFlowTab({ instanceGraph, executionGraph, events,
   const isAgent = instanceGraph?.graphKind === 'agent';
   const reason = flowUnavailable(instanceGraph);
   const startInput = extractWorkflowInput(events);
+  // The instances payload carries no times; the history does.
+  const historyRange = useMemo(() => {
+    const built = buildTimeline(events);
+    return built.spans.length > 0 ? { start: built.start, end: built.end } : null;
+  }, [events]);
 
   // The last executed step, for the rail's "you are here" mark. Approximate by nature.
   const currentStepId = useMemo(() => {
@@ -137,7 +142,7 @@ export default function WorkflowFlowTab({ instanceGraph, executionGraph, events,
       )}
       {info && (
         <Box sx={{ flex: 1, minWidth: 280 }}>
-          <ExecutionSummary info={info} />
+          <ExecutionSummary info={info} fallbackStartMs={historyRange?.start} fallbackEndMs={historyRange?.end} />
         </Box>
       )}
     </Stack>
