@@ -17,11 +17,13 @@
  */
 
 import { useEffect, useState, type JSX } from 'react';
-import { Navigate, useSearchParams } from 'react-router';
+import { Navigate, useNavigate, useSearchParams } from 'react-router';
 import NotFound from '../components/NotFound';
 import AdminPortal from '../components/workflow/AdminPortal';
 import WorkflowPageFrame from '../components/workflow/WorkflowPageFrame';
 import { useWorkflowPageScope } from '../components/workflow/useWorkflowPageScope';
+import { gatewayScope } from '../components/workflow/helpers';
+import { useWorkflowInfo } from '../api/workflows';
 import { resourceUrl, broaden, hasComponent, type ComponentScope, type ProjectScope } from '../nav';
 
 /**
@@ -64,6 +66,20 @@ export default function Workflows(scope: ComponentScope | ProjectScope): JSX.Ele
   const pageScope = useWorkflowPageScope(scope, selectedEnvId);
   const { environments, targets, taskQueue, component, project } = pageScope;
   const activeEnvId = environments.some((e) => e.id === selectedEnvId) ? selectedEnvId : (environments[0]?.id ?? '');
+
+  // A deep-linked id might not be a workflow at all — a human task and a review are their own
+  // instances. Ask the instance what it is (its starter stamped the kind in its memo) and load
+  // the respective UI, rather than parsing the id's prefix here.
+  const gatewayForResolve = gatewayScope({ targets, environmentId: activeEnvId });
+  const { data: linkedInfo } = useWorkflowInfo(gatewayForResolve, deepLink.workflowId ?? null);
+  const navigate = useNavigate();
+  useEffect(() => {
+    const kind = (linkedInfo?.kind ?? '').toUpperCase();
+    if (!deepLink.workflowId || (kind !== 'HUMAN_TASK' && kind !== 'REVIEW_ACTIVITY')) return;
+    const params = new URLSearchParams(kind === 'HUMAN_TASK' ? { tab: 'tasks', task: deepLink.workflowId } : { tab: 'reviews', review: deepLink.workflowId });
+    if (activeEnvId) params.set('env', activeEnvId);
+    navigate(`${resourceUrl(scope, 'tasks')}?${params}`, { replace: true });
+  }, [linkedInfo, deepLink.workflowId, activeEnvId, navigate, scope]);
 
   // This page used to also hold My Tasks and Review Activities as tabs; send those bookmarks to
   // the page they became.

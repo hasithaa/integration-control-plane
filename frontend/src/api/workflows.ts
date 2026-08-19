@@ -34,6 +34,9 @@ export interface WorkflowInstance {
   runId?: string;
   workflowType?: string;
   status?: string;
+  /** What this instance is — WORKFLOW, AGENT, HUMAN_TASK, REVIEW_ACTIVITY, CHILD_WORKFLOW — from
+   * the memo its starter stamped. Routing asks this, never the id's prefix. */
+  kind?: string;
   startTime?: string;
   closeTime?: string;
   /** The project's Temporal namespace, and the task queue of the integration that owns this run. */

@@ -532,7 +532,7 @@ export function StartWorkflowDialog({ scope, initialWorkflowType, onClose, onToa
  * Review activities are human-in-the-loop decisions on gated or failed activities, so they belong
  * with the user's own work rather than with workflow administration — UserPortal renders this.
  */
-export function ReviewActivities({ scope, onToast }: { scope: PortalScope; onToast: (t: Toast) => void }) {
+export function ReviewActivities({ scope, onToast, initialReviewId }: { scope: PortalScope; onToast: (t: Toast) => void; initialReviewId?: string }) {
   const [search, setSearch] = useState('');
   // Pending is what a reviewer is here for; the other statuses are a look back.
   const [status, setStatus] = useState('PENDING');
@@ -540,6 +540,10 @@ export function ReviewActivities({ scope, onToast }: { scope: PortalScope; onToa
   // Like the workflow list, the dialog opens against the integration that owns the row.
   const [open, setOpen] = useState<{ taskId: string; taskQueue?: string } | null>(null);
   const [integration, setIntegration] = useState<WorkflowTarget | null>(null);
+  // A deep link names a review directly; the dialog fetches everything else from the id.
+  useEffect(() => {
+    if (initialReviewId) setOpen({ taskId: initialReviewId });
+  }, [initialReviewId]);
   const timeFilter = useTimeRangeFilter();
 
   const multi = scope.targets.length > 1;

@@ -18,7 +18,7 @@
 
 import { Alert, Box, Button, Card, Chip, CircularProgress, Dialog, DialogActions, DialogContent, DialogTitle, Divider, IconButton, ListingTable, Snackbar, Stack, TextField, Tooltip, Typography } from '@wso2/oxygen-ui';
 import { Eye, RefreshCw } from '@wso2/oxygen-ui-icons-react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import SchemaFormFields from './SchemaFormFields';
 import { buildFormResult, formatTime, gatewayScope, humanizeKey, ownerLabel, ownerScope, parseFormSchema, sectionTitleSx, sortByStartTimeDesc, unescapeRoleName, type PortalScope } from './helpers';
 import { DetailRow, StatusChip, SubmitError, WorkflowIdLink, type WorkflowScope } from './shared';
@@ -59,13 +59,13 @@ type Toast = { severity: 'success' | 'error'; message: string } | null;
  * Hosts the two user-facing workflow views. Which one shows is decided by the page's tabs, so this
  * only dispatches and owns the toast both views report through.
  */
-export default function UserPortal({ targets, environmentId, taskQueue, view }: PortalScope & { view: 'tasks' | 'reviews' }) {
+export default function UserPortal({ targets, environmentId, taskQueue, view, initialTaskId, initialReviewId }: PortalScope & { view: 'tasks' | 'reviews'; initialTaskId?: string; initialReviewId?: string }) {
   const scope: PortalScope = { targets, environmentId, taskQueue };
   const [toast, setToast] = useState<Toast>(null);
 
   return (
     <>
-      {view === 'tasks' ? <MyTasks scope={scope} onToast={setToast} /> : <ReviewActivities scope={scope} onToast={setToast} />}
+      {view === 'tasks' ? <MyTasks scope={scope} onToast={setToast} initialTaskId={initialTaskId} /> : <ReviewActivities scope={scope} onToast={setToast} initialReviewId={initialReviewId} />}
 
       <Snackbar open={toast !== null} autoHideDuration={4000} onClose={() => setToast(null)} anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}>
         {toast ? (
@@ -134,9 +134,15 @@ function TaskTable({ tasks, onOpen, environmentId, integrationLabel }: { tasks: 
   );
 }
 
-function MyTasks({ scope, onToast }: { scope: PortalScope; onToast: (t: Toast) => void }) {
+function MyTasks({ scope, onToast, initialTaskId }: { scope: PortalScope; onToast: (t: Toast) => void; initialTaskId?: string }) {
   // Opened against the integration that owns the task, per the task's own task queue.
   const [open, setOpen] = useState<HumanTask | null>(null);
+  // A deep link names a task this list may not hold (a completed one, another page); fetch it
+  // directly and open its dialog once it arrives.
+  const { data: linkedTask } = useHumanTask(gatewayScope(scope), initialTaskId ?? null);
+  useEffect(() => {
+    if (linkedTask) setOpen(linkedTask);
+  }, [linkedTask]);
   const [status, setStatus] = useState('PENDING');
   const { data: page, isLoading, error, refetch, isFetching } = useHumanTasks(gatewayScope(scope), { status: status === 'All' ? undefined : status, taskQueue: scope.taskQueue, limit: 50 });
   const tasks = sortByStartTimeDesc(page?.items ?? []);

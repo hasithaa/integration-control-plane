@@ -109,7 +109,7 @@ export default function WorkflowTasks(scope: ComponentScope | ProjectScope): JSX
           {allowed.reviews && <Tab label={<TabLabel title="Review Activities" count={pendingReviews?.count} capped={pendingReviews?.capped} />} value="reviews" />}
         </Tabs>
       </Box>
-      {activeTab && <UserPortal targets={targets} environmentId={activeEnvId} taskQueue={taskQueue} view={activeTab} />}
+      {activeTab && <UserPortal targets={targets} environmentId={activeEnvId} taskQueue={taskQueue} view={activeTab} initialTaskId={searchParams.get('task') ?? undefined} initialReviewId={searchParams.get('review') ?? undefined} />}
     </WorkflowPageFrame>
   );
 }
