@@ -358,7 +358,9 @@ isolated function mapWorkflowRequestToOperation(string method, string[] wfPath,
                 }
                 if segments == 2 {
                     return wfPath[1] == "pending-count"
-                        ? ["humanTasks.pendingCount", {}]
+                        // The query params carry the taskQueue filter. Dropping them made the badge
+                        // count the whole namespace while the queue-filtered listing showed nothing.
+                        ? ["humanTasks.pendingCount", queryParams]
                         : ["humanTasks.get", {taskId: wfPath[1]}];
                 }
             }
