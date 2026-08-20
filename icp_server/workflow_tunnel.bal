@@ -382,10 +382,11 @@ isolated function mapWorkflowRequestToOperation(string method, string[] wfPath,
     match first {
         "workflows" => {
             if segments == 1 {
-                // Fill workflowId so a retried start is idempotent on the runtime side.
+                // Fill workflowId so a retried start is idempotent on the runtime side. A bare
+                // UUID: what an instance is travels in its memo, never in its id.
                 map<json> params = body.clone();
                 if params["workflowId"] !is string {
-                    params["workflowId"] = "workflow-" + uuid:createType4AsString();
+                    params["workflowId"] = uuid:createType4AsString();
                 }
                 return ["instances.start", params];
             }

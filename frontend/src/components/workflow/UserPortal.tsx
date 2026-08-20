@@ -17,11 +17,11 @@
  */
 
 import { Alert, Box, Button, Card, Chip, CircularProgress, Dialog, DialogActions, DialogContent, DialogTitle, Divider, IconButton, ListingTable, Snackbar, Stack, TextField, Tooltip, Typography } from '@wso2/oxygen-ui';
-import { Eye, RefreshCw } from '@wso2/oxygen-ui-icons-react';
+import { RefreshCw } from '@wso2/oxygen-ui-icons-react';
 import { useEffect, useState } from 'react';
 import SchemaFormFields from './SchemaFormFields';
 import { buildFormResult, formatTime, gatewayScope, humanizeKey, ownerLabel, ownerScope, parseFormSchema, sectionTitleSx, sortByStartTimeDesc, unescapeRoleName, type PortalScope } from './helpers';
-import { DetailRow, StatusChip, SubmitError, WorkflowIdLink, type WorkflowScope } from './shared';
+import { HeaderCell, DetailRow, StatusChip, SubmitError, WorkflowIdLink, type WorkflowScope } from './shared';
 import { ReviewActivities, StatusFilter } from './AdminPortal';
 import Authorized from '../Authorized';
 import { Permissions } from '../../constants/permissions';
@@ -83,18 +83,17 @@ function TaskTable({ tasks, onOpen, environmentId, integrationLabel }: { tasks: 
     <ListingTable>
       <ListingTable.Head>
         <ListingTable.Row>
-          <ListingTable.Cell>Task</ListingTable.Cell>
-          <ListingTable.Cell>Workflow Name</ListingTable.Cell>
-          {integrationLabel && <ListingTable.Cell>Integration</ListingTable.Cell>}
-          <ListingTable.Cell>Workflow ID</ListingTable.Cell>
-          <ListingTable.Cell>Status</ListingTable.Cell>
-          <ListingTable.Cell>Started</ListingTable.Cell>
-          <ListingTable.Cell>Open</ListingTable.Cell>
+          <HeaderCell label="Task" help="The human task waiting for a person — its title, or its name in the workflow." />
+          <HeaderCell label="Workflow Name" help="The workflow definition the parent instance executes." />
+          {integrationLabel && <HeaderCell label="Integration" help="The integration whose runtime owns this task, resolved from its task queue." />}
+          <HeaderCell label="Workflow ID" help="The parent workflow instance waiting on this task — click to open it." />
+          <HeaderCell label="Status" help="The task's current state." />
+          <HeaderCell label="Started" help="When the task was created." />
         </ListingTable.Row>
       </ListingTable.Head>
       <ListingTable.Body>
         {tasks.map((t) => (
-          <ListingTable.Row key={t.taskId}>
+          <ListingTable.Row key={t.taskId} onClick={() => onOpen(t)} sx={{ cursor: 'pointer', '&:hover': { bgcolor: 'action.hover' } }}>
             <ListingTable.Cell>
               <Stack direction="row" alignItems="center" gap={1}>
                 <Typography variant="body2">{taskDisplayName(t)}</Typography>
@@ -120,13 +119,6 @@ function TaskTable({ tasks, onOpen, environmentId, integrationLabel }: { tasks: 
               <StatusChip status={taskDisplayStatus(t.status)} />
             </ListingTable.Cell>
             <ListingTable.Cell>{formatTime(t.startTime)}</ListingTable.Cell>
-            <ListingTable.Cell>
-              <Tooltip title="Open task">
-                <IconButton size="small" onClick={() => onOpen(t)} aria-label="Open task">
-                  <Eye size={16} />
-                </IconButton>
-              </Tooltip>
-            </ListingTable.Cell>
           </ListingTable.Row>
         ))}
       </ListingTable.Body>

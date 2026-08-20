@@ -25,7 +25,7 @@ import SearchField from '../SearchField';
 import SchemaFormFields from './SchemaFormFields';
 import WorkflowDetailDrawer from './WorkflowDetailDrawer';
 import { buildFormResult, displayWorkflowId, formatTime, formValuesFromObject, gatewayScope, ownerLabel, ownerScope, parseFormSchema, sectionTitleSx, sortByStartTimeDesc, splitQualifiedName, type PortalScope } from './helpers';
-import { DetailRow, SchemaDisclosure, StatusChip, SubmitError, WorkflowIdLink, type WorkflowScope } from './shared';
+import { DetailRow, HeaderCell, SchemaDisclosure, StatusChip, SubmitError, WorkflowIdLink, type WorkflowScope } from './shared';
 import Authorized from '../Authorized';
 import { Permissions } from '../../constants/permissions';
 import {
@@ -75,19 +75,6 @@ const TIME_PRESETS: { label: string; ms: number }[] = [
 export type Toast = { severity: 'success' | 'error'; message: string } | null;
 
 export type { PortalScope };
-
-/** A column header that explains its concept on hover — run ids especially need the sentence. */
-function HeaderCell({ label, help }: { label: string; help: string }) {
-  return (
-    <ListingTable.Cell>
-      <Tooltip title={help} placement="top">
-        <Typography component="span" variant="inherit" sx={{ cursor: 'help', textDecoration: 'underline dotted', textUnderlineOffset: 3, textDecorationColor: 'rgba(128,128,128,0.5)' }}>
-          {label}
-        </Typography>
-      </Tooltip>
-    </ListingTable.Cell>
-  );
-}
 
 /** Integration filter, offered only when the portal spans more than one. */
 function IntegrationFilter({ targets, value, onChange }: { targets: WorkflowTarget[]; value: WorkflowTarget | null; onChange: (v: WorkflowTarget | null) => void }) {
@@ -628,20 +615,19 @@ export function ReviewActivities({ scope, onToast, initialReviewId }: { scope: P
         <ListingTable>
           <ListingTable.Head>
             <ListingTable.Row>
-              <ListingTable.Cell>Activity Name</ListingTable.Cell>
-              <ListingTable.Cell>Workflow Name</ListingTable.Cell>
-              {multi && <ListingTable.Cell>Integration</ListingTable.Cell>}
-              <ListingTable.Cell>Workflow ID</ListingTable.Cell>
-              <ListingTable.Cell>Status</ListingTable.Cell>
-              <ListingTable.Cell>Started</ListingTable.Cell>
-              <ListingTable.Cell>View</ListingTable.Cell>
+              <HeaderCell label="Activity Name" help="The gated or failed activity awaiting a person's decision." />
+              <HeaderCell label="Workflow Name" help="The workflow definition the parent instance executes." />
+              {multi && <HeaderCell label="Integration" help="The integration whose runtime owns this activity, resolved from its task queue." />}
+              <HeaderCell label="Workflow ID" help="The parent workflow instance waiting on this decision — click to open it." />
+              <HeaderCell label="Status" help="The review's current state." />
+              <HeaderCell label="Started" help="When the review was created." />
             </ListingTable.Row>
           </ListingTable.Head>
           <ListingTable.Body>
             {items.map((t) => {
               const qualified = splitQualifiedName(t.taskName ?? t.activityName);
               return (
-                <ListingTable.Row key={t.taskId}>
+                <ListingTable.Row key={t.taskId} onClick={() => setOpen({ taskId: t.taskId, taskQueue: t.taskQueue })} sx={{ cursor: 'pointer', '&:hover': { bgcolor: 'action.hover' } }}>
                   <ListingTable.Cell>
                     <Typography variant="body2">{qualified.task ?? t.taskId}</Typography>
                   </ListingTable.Cell>
@@ -660,13 +646,6 @@ export function ReviewActivities({ scope, onToast, initialReviewId }: { scope: P
                     <StatusChip status={t.status} />
                   </ListingTable.Cell>
                   <ListingTable.Cell>{formatTime(t.startTime)}</ListingTable.Cell>
-                  <ListingTable.Cell>
-                    <Tooltip title="Open activity">
-                      <IconButton size="small" onClick={() => setOpen({ taskId: t.taskId, taskQueue: t.taskQueue })} aria-label="Open activity">
-                        <Eye size={16} />
-                      </IconButton>
-                    </Tooltip>
-                  </ListingTable.Cell>
                 </ListingTable.Row>
               );
             })}

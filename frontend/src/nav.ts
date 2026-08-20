@@ -109,7 +109,7 @@ export function narrow(scope: Scope, childId: string): Scope {
 
 // Labels where capitalize(resource) is not the name people know the page by.
 const SIDEBAR_LABELS: Partial<Record<Resource, string>> = {
-  tasks: 'My Tasks',
+  tasks: 'Human Tasks',
 };
 
 export function sidebarItems(scope: Scope, currentResource: Resource | null): SidebarItem[] {

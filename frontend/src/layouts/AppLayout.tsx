@@ -50,7 +50,7 @@ import { useRef, useState } from 'react';
 import type { JSX } from 'react';
 import { useNavigate, Outlet, NavLink } from 'react-router';
 import Logo from '../components/Logo';
-import { BarChart3, Bell, Building, ChevronDown, ChevronRight, FlaskConical, Layers, LayoutDashboard, LogOut, Plus, ScrollText, Search, Server, Shield, Sliders, SquareCheck, User as UserIcon, Workflow, X } from '@wso2/oxygen-ui-icons-react';
+import { BarChart3, Bell, Building, ChevronDown, ChevronRight, FlaskConical, Layers, LayoutDashboard, LogOut, Plus, ScrollText, Search, Server, Shield, Sliders, User as UserIcon, UserCheck, Workflow, X } from '@wso2/oxygen-ui-icons-react';
 import { useProjectByHandler, useProjects, useComponents, useAllEnvironments } from '../api/queries';
 import { useMultiEnvRuntimeStatusSubscription } from '../api/subscriptions';
 import { useNotificationPreferences } from '../hooks/useNotificationPreferences';
@@ -67,7 +67,7 @@ import { getIcpVersion } from '../config/api';
 const SIDEBAR_ICONS: Record<Resource, JSX.Element> = {
   overview: <LayoutDashboard size={20} />,
   workflows: <Workflow size={20} />,
-  tasks: <SquareCheck size={20} />,
+  tasks: <UserCheck size={20} />,
   test: <FlaskConical size={20} />,
   logs: <ScrollText size={20} />,
   loggers: <Sliders size={20} />,

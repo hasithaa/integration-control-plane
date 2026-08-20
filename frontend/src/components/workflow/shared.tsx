@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import { Alert, Box, Chip, Collapse, Link, Stack, Typography } from '@wso2/oxygen-ui';
+import { Alert, Box, Chip, Collapse, Link, ListingTable, Stack, Tooltip, Typography } from '@wso2/oxygen-ui';
 import { ChevronRight } from '@wso2/oxygen-ui-icons-react';
 import { useState, type JSX, type ReactNode } from 'react';
 import { useNavigate } from 'react-router';
@@ -50,13 +50,27 @@ export function WorkflowIdLink({ workflowId, environmentId, onNavigate }: { work
       component="button"
       type="button"
       title={workflowId}
-      onClick={() => {
+      onClick={(e) => {
+        e.stopPropagation();
         onNavigate?.();
         viewWorkflow(workflowId);
       }}
       sx={{ fontFamily: 'monospace', fontSize: 12, textAlign: 'left', wordBreak: 'break-all', cursor: 'pointer', color: 'text.primary', textDecorationColor: 'inherit' }}>
       {displayWorkflowId(workflowId)}
     </Link>
+  );
+}
+
+/** A listing-column header that explains its concept on hover — run ids especially need the sentence. */
+export function HeaderCell({ label, help }: { label: string; help: string }): JSX.Element {
+  return (
+    <ListingTable.Cell>
+      <Tooltip title={help} placement="top">
+        <Typography component="span" variant="inherit" sx={{ cursor: 'help', textDecoration: 'underline dotted', textUnderlineOffset: 3, textDecorationColor: 'rgba(128,128,128,0.5)' }}>
+          {label}
+        </Typography>
+      </Tooltip>
+    </ListingTable.Cell>
   );
 }
 

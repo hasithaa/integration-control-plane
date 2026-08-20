@@ -30,7 +30,13 @@ import { WorkflowIdLink } from './shared';
  * full-height code viewer. The braces toggle always reaches the raw JSON, because a form is a
  * rendering and a rendering can be wrong; copy always copies the raw value.
  */
-const isWorkflowId = (value: unknown): value is string => typeof value === 'string' && /^(workflow|humantask|reviewactivity)-/.test(value);
+// Ids are bare UUIDs now (child ids are name-<uuid>), so the value's shape alone can't say
+// "this is an instance id" — the key has to claim it, and the value has to look like one.
+// Legacy prefixed values from older runs still link by their prefix alone.
+const ENDS_WITH_UUID = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const ID_KEY = /(workflowid|taskid|reviewid|instanceid)$/i;
+const isWorkflowId = (key: string, value: unknown): value is string =>
+  typeof value === 'string' && (/^(workflow|humantask|reviewactivity|childwf|childagent)-/.test(value) || (ID_KEY.test(key) && ENDS_WITH_UUID.test(value)));
 
 export default function StructuredValue({ title, raw, environmentId }: { title: string; raw: string; environmentId?: string }): ReactElement {
   const [showRaw, setShowRaw] = useState(false);
@@ -118,7 +124,7 @@ function ObjectRows({ value, depth, environmentId }: { value: Record<string, unk
             {humanizeKey(key)}
           </Typography>
         );
-        if (isWorkflowId(v) && environmentId) {
+        if (isWorkflowId(key, v) && environmentId) {
           return (
             <Stack key={key} direction="row" gap={1} alignItems="baseline" sx={{ minWidth: 0 }}>
               {label}

@@ -84,15 +84,15 @@ export default function WorkflowTasks(scope: ComponentScope | ProjectScope): JSX
 
   return (
     <WorkflowPageFrame
-      title="My Tasks"
+      title="Human Tasks"
       description={
         componentLevel ? (
           <>
-            Complete human tasks and decide review activities for <strong>{component?.displayName ?? scope.component}</strong>.
+            Complete human tasks and decide review activities for <strong>{component?.displayName ?? scope.component}</strong>. Only tasks applicable to you are shown.
           </>
         ) : (
           <>
-            Complete human tasks and decide review activities across all integrations in <strong>{project?.name ?? scope.project}</strong>.
+            Complete human tasks and decide review activities across all integrations in <strong>{project?.name ?? scope.project}</strong>. Only tasks applicable to you are shown.
           </>
         )
       }
@@ -104,7 +104,7 @@ export default function WorkflowTasks(scope: ComponentScope | ProjectScope): JSX
       noPermissionMessage={componentLevel ? 'You do not have permission to view tasks for this integration.' : 'You do not have permission to view tasks for this project.'}>
       <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 3 }}>
         <Tabs value={activeTab} onChange={(_, v) => setTab(v as 'tasks' | 'reviews')}>
-          {allowed.tasks && <Tab label={<TabLabel title="My Tasks" count={pendingTasks} />} value="tasks" />}
+          {allowed.tasks && <Tab label={<TabLabel title="Human Tasks" count={pendingTasks} />} value="tasks" />}
           {allowed.reviews && <Tab label={<TabLabel title="Review Activities" count={pendingReviews?.count} capped={pendingReviews?.capped} />} value="reviews" />}
         </Tabs>
       </Box>
