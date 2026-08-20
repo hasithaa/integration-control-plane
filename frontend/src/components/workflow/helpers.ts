@@ -341,6 +341,32 @@ export function formatStopwatch(ms: number): string {
 
 export type SpanCategory = 'WORKFLOW' | 'ACTIVITY' | 'HUMAN_TASK' | 'TIMER' | 'CHILD_WORKFLOW' | 'SIGNAL';
 
+// ── The agent's vocabulary ──
+//
+// The module's built-in model activities keep their precise wire names (llmChat, generate,
+// generateResult) in history and in Temporal tooling; everywhere a person reads, the renderer
+// speaks plainly instead. llmChat is the agent deciding its next move — Thinking — while
+// generate/generateResult carry the business payload and keep their own identity.
+
+/** Display names for the built-in model activities. */
+export const MODEL_ACTIVITY_LABELS: Record<string, string> = {
+  llmChat: 'Thinking',
+  generate: 'Generate',
+  generateResult: 'Generate Result',
+};
+
+/** The wrapper activity an AI-function tool runs inside; its lane is named by the tool, not by it. */
+const EXECUTE_AGENT_TOOL = 'executeAgentTool';
+
+/** The tool name buried in an executeAgentTool call's arguments, or null. */
+function wrappedToolName(attrs: Record<string, unknown>): string | null {
+  const input = decodePayloads(attrs['input']);
+  const first = Array.isArray(input) ? input[0] : input;
+  if (first === null || typeof first !== 'object') return null;
+  const toolName = (first as Record<string, unknown>)['toolName'];
+  return typeof toolName === 'string' ? toolName : null;
+}
+
 export interface TimelineSpan {
   key: string;
   /** The open (scheduled/initiated/started) history event's id — what joins this span to a step's
@@ -514,7 +540,11 @@ export function buildTimeline(events: ReadonlyArray<Record<string, unknown>>): T
     (p) => asStr(p.attrs['scheduledEventId']) ?? '',
     (p, time) => {
       const name = asStr(asRecord(p.attrs['activityType'])['name']) ?? asStr(p.attrs['activityId']) ?? 'Activity';
-      return { label: name, category: /humantask/i.test(name) ? 'HUMAN_TASK' : 'ACTIVITY', start: time };
+      // An agent's lanes speak the reader's language: model calls by what they do, a wrapped
+      // AI tool by the tool the model actually called.
+      let label = MODEL_ACTIVITY_LABELS[name] ?? name;
+      if (name === EXECUTE_AGENT_TOOL) label = wrappedToolName(p.attrs) ?? name;
+      return { label, category: /humantask/i.test(name) ? 'HUMAN_TASK' : 'ACTIVITY', start: time };
     },
   );
   activities.forEach((g, id) => pushGroup(`act-${id}`, g));
@@ -545,7 +575,7 @@ export function buildTimeline(events: ReadonlyArray<Record<string, unknown>>): T
   // Signals are point-in-time events (no duration): start === end, rendered as a marker.
   for (const p of parsed) {
     if (p.time === null || p.type !== 'WORKFLOW_EXECUTION_SIGNALED') continue;
-    spans.push({ key: `signal-${p.id}`, label: asStr(p.attrs['signalName']) ?? 'Signal', category: 'SIGNAL', status: '', start: p.time, end: p.time, running: false });
+    spans.push({ key: `signal-${p.id}`, eventId: p.id, label: asStr(p.attrs['signalName']) ?? 'Signal', category: 'SIGNAL', status: '', start: p.time, end: p.time, running: false });
   }
 
   // Workflow first, then by start time so bars read top-to-bottom in execution order.
@@ -712,6 +742,95 @@ export function extractNodeExecutionDetail(node: { id: string; type: string; sta
     callConfig,
     childWorkflowId,
   };
+}
+
+// ── Model-call rendering ──
+//
+// A model call's raw envelope is the whole conversation plus every tool definition — noise for a
+// reader who asked "what did the agent think?". This view keeps what matters: the newest message
+// the model was answering, what it replied, and which tools it reached for. The full envelope
+// stays one raw-toggle away.
+
+/** One tool invocation the model requested, with its arguments as compact JSON. */
+export interface ModelToolCall {
+  name: string;
+  args: string;
+}
+
+export interface ModelCallView {
+  /** The newest conversation message the model was answering, or null when none was recorded. */
+  lastMessage: { role: string; text: string } | null;
+  /** Messages before the newest one. */
+  earlierCount: number;
+  /** Tool definitions offered alongside the conversation. */
+  toolsOffered: number;
+  /** The assistant's text reply, when it replied in prose. */
+  assistantText: string | null;
+  /** Tool calls the model requested instead of (or beside) prose. */
+  toolCalls: ModelToolCall[];
+  /** True when the result is a typed business value (generate/generateResult), not a chat turn. */
+  structuredResult: boolean;
+}
+
+const parseJson = (text: string | null): unknown => {
+  if (text === null) return null;
+  try {
+    return JSON.parse(text);
+  } catch {
+    return null;
+  }
+};
+
+/** Interprets a model call's input/result, or returns null when the detail is not a model call. */
+export function parseModelCall(detail: NodeExecutionDetail): ModelCallView | null {
+  if (detail.callConfig?.['stepId'] !== 'model') return null;
+
+  const input = asRecord(parseJson(detail.input));
+  const messages = Array.isArray(input['messages']) ? (input['messages'] as unknown[]) : [];
+  const tools = Array.isArray(input['tools']) ? (input['tools'] as unknown[]) : [];
+  let lastMessage: { role: string; text: string } | null = null;
+  const last = asRecord(messages[messages.length - 1]);
+  if (Object.keys(last).length > 0) {
+    const content = last['content'];
+    lastMessage = {
+      role: asStr(last['role']) ?? 'message',
+      text: typeof content === 'string' && content !== '' ? content : jsonPretty(last),
+    };
+  }
+
+  const result = asRecord(parseJson(detail.result));
+  const isChatTurn = result['role'] === 'assistant';
+  const content = result['content'];
+  const rawCalls = Array.isArray(result['toolCalls']) ? (result['toolCalls'] as unknown[]) : [];
+  const toolCalls: ModelToolCall[] = rawCalls.flatMap((c) => {
+    const call = asRecord(c);
+    const name = asStr(call['name'] ?? call['toolName']);
+    if (!name) return [];
+    const args = call['arguments'] ?? call['args'];
+    return [{ name, args: args === undefined || args === null ? '' : typeof args === 'string' ? args : JSON.stringify(args) }];
+  });
+
+  return {
+    lastMessage,
+    earlierCount: Math.max(0, messages.length - 1),
+    toolsOffered: tools.length,
+    assistantText: isChatTurn && typeof content === 'string' && content !== '' ? content : null,
+    toolCalls,
+    structuredResult: !isChatTurn && detail.result !== null,
+  };
+}
+
+/** Event ids of the WORKFLOW_EXECUTION_SIGNALED events carrying one named data event. */
+export function signalEventIds(events: ReadonlyArray<Record<string, unknown>>, name: string): Set<string> {
+  const ids = new Set<string>();
+  for (const e of events) {
+    if (eventTypeOf(e) !== 'WORKFLOW_EXECUTION_SIGNALED') continue;
+    if (asStr(asRecord(e['attributes'])['signalName']) === name) {
+      const id = asStr(e['eventId']);
+      if (id) ids.add(id);
+    }
+  }
+  return ids;
 }
 
 /** Why the structural view can't be drawn — null when it can. */

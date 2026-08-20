@@ -147,6 +147,8 @@ export interface ModelGraphNode {
   parent?: string;
   /** Which arm of `parent` this node sits in: `then`, `else`, `body`, `do`, `onFail`, or match patterns. */
   branch?: string;
+  /** An agent tool's backing kind — ACTIVITY, AI_TOOL, PEER — which decides its rail category. */
+  source?: string;
   line?: number;
   column?: number;
 }

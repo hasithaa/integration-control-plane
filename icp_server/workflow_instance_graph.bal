@@ -114,19 +114,17 @@ isolated function handleInstanceGraphRequest(string componentId, string environm
         // is still worth returning; the console can draw it as a chain.
         return instanceGraphResponse(workflowType, info, (), (), "workflow", executedNodes, []);
     }
-    if model[2] == "agent" {
-        // An agent's loop is driven by the model, not by lexical call sites, so its executions
-        // carry no step ids and the by-id join would only report noise. The star is returned as
-        // the map; the console matches executions to it client-side, by what each node names.
-        return instanceGraphResponse(workflowType, info, model[0], model[1], "agent", executedNodes, []);
-    }
-    return instanceGraphResponse(workflowType, info, model[0], model[1], "workflow", executedNodes,
+    // An agent's executions join the star exactly the way a workflow's join its flow: by the
+    // step id each call was stamped with (the model node, tool:<name>, task:<name>). The one
+    // difference is downstream — an agent has no lexical order, so unstamped executions are
+    // reported as unmatched rather than interpolated onto the graph.
+    return instanceGraphResponse(workflowType, info, model[0], model[1], model[2], executedNodes,
             graphNodesOf(model[0]));
 }
 
-// Builds the response: the model as published, plus one entry per step that ran. For an agent
-// the join is skipped entirely (modelNodes is empty and graphKind says why): its executions are
-// matched to the star client-side, so reporting them as unmatched would be noise, not warning.
+// Builds the response: the model as published, plus one entry per step that ran. An agent joins
+// by step id exactly like a workflow — the runtime stamps every agent call with its star node
+// (model, tool:<name>, task:<name>) — but never by interpolation, since an agent has no order.
 isolated function instanceGraphResponse(string workflowType, map<json> info, json? graph,
         string? checksum, string graphKind, json[] executedNodes, json[] modelNodes)
         returns http:Response {
@@ -184,6 +182,12 @@ isolated function instanceGraphResponse(string workflowType, map<json> info, jso
         string resolved;
         if stepId is string {
             resolved = stepId;
+        } else if graphKind == "agent" {
+            // The model chose this call, so there is no lexical order to interpolate against —
+            // an unstamped agent execution (an integration built before the site carriers) can
+            // only be reported, not placed.
+            unmatched.push(unmatchedEntry(node, "no step id, and an agent has no order to place it by"));
+            continue;
         } else {
             // Unstamped: placed by order against the model, which is sound because a workflow body
             // is single-threaded, so history is a linear walk.
@@ -213,24 +217,6 @@ isolated function instanceGraphResponse(string workflowType, map<json> info, jso
                 unmatched.push(entry);
             }
         }
-    }
-
-    if graphKind == "agent" {
-        map<json> agentPayload = {
-            workflowType: workflowType,
-            status: stringField(info, "status") ?: "UNKNOWN",
-            descriptorChecksum: checksum,
-            graphKind: graphKind,
-            graph: graph,
-            steps: {},
-            takenArms: {},
-            unmatched: [],
-            stepIdsAvailable: true
-        };
-        http:Response agentResponse = new;
-        agentResponse.statusCode = 200;
-        agentResponse.setJsonPayload(agentPayload);
-        return agentResponse;
     }
 
     map<json> payload = {

@@ -19,6 +19,7 @@
 import { alpha, Box, useTheme } from '@wso2/oxygen-ui';
 import { useMemo, type ReactElement } from 'react';
 import type { InstanceGraph, ModelGraphNode } from '../../api/workflows';
+import { paletteColor, statusColorName } from './graphVisuals';
 
 /**
  * The agent's star, drawn compactly: channels in on the left (events, human tasks), the agent in
@@ -95,6 +96,9 @@ export default function AgentStarRail({ data, selectedStepId, onSelect }: { data
           const isAgent = kind === 'AGENT';
           const selected = selectedStepId === p.node.stepId;
           const title = p.node.target ?? p.node.stepId.replace(/^(tool|event|task):/, '');
+          // The same status→colour vocabulary as everywhere else, from the server-side join.
+          const exec = data.steps?.[p.node.stepId];
+          const statusColor = exec ? paletteColor(theme, statusColorName(exec.status)) : null;
           return (
             <g
               key={p.node.stepId}
@@ -111,15 +115,20 @@ export default function AgentStarRail({ data, selectedStepId, onSelect }: { data
                 height={NODE_H}
                 rx={isAgent ? NODE_H / 2 : 6}
                 fill={selected ? alpha(accent, 0.12) : isAgent ? alpha(accent, 0.08) : theme.palette.background.paper}
-                stroke={selected ? accent : isAgent ? accent : theme.palette.divider}
-                strokeWidth={selected ? 1.75 : 1}
+                stroke={selected ? accent : isAgent ? accent : (statusColor ?? theme.palette.divider)}
+                strokeWidth={selected ? 1.75 : statusColor ? 1.5 : 1}
               />
-              <text x={p.x + NODE_W / 2} y={p.y + 15} fill={theme.palette.text.primary} fontSize={10.5} fontWeight={600} textAnchor="middle">
+              <text x={p.x + NODE_W / 2} y={p.y + 15} fill={exec || isAgent ? theme.palette.text.primary : theme.palette.text.disabled} fontSize={10.5} fontWeight={600} textAnchor="middle">
                 {clip(title, 20)}
               </text>
               <text x={p.x + NODE_W / 2} y={p.y + 27} fill={theme.palette.text.disabled} fontSize={8.5} textAnchor="middle" style={{ letterSpacing: 0.4, textTransform: 'uppercase' }}>
                 {kind.toLowerCase()}
               </text>
+              {exec && exec.count > 1 && (
+                <text x={p.x + NODE_W - 4} y={p.y + 11} fill={statusColor ?? theme.palette.text.secondary} fontSize={8.5} fontWeight={700} textAnchor="end">
+                  ×{exec.count}
+                </text>
+              )}
             </g>
           );
         })}

@@ -21,12 +21,13 @@ import { GitBranch, List } from '@wso2/oxygen-ui-icons-react';
 import { useMemo, useRef, useState, type ReactNode } from 'react';
 import type { ExecutionGraph as ExecutionGraphData, InstanceGraph, WorkflowInstance } from '../../api/workflows';
 import StructuredValue from './StructuredValue';
+import AgentRail from './AgentRail';
 import AgentStarRail from './AgentStarRail';
 import ExecutionSummary from './ExecutionSummary';
 import FlowRail from './FlowRail';
 import NodeDetailPanel from './NodeDetailPanel';
 import WorkflowTimeline from './WorkflowTimeline';
-import { buildTimeline, extractNodeExecutionDetail, extractWorkflowInput, flowUnavailable, type TimelineSpan } from './helpers';
+import { buildTimeline, extractNodeExecutionDetail, extractWorkflowInput, flowUnavailable, signalEventIds, type TimelineSpan } from './helpers';
 
 /**
  * The instance's Overview: everything an operator reads first, on one page.
@@ -40,39 +41,12 @@ import { buildTimeline, extractNodeExecutionDetail, extractWorkflowInput, flowUn
  * are what the graph could never say. The join is navigation in both directions: clicking a rail
  * step dims every timeline span but that step's own executions; clicking a span's name opens its
  * details and names its step back on the rail.
+ *
+ * Agents join by the same step ids — the runtime stamps every agent call with its star node
+ * (model, tool:<name>, task:<name>) — with two client-side refinements: data events are signals
+ * (matched here by name), and the model's calls split into one rail row per built-in activity
+ * (`model#<activity>`), because Thinking and Generate Result mean different things to a reader.
  */
-
-/** Event ids produced by one star node, matched by what each history node names. */
-function agentEventIds(stepId: string, executionGraph: ExecutionGraphData | undefined, events: Array<Record<string, unknown>>): Set<string> {
-  const ids = new Set<string>();
-  if (!executionGraph) return ids;
-  const name = stepId.replace(/^(tool|event|task):/, '');
-  for (const node of executionGraph.nodes ?? []) {
-    const label = (node.label ?? '').toLowerCase();
-    const type = (node.type ?? '').toUpperCase();
-    let matches = false;
-    if (stepId === 'model') {
-      matches = ['llmchat', 'generateresult', 'generate'].some((n) => label.endsWith(n));
-    } else if (stepId.startsWith('tool:')) {
-      // A tool backed by an activity runs under its own name; an AI tool runs inside the
-      // executeAgentTool activity and is named in its input.
-      matches = label === name.toLowerCase();
-      if (!matches && label.endsWith('executeagenttool')) {
-        const input = extractNodeExecutionDetail(node, events).input ?? '';
-        matches = input.includes(name);
-      }
-    } else if (stepId.startsWith('task:')) {
-      matches = type === 'HUMAN_TASK' && label.includes(name.toLowerCase());
-    } else if (stepId.startsWith('event:')) {
-      const input = extractNodeExecutionDetail(node, events).input ?? '';
-      matches = (type === 'SIGNAL' || type === 'DATA' || label.includes('event')) && input.includes(name);
-    }
-    if (matches) {
-      ids.add(node.id);
-    }
-  }
-  return ids;
-}
 
 export default function WorkflowFlowTab({
   instanceGraph,
@@ -123,16 +97,17 @@ export default function WorkflowFlowTab({
   // The run's real result: the instances payload reports null, the terminal event does not.
   const workflowResult = useMemo(() => extractNodeExecutionDetail({ id: '', type: 'WORKFLOW' }, events).result, [events]);
 
-  // The last executed step, for the rail's "you are here" mark. Approximate by nature.
+  // The last executed step, for the rail's "you are here" mark. Approximate by nature. An
+  // agent's model events answer to the split rail row, not the shared model node.
   const currentStepId = useMemo(() => {
     if (!executionGraph) return null;
     const nodes = executionGraph.nodes ?? [];
     for (let i = nodes.length - 1; i >= 0; i--) {
       const stepId = nodes[i].metadata?.['stepId'] as string | undefined;
-      if (stepId) return stepId;
+      if (stepId) return isAgent && stepId === 'model' && nodes[i].label ? `model#${nodes[i].label}` : stepId;
     }
     return null;
-  }, [executionGraph]);
+  }, [executionGraph, isAgent]);
 
   // Event id → step id, for naming a clicked span's step back on the rail.
   const stepOfEvent = useMemo(() => {
@@ -140,14 +115,32 @@ export default function WorkflowFlowTab({
     for (const [stepId, exec] of Object.entries(instanceGraph?.steps ?? {})) {
       for (const id of exec.eventIds ?? []) map.set(id, stepId);
     }
+    if (isAgent) {
+      // Model events name the split row; signals name their event node.
+      for (const n of executionGraph?.nodes ?? []) {
+        if ((n.metadata?.['stepId'] as string | undefined) === 'model' && n.label) map.set(n.id, `model#${n.label}`);
+      }
+      for (const e of events) {
+        if ((e['eventType'] ?? '') !== 'WORKFLOW_EXECUTION_SIGNALED') continue;
+        const name = (e['attributes'] as Record<string, unknown> | undefined)?.['signalName'];
+        const id = e['eventId'];
+        if (typeof name === 'string' && (typeof id === 'string' || typeof id === 'number')) map.set(String(id), `event:${name}`);
+      }
+    }
     return map;
-  }, [instanceGraph]);
+  }, [instanceGraph, isAgent, executionGraph, events]);
 
   const visibleIds = useMemo(() => {
     if (!selectedStepId || !instanceGraph) return null;
-    if (isAgent) return agentEventIds(selectedStepId, executionGraph, events);
+    if (selectedStepId.startsWith('model#')) {
+      const activity = selectedStepId.slice('model#'.length);
+      return new Set((executionGraph?.nodes ?? []).filter((n) => (n.metadata?.['stepId'] as string | undefined) === 'model' && n.label === activity).map((n) => n.id));
+    }
+    if (selectedStepId.startsWith('event:')) {
+      return signalEventIds(events, selectedStepId.slice('event:'.length));
+    }
     return new Set(instanceGraph.steps?.[selectedStepId]?.eventIds ?? []);
-  }, [selectedStepId, instanceGraph, isAgent, executionGraph, events]);
+  }, [selectedStepId, instanceGraph, executionGraph, events]);
 
   const selectSpan = (span: TimelineSpan | null) => {
     setSelectedSpan(span);
@@ -208,19 +201,21 @@ export default function WorkflowFlowTab({
             </Stack>
           ) : (
             <>
-              {!isAgent && (
-                <Tooltip title={railVariant === 'chart' ? 'Show as a UML activity diagram' : 'Show as a compact chart'}>
-                  <IconButton
-                    size="small"
-                    aria-label="toggle flow style"
-                    onClick={() => setRailVariant((v) => (v === 'chart' ? 'uml' : 'chart'))}
-                    sx={{ position: 'absolute', top: 4, right: 4, zIndex: 1, bgcolor: 'background.paper', border: '1px solid', borderColor: 'divider', '&:hover': { bgcolor: 'background.paper' } }}>
-                    {railVariant === 'chart' ? <GitBranch size={14} /> : <List size={14} />}
-                  </IconButton>
-                </Tooltip>
-              )}
+              <Tooltip title={railVariant === 'chart' ? (isAgent ? 'Show as the agent map' : 'Show as a UML activity diagram') : 'Show as a compact list'}>
+                <IconButton
+                  size="small"
+                  aria-label="toggle flow style"
+                  onClick={() => setRailVariant((v) => (v === 'chart' ? 'uml' : 'chart'))}
+                  sx={{ position: 'absolute', top: 4, right: 4, zIndex: 1, bgcolor: 'background.paper', border: '1px solid', borderColor: 'divider', '&:hover': { bgcolor: 'background.paper' } }}>
+                  {railVariant === 'chart' ? <GitBranch size={14} /> : <List size={14} />}
+                </IconButton>
+              </Tooltip>
               {isAgent ? (
-                <AgentStarRail data={instanceGraph!} selectedStepId={selectedStepId} onSelect={setSelectedStepId} />
+                railVariant === 'chart' ? (
+                  <AgentRail data={instanceGraph!} executionGraph={executionGraph} events={events} selectedStepId={selectedStepId ?? railHighlight} onSelect={setSelectedStepId} />
+                ) : (
+                  <AgentStarRail data={instanceGraph!} selectedStepId={(selectedStepId ?? railHighlight)?.startsWith('model#') ? 'model' : (selectedStepId ?? railHighlight)} onSelect={setSelectedStepId} />
+                )
               ) : (
                 <FlowRail data={instanceGraph!} selectedStepId={selectedStepId ?? railHighlight} currentStepId={currentStepId} onSelect={setSelectedStepId} variant={railVariant} />
               )}
