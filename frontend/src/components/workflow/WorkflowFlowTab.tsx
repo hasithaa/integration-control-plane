@@ -27,7 +27,7 @@ import ExecutionSummary from './ExecutionSummary';
 import FlowRail from './FlowRail';
 import NodeDetailPanel from './NodeDetailPanel';
 import WorkflowTimeline from './WorkflowTimeline';
-import { buildTimeline, extractNodeExecutionDetail, extractWorkflowInput, flowUnavailable, signalEventIds, type TimelineSpan } from './helpers';
+import { buildTimeline, extractNodeExecutionDetail, extractWorkflowInput, flowUnavailable, jsonPretty, signalEventIds, type TimelineSpan } from './helpers';
 
 /**
  * The instance's Overview: everything an operator reads first, on one page.
