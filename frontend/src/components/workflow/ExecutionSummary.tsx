@@ -20,7 +20,7 @@ import { alpha, Box, IconButton, Stack, Tooltip, Typography } from '@wso2/oxygen
 import { Bug, Copy } from '@wso2/oxygen-ui-icons-react';
 import type { ReactElement, ReactNode } from 'react';
 import type { WorkflowInstance } from '../../api/workflows';
-import StructuredValue from './StructuredValue';
+
 import { displayWorkflowId, formatDuration, formatTime, jsonPretty } from './helpers';
 import { StatusChip } from './shared';
 
@@ -36,7 +36,6 @@ export default function ExecutionSummary({
   fallbackStartMs,
   fallbackEndMs,
   onOpenHistory,
-  fallbackResult,
 }: {
   info: WorkflowInstance;
   /** From the run's history — the instances payload itself carries no times. */
@@ -44,16 +43,12 @@ export default function ExecutionSummary({
   fallbackEndMs?: number | null;
   /** Opens the raw event history — debugging material, so it lives behind this rather than a tab. */
   onOpenHistory?: () => void;
-  /** The workflow's result from its terminal history event — the instances payload reports null. */
-  fallbackResult?: string | null;
 }): ReactElement {
   const status = (info.status ?? '').toUpperCase();
   const closed = !['RUNNING', 'SUSPENDED', ''].includes(status);
   const startMs = info.startTime ? Date.parse(info.startTime) : (fallbackStartMs ?? NaN);
   const closeMs = info.closeTime ? Date.parse(info.closeTime) : closed ? (fallbackEndMs ?? NaN) : NaN;
   const durationMs = Number.isFinite(startMs) && Number.isFinite(closeMs) ? closeMs - startMs : null;
-  // The instances payload reports result: null even for completed runs; the history knows better.
-  const result = info['result'] != null ? jsonPretty(info['result']) : (fallbackResult ?? null);
   const errorMessage = typeof info['errorMessage'] === 'string' ? (info['errorMessage'] as string) : null;
 
   const row = (label: string, value: ReactNode): ReactNode =>
@@ -124,15 +119,6 @@ export default function ExecutionSummary({
               {errorMessage}
             </Typography>
           </Box>
-        )}
-        {result != null ? (
-          <StructuredValue title="Result" raw={result} />
-        ) : (
-          status === 'COMPLETED' && (
-            <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-              Completed with no return value.
-            </Typography>
-          )
         )}
       </Stack>
     </Box>

@@ -89,11 +89,10 @@ export default function WorkflowFlowTab({
   const isAgent = instanceGraph?.graphKind === 'agent';
   const reason = flowUnavailable(instanceGraph);
   const startInput = extractWorkflowInput(events);
-  // The instances payload carries no times; the history does.
-  const historyRange = useMemo(() => {
-    const built = buildTimeline(events);
-    return built.spans.length > 0 ? { start: built.start, end: built.end } : null;
-  }, [events]);
+  // The instances payload carries no times; the history does. The spans stay around so a rail
+  // click can name the first execution it filtered to.
+  const timeline = useMemo(() => buildTimeline(events), [events]);
+  const historyRange = timeline.spans.length > 0 ? { start: timeline.start, end: timeline.end } : null;
   // The run's real result: the instances payload reports null, the terminal event does not.
   const workflowResult = useMemo(() => extractNodeExecutionDetail({ id: '', type: 'WORKFLOW' }, events).result, [events]);
 
@@ -130,21 +129,35 @@ export default function WorkflowFlowTab({
     return map;
   }, [instanceGraph, isAgent, executionGraph, events]);
 
-  const visibleIds = useMemo(() => {
-    if (!selectedStepId || !instanceGraph) return null;
-    if (selectedStepId.startsWith('model#')) {
-      const activity = selectedStepId.slice('model#'.length);
-      return new Set((executionGraph?.nodes ?? []).filter((n) => (n.metadata?.['stepId'] as string | undefined) === 'model' && n.label === activity).map((n) => n.id));
-    }
-    if (selectedStepId.startsWith('event:')) {
-      return signalEventIds(events, selectedStepId.slice('event:'.length));
-    }
-    return new Set(instanceGraph.steps?.[selectedStepId]?.eventIds ?? []);
-  }, [selectedStepId, instanceGraph, executionGraph, events]);
+  const stepEventIds = useMemo(() => {
+    return (stepId: string): Set<string> => {
+      if (stepId.startsWith('model#')) {
+        const activity = stepId.slice('model#'.length);
+        return new Set((executionGraph?.nodes ?? []).filter((n) => (n.metadata?.['stepId'] as string | undefined) === 'model' && n.label === activity).map((n) => n.id));
+      }
+      if (stepId.startsWith('event:')) {
+        return signalEventIds(events, stepId.slice('event:'.length));
+      }
+      return new Set(instanceGraph?.steps?.[stepId]?.eventIds ?? []);
+    };
+  }, [instanceGraph, executionGraph, events]);
+
+  const visibleIds = useMemo(() => (selectedStepId && instanceGraph ? stepEventIds(selectedStepId) : null), [selectedStepId, instanceGraph, stepEventIds]);
 
   const selectSpan = (span: TimelineSpan | null) => {
     setSelectedSpan(span);
     setRailHighlight(span?.eventId ? (stepOfEvent.get(span.eventId) ?? null) : null);
+  };
+
+  // A rail click filters the timeline — and when the detail overlay is already open, it follows:
+  // the details switch to the clicked step's first execution rather than staying on whatever was
+  // open before, which read as the overlay ignoring the click.
+  const selectStep = (stepId: string | null) => {
+    setSelectedStepId(stepId);
+    if (stepId && selectedSpan) {
+      const ids = stepEventIds(stepId);
+      setSelectedSpan(timeline.spans.find((sp) => ids.has(sp.eventId ?? sp.key)) ?? null);
+    }
   };
 
   // The details ride in an overlay pinned to the pane's right edge, so opening one never reflows
@@ -161,18 +174,30 @@ export default function WorkflowFlowTab({
     </Box>
   );
 
+  // The instances payload reports result: null even for completed runs; the history knows better.
+  const resultRaw = info && info['result'] != null ? jsonPretty(info['result']) : workflowResult;
+  const completedNoResult = (info?.status ?? '').toUpperCase() === 'COMPLETED' && resultRaw == null;
   const cards = (
-    <Stack direction="row" gap={1.5} sx={{ flexWrap: 'wrap', alignItems: 'flex-start' }}>
-      {startInput !== null && (
-        <Box sx={{ flex: 1, minWidth: 280 }}>
-          <StructuredValue title="Workflow input" raw={startInput} environmentId={environmentId} />
-        </Box>
-      )}
-      {info && (
-        <Box sx={{ flex: 1, minWidth: 280 }}>
-          <ExecutionSummary info={info} fallbackStartMs={historyRange?.start} fallbackEndMs={historyRange?.end} onOpenHistory={onOpenHistory} fallbackResult={workflowResult} />
-        </Box>
-      )}
+    <Stack gap={1.5}>
+      {info && <ExecutionSummary info={info} fallbackStartMs={historyRange?.start} fallbackEndMs={historyRange?.end} onOpenHistory={onOpenHistory} />}
+      <Stack direction="row" gap={1.5} sx={{ flexWrap: 'wrap', alignItems: 'flex-start' }}>
+        {startInput !== null && (
+          <Box sx={{ flex: 1, minWidth: 280 }}>
+            <StructuredValue title="Workflow input" raw={startInput} environmentId={environmentId} />
+          </Box>
+        )}
+        {resultRaw != null ? (
+          <Box sx={{ flex: 1, minWidth: 280 }}>
+            <StructuredValue title="Workflow result" raw={resultRaw} environmentId={environmentId} />
+          </Box>
+        ) : completedNoResult ? (
+          <Box sx={{ flex: 1, minWidth: 280, alignSelf: 'center' }}>
+            <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+              Completed with no return value.
+            </Typography>
+          </Box>
+        ) : null}
+      </Stack>
     </Stack>
   );
 
@@ -212,12 +237,12 @@ export default function WorkflowFlowTab({
               </Tooltip>
               {isAgent ? (
                 railVariant === 'chart' ? (
-                  <AgentRail data={instanceGraph!} executionGraph={executionGraph} events={events} selectedStepId={selectedStepId ?? railHighlight} onSelect={setSelectedStepId} />
+                  <AgentRail data={instanceGraph!} executionGraph={executionGraph} events={events} selectedStepId={selectedStepId ?? railHighlight} onSelect={selectStep} />
                 ) : (
-                  <AgentStarRail data={instanceGraph!} selectedStepId={(selectedStepId ?? railHighlight)?.startsWith('model#') ? 'model' : (selectedStepId ?? railHighlight)} onSelect={setSelectedStepId} />
+                  <AgentStarRail data={instanceGraph!} selectedStepId={(selectedStepId ?? railHighlight)?.startsWith('model#') ? 'model' : (selectedStepId ?? railHighlight)} onSelect={selectStep} />
                 )
               ) : (
-                <FlowRail data={instanceGraph!} selectedStepId={selectedStepId ?? railHighlight} currentStepId={currentStepId} onSelect={setSelectedStepId} variant={railVariant} />
+                <FlowRail data={instanceGraph!} selectedStepId={selectedStepId ?? railHighlight} currentStepId={currentStepId} onSelect={selectStep} variant={railVariant} />
               )}
             </>
           )}

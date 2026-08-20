@@ -21,8 +21,7 @@ import { Ban, OctagonX, PauseCircle, PlayCircle, X } from '@wso2/oxygen-ui-icons
 import { useState } from 'react';
 import WorkflowFlowTab from './WorkflowFlowTab';
 import { useWorkflowExecutionGraph, useWorkflowHistory, useWorkflowInfo, useWorkflowInstanceGraph, useWorkflowLifecycle, type WorkflowLifecycleAction } from '../../api/workflows';
-import { StatusChip, type WorkflowScope } from './shared';
-import { displayWorkflowId } from './helpers';
+import { type WorkflowScope } from './shared';
 import Authorized from '../Authorized';
 import { Permissions } from '../../constants/permissions';
 import { useLayout } from '../../contexts/LayoutContext';
@@ -81,12 +80,11 @@ export default function WorkflowDetailDrawer({ scope, workflowId, onClose }: { s
   return (
     <Drawer anchor="right" open variant="persistent" sx={drawerPaperSx(sidebarWidth)} onClose={onClose}>
       <Stack direction="row" alignItems="center" justifyContent="space-between" sx={headerSx}>
-        <Stack direction="row" alignItems="center" gap={1.5} sx={{ minWidth: 0 }}>
-          <Typography variant="subtitle1" title={workflowId} sx={{ fontWeight: 600, fontFamily: 'monospace', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-            {displayWorkflowId(workflowId)}
-          </Typography>
-          {status && <StatusChip status={status} />}
-        </Stack>
+        {/* The id and status live in the Execution card below — repeating them here said
+            nothing twice. The header names the page. */}
+        <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
+          Execution Details
+        </Typography>
         <IconButton size="small" aria-label="close" onClick={onClose}>
           <X size={16} />
         </IconButton>
