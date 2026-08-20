@@ -88,7 +88,7 @@ type WorkTypeFilter = (typeof WORK_TYPE_OPTIONS)[number]['value'];
 const WORK_STATUSES = ['All', 'PENDING', 'COMPLETED', 'FAILED', 'CANCELED', 'TERMINATED'];
 
 /** Compact trigger label for list chips. */
-const triggerChipLabel = (trigger?: string): string => (trigger === 'ON_FAILURE' ? 'Failure review' : trigger === 'PRE_RUN' ? 'Approval gate' : 'Review');
+const triggerChipLabel = (trigger?: string): string => (trigger === 'ON_FAILURE' ? 'Review failure' : trigger === 'PRE_RUN' ? 'Approval gate' : 'Review');
 
 /** Hosts the unified queue and owns the toast everything under it reports through. */
 export default function UserPortal({

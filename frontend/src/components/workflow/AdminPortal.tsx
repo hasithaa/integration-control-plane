@@ -520,7 +520,7 @@ export function StartWorkflowDialog({ scope, initialWorkflowType, onClose, onToa
 /** Why a review exists, in words: an approval gate before the run, or a decision after a failure. */
 export function reviewTriggerLabel(trigger?: string): string {
   if (trigger === 'PRE_RUN') return 'Approval gate — review before the activity runs';
-  if (trigger === 'ON_FAILURE') return 'Failure review — decide a failed activity\u2019s rerun';
+  if (trigger === 'ON_FAILURE') return 'Review failure — decide the failed activity\u2019s rerun';
   return trigger || '—';
 }
 
