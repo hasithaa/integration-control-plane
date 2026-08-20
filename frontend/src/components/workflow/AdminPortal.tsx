@@ -25,7 +25,7 @@ import SearchField from '../SearchField';
 import SchemaFormFields from './SchemaFormFields';
 import WorkflowDetailDrawer from './WorkflowDetailDrawer';
 import { buildFormResult, displayWorkflowId, formatTime, formValuesFromObject, gatewayScope, ownerLabel, ownerScope, parseFormSchema, sectionTitleSx, sortByStartTimeDesc, splitQualifiedName, type PortalScope } from './helpers';
-import { DetailRow, HeaderCell, SchemaDisclosure, StatusChip, SubmitError, WorkflowIdLink, type WorkflowScope } from './shared';
+import { DetailRow, HeaderCell, ListFooter, SchemaDisclosure, StatusChip, SubmitError, WorkflowIdLink, type WorkflowScope } from './shared';
 import Authorized from '../Authorized';
 import { Permissions } from '../../constants/permissions';
 import {
@@ -77,7 +77,7 @@ export type Toast = { severity: 'success' | 'error'; message: string } | null;
 export type { PortalScope };
 
 /** Integration filter, offered only when the portal spans more than one. */
-function IntegrationFilter({ targets, value, onChange }: { targets: WorkflowTarget[]; value: WorkflowTarget | null; onChange: (v: WorkflowTarget | null) => void }) {
+export function IntegrationFilter({ targets, value, onChange }: { targets: WorkflowTarget[]; value: WorkflowTarget | null; onChange: (v: WorkflowTarget | null) => void }) {
   return (
     <Autocomplete
       size="small"
@@ -113,7 +113,7 @@ export function StatusFilter({ options, value, onChange }: { options: string[]; 
   return <Autocomplete size="small" sx={{ width: 180 }} options={options} value={value} disableClearable getOptionLabel={statusLabel} onChange={(_, v) => onChange(v ?? 'All')} renderInput={(params) => <TextField {...params} label="Status" />} />;
 }
 
-function WorkflowNameFilter({ definitions, value, onChange }: { definitions: WorkflowDefinition[]; value: WorkflowDefinition | null; onChange: (v: WorkflowDefinition | null) => void }) {
+export function WorkflowNameFilter({ definitions, value, onChange }: { definitions: WorkflowDefinition[]; value: WorkflowDefinition | null; onChange: (v: WorkflowDefinition | null) => void }) {
   return (
     <Autocomplete
       size="small"
@@ -129,7 +129,7 @@ function WorkflowNameFilter({ definitions, value, onChange }: { definitions: Wor
 }
 
 /** Owns the time-range dropdown (relative presets + custom bounds) and resolves it to ISO bounds. */
-function useTimeRangeFilter() {
+export function useTimeRangeFilter() {
   const [timeRange, setTimeRange] = useState(ANY_TIME);
   const [customStart, setCustomStart] = useState(() => toLocalInput(new Date(Date.now() - 24 * 3600_000)));
   const [customEnd, setCustomEnd] = useState(() => toLocalInput(new Date()));
@@ -344,19 +344,7 @@ function WorkflowsAdmin({
               ))}
             </ListingTable.Body>
           </ListingTable>
-          {/* Always states how much is on screen — a page that happens to be complete is otherwise
-              indistinguishable from one that was silently cut off. */}
-          <Stack direction="row" alignItems="center" justifyContent="center" gap={1.5} sx={{ mt: 1.5 }}>
-            <Typography variant="caption" color="text.secondary">
-              Showing {items.length} {items.length === 1 ? 'instance' : 'instances'}
-              {hasNextPage ? ' — more available' : ''}
-            </Typography>
-            {hasNextPage && (
-              <Button size="small" variant="outlined" disabled={isFetchingNextPage} onClick={() => fetchNextPage()}>
-                {isFetchingNextPage ? 'Loading…' : 'Load more'}
-              </Button>
-            )}
-          </Stack>
+          <ListFooter count={items.length} singular="instance" plural="instances" hasMore={hasNextPage} loadingMore={isFetchingNextPage} onLoadMore={() => fetchNextPage()} />
         </>
       )}
 
@@ -652,6 +640,7 @@ export function ReviewActivities({ scope, onToast, initialReviewId }: { scope: P
           </ListingTable.Body>
         </ListingTable>
       )}
+      {!isLoading && !error && items.length > 0 && <ListFooter count={items.length} singular="review activity" plural="review activities" hasMore={page?.hasMore === true} />}
 
       {open && <ReviewActivityDetailDialog scope={ownerScope(scope, open.taskQueue)} taskId={open.taskId} onClose={() => setOpen(null)} onToast={onToast} />}
     </>

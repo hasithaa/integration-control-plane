@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import { Alert, Box, Chip, Collapse, Link, ListingTable, Stack, Tooltip, Typography } from '@wso2/oxygen-ui';
+import { Alert, Box, Button, Chip, Collapse, Link, ListingTable, Stack, Tooltip, Typography } from '@wso2/oxygen-ui';
 import { ChevronRight } from '@wso2/oxygen-ui-icons-react';
 import { useState, type JSX, type ReactNode } from 'react';
 import { useNavigate } from 'react-router';
@@ -58,6 +58,28 @@ export function WorkflowIdLink({ workflowId, environmentId, onNavigate }: { work
       sx={{ fontFamily: 'monospace', fontSize: 12, textAlign: 'left', wordBreak: 'break-all', cursor: 'pointer', color: 'text.primary', textDecorationColor: 'inherit' }}>
       {displayWorkflowId(workflowId)}
     </Link>
+  );
+}
+
+/**
+ * Under every listing: how much is on screen, and how to get the rest. A page that happens to be
+ * complete is otherwise indistinguishable from one that was silently cut off. With `onLoadMore`
+ * the rest is one click away; without it (a listing whose filters run client-side over a bounded
+ * fetch) the honest advice is to narrow the filters.
+ */
+export function ListFooter({ count, singular, plural, hasMore, loadingMore, onLoadMore }: { count: number; singular: string; plural: string; hasMore: boolean; loadingMore?: boolean; onLoadMore?: () => void }): JSX.Element {
+  return (
+    <Stack direction="row" alignItems="center" justifyContent="center" gap={1.5} sx={{ mt: 1.5 }}>
+      <Typography variant="caption" color="text.secondary">
+        Showing {count} {count === 1 ? singular : plural}
+        {hasMore ? (onLoadMore ? ' — more available' : ' — more exist; narrow the filters to see them') : ''}
+      </Typography>
+      {hasMore && onLoadMore && (
+        <Button size="small" variant="outlined" disabled={loadingMore} onClick={onLoadMore}>
+          {loadingMore ? 'Loading…' : 'Load more'}
+        </Button>
+      )}
+    </Stack>
   );
 }
 

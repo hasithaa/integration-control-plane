@@ -17,15 +17,16 @@
  */
 
 import { Alert, Box, Button, Card, Chip, CircularProgress, Dialog, DialogActions, DialogContent, DialogTitle, Divider, IconButton, ListingTable, Snackbar, Stack, TextField, Tooltip, Typography } from '@wso2/oxygen-ui';
+import SearchField from '../SearchField';
 import { RefreshCw } from '@wso2/oxygen-ui-icons-react';
 import { useEffect, useState } from 'react';
 import SchemaFormFields from './SchemaFormFields';
 import { buildFormResult, formatTime, gatewayScope, humanizeKey, ownerLabel, ownerScope, parseFormSchema, sectionTitleSx, sortByStartTimeDesc, unescapeRoleName, type PortalScope } from './helpers';
-import { HeaderCell, DetailRow, StatusChip, SubmitError, WorkflowIdLink, type WorkflowScope } from './shared';
-import { ReviewActivities, StatusFilter } from './AdminPortal';
+import { HeaderCell, DetailRow, ListFooter, StatusChip, SubmitError, WorkflowIdLink, type WorkflowScope } from './shared';
+import { IntegrationFilter, ReviewActivities, StatusFilter, useTimeRangeFilter, WorkflowNameFilter } from './AdminPortal';
 import Authorized from '../Authorized';
 import { Permissions } from '../../constants/permissions';
-import { useCompleteHumanTask, useFailHumanTask, useHumanTask, useHumanTasks, type HumanTask } from '../../api/workflows';
+import { distinctWorkflowTypes, useCompleteHumanTask, useFailHumanTask, useHumanTask, useHumanTasksInfinite, useWorkflowDefinitionsAcross, type HumanTask, type WorkflowDefinition, type WorkflowTarget } from '../../api/workflows';
 
 const emptySx = { py: 4, textAlign: 'center', color: 'text.secondary' } as const;
 
@@ -136,20 +137,58 @@ function MyTasks({ scope, onToast, initialTaskId }: { scope: PortalScope; onToas
     if (linkedTask) setOpen(linkedTask);
   }, [linkedTask]);
   const [status, setStatus] = useState('PENDING');
-  const { data: page, isLoading, error, refetch, isFetching } = useHumanTasks(gatewayScope(scope), { status: status === 'All' ? undefined : status, taskQueue: scope.taskQueue, limit: 50 });
-  const tasks = sortByStartTimeDesc(page?.items ?? []);
+  const [search, setSearch] = useState('');
+  const [selectedType, setSelectedType] = useState<WorkflowDefinition | null>(null);
+  const [integration, setIntegration] = useState<WorkflowTarget | null>(null);
+  const timeFilter = useTimeRangeFilter();
+
   const multi = scope.targets.length > 1;
+  const taskQueue = integration?.handler ?? scope.taskQueue;
+  const definitions = useWorkflowDefinitionsAcross(scope.targets, scope.environmentId);
+  // Every filter is the runtime's own — parent workflow id, workflow type, queue, time bounds —
+  // so paging stays honest: what "Load more" appends is the next page of the same question.
+  const { data, isLoading, error, refetch, isFetching, hasNextPage, fetchNextPage, isFetchingNextPage } = useHumanTasksInfinite(gatewayScope(scope), {
+    status: status === 'All' ? undefined : status,
+    parentWorkflowId: search || undefined,
+    parentWorkflowType: selectedType?.workflowType || undefined,
+    taskQueue,
+    startTimeFrom: timeFilter.bounds.startTimeFrom,
+    startTimeTo: timeFilter.bounds.startTimeTo,
+    limit: 50,
+  });
+  const tasks = sortByStartTimeDesc((data?.pages ?? []).flatMap((p) => p.items ?? []));
+  const hasFilters = status !== 'PENDING' || !!selectedType || !!search || !!integration || timeFilter.active;
 
   return (
     <>
       <Stack direction="row" alignItems="center" gap={1.5} sx={{ mb: 2 }} flexWrap="wrap">
-        <StatusFilter options={HUMAN_TASK_STATUSES} value={status} onChange={setStatus} />
+        <SearchField value={search} onChange={setSearch} placeholder="Search by workflow ID" sx={{ width: 320 }} />
         <Box sx={{ flex: 1 }} />
         <Tooltip title="Refresh">
           <IconButton size="small" onClick={() => refetch()} aria-label="Refresh">
             <RefreshCw size={16} style={{ animation: isFetching ? 'spin 1s linear infinite' : 'none' }} />
           </IconButton>
         </Tooltip>
+      </Stack>
+
+      <Stack direction="row" gap={1.5} sx={{ mb: 2 }} flexWrap="wrap" alignItems="center">
+        <StatusFilter options={HUMAN_TASK_STATUSES} value={status} onChange={setStatus} />
+        <WorkflowNameFilter definitions={distinctWorkflowTypes(definitions.items)} value={selectedType} onChange={setSelectedType} />
+        {multi && <IntegrationFilter targets={scope.targets} value={integration} onChange={setIntegration} />}
+        {timeFilter.controls}
+        {hasFilters && (
+          <Button
+            size="small"
+            onClick={() => {
+              setStatus('PENDING');
+              setSelectedType(null);
+              setSearch('');
+              setIntegration(null);
+              timeFilter.reset();
+            }}>
+            Clear
+          </Button>
+        )}
       </Stack>
 
       {isLoading ? (
@@ -159,7 +198,10 @@ function MyTasks({ scope, onToast, initialTaskId }: { scope: PortalScope; onToas
       ) : tasks.length === 0 ? (
         <Typography sx={emptySx}>{status === 'All' ? 'No tasks.' : `No ${status.toLowerCase()} tasks.`}</Typography>
       ) : (
-        <TaskTable tasks={tasks} onOpen={setOpen} environmentId={scope.environmentId} integrationLabel={multi ? (taskQueue) => ownerLabel(scope, taskQueue) : undefined} />
+        <>
+          <TaskTable tasks={tasks} onOpen={setOpen} environmentId={scope.environmentId} integrationLabel={multi ? (taskQueue) => ownerLabel(scope, taskQueue) : undefined} />
+          <ListFooter count={tasks.length} singular="task" plural="tasks" hasMore={hasNextPage} loadingMore={isFetchingNextPage} onLoadMore={() => fetchNextPage()} />
+        </>
       )}
 
       {open && <TaskDetailDialog scope={ownerScope(scope, open.taskQueue)} taskId={open.taskId} actionable={taskDisplayStatus(open.status) === 'PENDING'} onClose={() => setOpen(null)} onToast={onToast} />}

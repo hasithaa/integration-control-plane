@@ -416,6 +416,8 @@ export interface HumanTaskFilters {
   parentWorkflowType?: string;
   taskName?: string;
   taskQueue?: string;
+  startTimeFrom?: string;
+  startTimeTo?: string;
   limit?: number;
   pageToken?: string;
 }
@@ -428,6 +430,17 @@ export function useHumanTasks(s: Scope, filters: HumanTaskFilters) {
   return useQuery({
     queryKey: ['wf', 'human-tasks', s.componentId, s.environmentId, filters],
     queryFn: () => fetchHumanTasks(s.componentId, s.environmentId, filters),
+    enabled: enabledFor(s),
+  });
+}
+
+/** Paged the way the runtime pages — forward-only tokens — so "Load more" appends. */
+export function useHumanTasksInfinite(s: Scope, filters: Omit<HumanTaskFilters, 'pageToken'>) {
+  return useInfiniteQuery({
+    queryKey: ['wf', 'human-tasks', s.componentId, s.environmentId, filters],
+    queryFn: ({ pageParam }) => fetchHumanTasks(s.componentId, s.environmentId, { ...filters, pageToken: pageParam || undefined }),
+    initialPageParam: '',
+    getNextPageParam: (last) => (last.hasMore && last.nextPageToken ? last.nextPageToken : undefined),
     enabled: enabledFor(s),
   });
 }
