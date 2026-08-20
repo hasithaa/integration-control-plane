@@ -22,7 +22,7 @@ import { useState, type JSX, type ReactNode } from 'react';
 import { useNavigate } from 'react-router';
 import { resourceUrl, useScope } from '../../nav';
 import CodeViewer from '../CodeViewer';
-import { STATUS_COLORS } from './helpers';
+import { displayWorkflowId, STATUS_COLORS } from './helpers';
 
 export interface WorkflowScope {
   componentId: string;
@@ -49,12 +49,13 @@ export function WorkflowIdLink({ workflowId, environmentId, onNavigate }: { work
     <Link
       component="button"
       type="button"
+      title={workflowId}
       onClick={() => {
         onNavigate?.();
         viewWorkflow(workflowId);
       }}
       sx={{ fontFamily: 'monospace', fontSize: 12, textAlign: 'left', wordBreak: 'break-all', cursor: 'pointer', color: 'text.primary', textDecorationColor: 'inherit' }}>
-      {workflowId}
+      {displayWorkflowId(workflowId)}
     </Link>
   );
 }

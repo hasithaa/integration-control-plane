@@ -41,6 +41,11 @@ export interface WorkflowPageScope {
   projectId: string;
   componentId: string;
   environments: GqlEnvironment[];
+  /** The environment everything on the page reads: the selection when it names a real environment,
+   * else the first one. Resolved here — not by each page — because the queue lookup below needs it
+   * before the page's own resolution runs; a page passing the raw (initially empty) selection would
+   * silently never load the queues, unmapping every integration. */
+  activeEnvId: string;
   targets: WorkflowTarget[];
   /** Integration scope: that integration's real task queue (undefined until published). Project scope: undefined. */
   taskQueue?: string;
@@ -49,7 +54,7 @@ export interface WorkflowPageScope {
   canViewWorkflows: boolean;
 }
 
-export function useWorkflowPageScope(scope: ComponentScope | ProjectScope, activeEnvId: string): WorkflowPageScope {
+export function useWorkflowPageScope(scope: ComponentScope | ProjectScope, selectedEnvId: string): WorkflowPageScope {
   const componentLevel = hasComponent(scope);
   const { data: project, isLoading: loadingProject } = useProjectByHandler(scope.project);
   const projectId = project?.id ?? '';
@@ -57,6 +62,7 @@ export function useWorkflowPageScope(scope: ComponentScope | ProjectScope, activ
   const { data: allComponents = [], isLoading: loadingComponents } = useComponents(scope.org, projectId);
   const { data: environments = [], isLoading: loadingEnvs } = useEnvironments(projectId);
   const componentId = component?.id ?? '';
+  const activeEnvId = environments.some((e) => e.id === selectedEnvId) ? selectedEnvId : (environments[0]?.id ?? '');
 
   useLoadComponentPermissions(scope.org, projectId, componentLevel ? componentId : '');
   useLoadProjectPermissions(scope.org, projectId);
@@ -98,6 +104,7 @@ export function useWorkflowPageScope(scope: ComponentScope | ProjectScope, activ
     projectId,
     componentId,
     environments,
+    activeEnvId,
     targets,
     taskQueue,
     loading: loadingProject || loadingComponent || loadingEnvs || loadingComponents,

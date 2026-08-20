@@ -64,8 +64,7 @@ export default function Workflows(scope: ComponentScope | ProjectScope): JSX.Ele
   }, [urlWorkflowType, urlWorkflowId, setSearchParams]);
 
   const pageScope = useWorkflowPageScope(scope, selectedEnvId);
-  const { environments, targets, taskQueue, component, project } = pageScope;
-  const activeEnvId = environments.some((e) => e.id === selectedEnvId) ? selectedEnvId : (environments[0]?.id ?? '');
+  const { environments, activeEnvId, targets, taskQueue, component, project } = pageScope;
 
   // A deep-linked id might not be a workflow at all — a human task and a review are their own
   // instances. Ask the instance what it is (its starter stamped the kind in its memo) and load

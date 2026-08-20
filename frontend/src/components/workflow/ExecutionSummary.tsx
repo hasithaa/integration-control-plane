@@ -21,7 +21,7 @@ import { Bug, Copy } from '@wso2/oxygen-ui-icons-react';
 import type { ReactElement, ReactNode } from 'react';
 import type { WorkflowInstance } from '../../api/workflows';
 import StructuredValue from './StructuredValue';
-import { formatDuration, formatTime, jsonPretty } from './helpers';
+import { displayWorkflowId, formatDuration, formatTime, jsonPretty } from './helpers';
 import { StatusChip } from './shared';
 
 /**
@@ -103,8 +103,8 @@ export default function ExecutionSummary({
           'Instance ID',
           info.workflowId ? (
             <Stack direction="row" alignItems="center" gap={0.5} sx={{ minWidth: 0 }}>
-              <Box component="span" sx={{ fontFamily: 'monospace', fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                {info.workflowId}
+              <Box component="span" title={info.workflowId} sx={{ fontFamily: 'monospace', fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {displayWorkflowId(info.workflowId)}
               </Box>
               <Tooltip title="Copy instance ID">
                 <IconButton size="small" aria-label="copy instance id" onClick={() => navigator.clipboard.writeText(info.workflowId)} sx={{ p: 0.25 }}>

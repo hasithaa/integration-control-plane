@@ -24,7 +24,7 @@ import { resourceUrl, useScope } from '../../nav';
 import SearchField from '../SearchField';
 import SchemaFormFields from './SchemaFormFields';
 import WorkflowDetailDrawer from './WorkflowDetailDrawer';
-import { buildFormResult, formatTime, formValuesFromObject, gatewayScope, ownerLabel, ownerScope, parseFormSchema, sectionTitleSx, sortByStartTimeDesc, splitQualifiedName, type PortalScope } from './helpers';
+import { buildFormResult, displayWorkflowId, formatTime, formValuesFromObject, gatewayScope, ownerLabel, ownerScope, parseFormSchema, sectionTitleSx, sortByStartTimeDesc, splitQualifiedName, type PortalScope } from './helpers';
 import { DetailRow, SchemaDisclosure, StatusChip, SubmitError, WorkflowIdLink, type WorkflowScope } from './shared';
 import Authorized from '../Authorized';
 import { Permissions } from '../../constants/permissions';
@@ -75,6 +75,19 @@ const TIME_PRESETS: { label: string; ms: number }[] = [
 export type Toast = { severity: 'success' | 'error'; message: string } | null;
 
 export type { PortalScope };
+
+/** A column header that explains its concept on hover — run ids especially need the sentence. */
+function HeaderCell({ label, help }: { label: string; help: string }) {
+  return (
+    <ListingTable.Cell>
+      <Tooltip title={help} placement="top">
+        <Typography component="span" variant="inherit" sx={{ cursor: 'help', textDecoration: 'underline dotted', textUnderlineOffset: 3, textDecorationColor: 'rgba(128,128,128,0.5)' }}>
+          {label}
+        </Typography>
+      </Tooltip>
+    </ListingTable.Cell>
+  );
+}
 
 /** Integration filter, offered only when the portal spans more than one. */
 function IntegrationFilter({ targets, value, onChange }: { targets: WorkflowTarget[]; value: WorkflowTarget | null; onChange: (v: WorkflowTarget | null) => void }) {
@@ -306,19 +319,29 @@ function WorkflowsAdmin({
           <ListingTable>
             <ListingTable.Head>
               <ListingTable.Row>
-                <ListingTable.Cell>Workflow ID</ListingTable.Cell>
-                <ListingTable.Cell>Name</ListingTable.Cell>
-                {multi && <ListingTable.Cell>Integration</ListingTable.Cell>}
-                <ListingTable.Cell>Status</ListingTable.Cell>
-                <ListingTable.Cell>Started</ListingTable.Cell>
-                <ListingTable.Cell>Actions</ListingTable.Cell>
+                <HeaderCell label="Workflow ID" help="The unique identity of this instance — what searches, links, and management operations use." />
+                <HeaderCell label="Run ID" help="One attempt of the instance. A retry or reset starts a new run under the same workflow ID; this names the latest attempt." />
+                <HeaderCell label="Workflow Name" help="The workflow definition this instance executes." />
+                {multi && <HeaderCell label="Integration" help="The integration whose runtime executes this instance, resolved from its task queue." />}
+                <HeaderCell label="Status" help="The instance's current state." />
+                <HeaderCell label="Started" help="When the instance started." />
               </ListingTable.Row>
             </ListingTable.Head>
             <ListingTable.Body>
               {items.map((wf) => (
-                <ListingTable.Row key={`${wf.workflowId}:${wf.runId ?? ''}`}>
+                <ListingTable.Row
+                  key={`${wf.workflowId}:${wf.runId ?? ''}`}
+                  onClick={() => setDetail({ workflowId: wf.workflowId, taskQueue: wf.taskQueue })}
+                  sx={{ cursor: 'pointer', '&:hover': { bgcolor: 'action.hover' } }}>
                   <ListingTable.Cell>
-                    <Typography sx={{ fontFamily: 'monospace', fontSize: 12 }}>{wf.workflowId}</Typography>
+                    <Typography title={wf.workflowId} sx={{ fontFamily: 'monospace', fontSize: 12 }}>
+                      {displayWorkflowId(wf.workflowId)}
+                    </Typography>
+                  </ListingTable.Cell>
+                  <ListingTable.Cell>
+                    <Typography title={wf.runId} sx={{ fontFamily: 'monospace', fontSize: 12, color: 'text.secondary' }}>
+                      {wf.runId ? `${wf.runId.slice(0, 8)}…` : '—'}
+                    </Typography>
                   </ListingTable.Cell>
                   <ListingTable.Cell>{wf.workflowType ?? '—'}</ListingTable.Cell>
                   {multi && (
@@ -330,13 +353,6 @@ function WorkflowsAdmin({
                     <StatusChip status={wf.status} />
                   </ListingTable.Cell>
                   <ListingTable.Cell>{formatTime(wf.startTime)}</ListingTable.Cell>
-                  <ListingTable.Cell>
-                    <Tooltip title="View details">
-                      <IconButton size="small" onClick={() => setDetail({ workflowId: wf.workflowId, taskQueue: wf.taskQueue })} aria-label="View details">
-                        <Eye size={16} />
-                      </IconButton>
-                    </Tooltip>
-                  </ListingTable.Cell>
                 </ListingTable.Row>
               ))}
             </ListingTable.Body>

@@ -22,6 +22,7 @@ import { useState } from 'react';
 import WorkflowFlowTab from './WorkflowFlowTab';
 import { useWorkflowExecutionGraph, useWorkflowHistory, useWorkflowInfo, useWorkflowInstanceGraph, useWorkflowLifecycle, type WorkflowLifecycleAction } from '../../api/workflows';
 import { StatusChip, type WorkflowScope } from './shared';
+import { displayWorkflowId } from './helpers';
 import Authorized from '../Authorized';
 import { Permissions } from '../../constants/permissions';
 import { useLayout } from '../../contexts/LayoutContext';
@@ -81,8 +82,8 @@ export default function WorkflowDetailDrawer({ scope, workflowId, onClose }: { s
     <Drawer anchor="right" open variant="persistent" sx={drawerPaperSx(sidebarWidth)} onClose={onClose}>
       <Stack direction="row" alignItems="center" justifyContent="space-between" sx={headerSx}>
         <Stack direction="row" alignItems="center" gap={1.5} sx={{ minWidth: 0 }}>
-          <Typography variant="subtitle1" sx={{ fontWeight: 600, fontFamily: 'monospace', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-            {workflowId}
+          <Typography variant="subtitle1" title={workflowId} sx={{ fontWeight: 600, fontFamily: 'monospace', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+            {displayWorkflowId(workflowId)}
           </Typography>
           {status && <StatusChip status={status} />}
         </Stack>

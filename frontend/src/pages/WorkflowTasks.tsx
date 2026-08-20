@@ -52,8 +52,7 @@ export default function WorkflowTasks(scope: ComponentScope | ProjectScope): JSX
   const [selectedEnvId, setSelectedEnvId] = useState(searchParams.get('env') ?? '');
 
   const pageScope = useWorkflowPageScope(scope, selectedEnvId);
-  const { environments, targets, taskQueue, component, project, canViewHumanTasks, canViewWorkflows } = pageScope;
-  const activeEnvId = environments.some((e) => e.id === selectedEnvId) ? selectedEnvId : (environments[0]?.id ?? '');
+  const { environments, activeEnvId, targets, taskQueue, component, project, canViewHumanTasks, canViewWorkflows } = pageScope;
 
   // The tab is URL-driven so links land deterministically ("reviews" from a review notification).
   const requestedTab = searchParams.get('tab');

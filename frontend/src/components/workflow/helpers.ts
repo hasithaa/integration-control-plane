@@ -101,6 +101,17 @@ export const STATUS_COLORS: Record<string, ChipColor> = {
 };
 
 /**
+ * An instance id as a person reads it: without the kind prefix the runtime bakes in.
+ * The prefix (`workflow-`, `humantask-`, `childwf-`, `reviewactivity-`) is machinery — the kind
+ * now travels in the instance's own memo — so displays drop it, while every API call, copy, and
+ * search keeps the full id, which is the only identity the runtime answers to.
+ */
+export function displayWorkflowId(id?: string): string {
+  if (!id) return '—';
+  return id.replace(/^(workflow|humantask|childwf|reviewactivity)-/i, '');
+}
+
+/**
  * Splits a qualified task/activity name like `placeOrderWorkflow.approveOrder` (optionally
  * prefixed `workflow-`) into its workflow and task parts. Names without a qualifier map to
  * `{ task: name }`.

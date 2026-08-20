@@ -184,7 +184,7 @@ export default function WorkflowFlowTab({
       {cards}
       <Stack direction="row" alignItems="center" gap={1.5} sx={{ flexWrap: 'wrap' }}>
         <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-          {isAgent ? 'The agent as declared. Reference only.' : 'Approximation of execution flow. Reference only.'}
+          {isAgent ? 'The agent as declared. Reference only.' : 'Approximation of execution flow using checkpoints. Reference only.'}
         </Typography>
         {selectedStepId && <Chip size="small" color="primary" variant="outlined" label={`Filtered: ${selectedStepId} · ${selectedCount} ${selectedCount === 1 ? 'execution' : 'executions'}`} onDelete={() => setSelectedStepId(null)} />}
       </Stack>
