@@ -16,24 +16,20 @@
  * under the License.
  */
 
-import { Alert, Box, Button, Chip, CircularProgress, Divider, IconButton, ListingTable, Snackbar, Stack, TextField, Tooltip, Typography } from '@wso2/oxygen-ui';
+import { Alert, Box, Button, Chip, CircularProgress, IconButton, ListingTable, MenuItem, Snackbar, Stack, TextField, Tooltip, Typography } from '@wso2/oxygen-ui';
 import SearchField from '../SearchField';
-import { RefreshCw } from '@wso2/oxygen-ui-icons-react';
-import { useEffect, useState } from 'react';
+import { RefreshCw, UserCheck, Wrench } from '@wso2/oxygen-ui-icons-react';
+import { useEffect, useState, type ReactNode } from 'react';
 import SchemaFormFields from './SchemaFormFields';
 import StructuredValue from './StructuredValue';
 import { buildFormResult, displayWorkflowId, formatTime, gatewayScope, jsonPretty, ownerLabel, ownerScope, parseFormSchema, sortByStartTimeDesc, unescapeRoleName, type PortalScope } from './helpers';
 import { ActionRow, DetailDrawer, DetailRow, HeaderCell, ListFooter, SectionCard, StatusChip, SubmitError, WorkflowIdLink, type WorkflowScope } from './shared';
-import { IntegrationFilter, ReviewActivities, StatusFilter, useTimeRangeFilter, WorkflowNameFilter } from './AdminPortal';
+import { IntegrationFilter, ReviewActivityDetailDialog, StatusFilter, useTimeRangeFilter, WorkflowNameFilter } from './AdminPortal';
 import Authorized from '../Authorized';
 import { Permissions } from '../../constants/permissions';
-import { distinctWorkflowTypes, useCompleteHumanTask, useFailHumanTask, useHumanTask, useHumanTasksInfinite, useWorkflowDefinitionsAcross, type HumanTask, type WorkflowDefinition, type WorkflowTarget } from '../../api/workflows';
+import { distinctWorkflowTypes, useCompleteHumanTask, useFailHumanTask, useHumanTask, useHumanTasksInfinite, useReviewActivities, useWorkflowDefinitionsAcross, type HumanTask, type WorkflowDefinition, type WorkflowTarget } from '../../api/workflows';
 
 const emptySx = { py: 4, textAlign: 'center', color: 'text.secondary' } as const;
-
-// Statuses a human task reports. Pending is the default: it is the work waiting on the user, and the
-// rest are the history that used to live in its own view.
-const HUMAN_TASK_STATUSES = ['All', 'PENDING', 'COMPLETED', 'FAILED', 'TERMINATED'];
 
 /**
  * Maps a runtime human-task status to its display status: a pending task's child workflow
@@ -57,17 +53,60 @@ function taskDisplayName(t?: HumanTask): string {
 
 type Toast = { severity: 'success' | 'error'; message: string } | null;
 
-/**
- * Hosts the two user-facing workflow views. Which one shows is decided by the page's tabs, so this
- * only dispatches and owns the toast both views report through.
- */
-export default function UserPortal({ targets, environmentId, taskQueue, view, initialTaskId, initialReviewId }: PortalScope & { view: 'tasks' | 'reviews'; initialTaskId?: string; initialReviewId?: string }) {
+// ── The unified work queue ──
+//
+// A review is a human task with a fixed decision contract, and the person is the same — so both
+// kinds share one queue and one filter row. The kinds stay distinct everywhere else: each row
+// says what it is (a wrench and its trigger for reviews), and each opens its own drawer.
+
+type WorkKind = 'task' | 'review';
+
+interface WorkItem {
+  kind: WorkKind;
+  id: string;
+  title: string;
+  workflowName?: string;
+  parentWorkflowId?: string;
+  taskQueue?: string;
+  status?: string;
+  startTime?: string;
+  /** Review only: why it exists — PRE_RUN (approval gate) or ON_FAILURE (rerun decision). */
+  trigger?: string;
+  /** Task only: pending but the caller holds no completing role. */
+  readOnly?: boolean;
+}
+
+const WORK_TYPE_OPTIONS = [
+  { value: 'all', label: 'All' },
+  { value: 'task', label: 'Tasks' },
+  { value: 'review', label: 'Reviews' },
+] as const;
+type WorkTypeFilter = (typeof WORK_TYPE_OPTIONS)[number]['value'];
+
+// The union of both kinds' statuses; FAILED is task-only (a rejected review completes — the
+// failure travels to the workflow, not into the review's own status).
+const WORK_STATUSES = ['All', 'PENDING', 'COMPLETED', 'FAILED', 'CANCELED', 'TERMINATED'];
+
+/** Compact trigger label for list chips. */
+const triggerChipLabel = (trigger?: string): string => (trigger === 'ON_FAILURE' ? 'Failure review' : trigger === 'PRE_RUN' ? 'Approval gate' : 'Review');
+
+/** Hosts the unified queue and owns the toast everything under it reports through. */
+export default function UserPortal({
+  targets,
+  environmentId,
+  taskQueue,
+  canViewTasks,
+  canViewReviews,
+  initialKind,
+  initialTaskId,
+  initialReviewId,
+}: PortalScope & { canViewTasks: boolean; canViewReviews: boolean; initialKind?: 'reviews'; initialTaskId?: string; initialReviewId?: string }) {
   const scope: PortalScope = { targets, environmentId, taskQueue };
   const [toast, setToast] = useState<Toast>(null);
 
   return (
     <>
-      {view === 'tasks' ? <MyTasks scope={scope} onToast={setToast} initialTaskId={initialTaskId} /> : <ReviewActivities scope={scope} onToast={setToast} initialReviewId={initialReviewId} />}
+      <WorkQueue scope={scope} onToast={setToast} canViewTasks={canViewTasks} canViewReviews={canViewReviews} initialKind={initialKind} initialTaskId={initialTaskId} initialReviewId={initialReviewId} />
 
       <Snackbar open={toast !== null} autoHideDuration={4000} onClose={() => setToast(null)} anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}>
         {toast ? (
@@ -80,63 +119,97 @@ export default function UserPortal({ targets, environmentId, taskQueue, view, in
   );
 }
 
-function TaskTable({ tasks, onOpen, environmentId, integrationLabel }: { tasks: HumanTask[]; onOpen: (t: HumanTask) => void; environmentId: string; integrationLabel?: (taskQueue?: string) => string }) {
+function WorkItemTable({ items, onOpen, environmentId, integrationLabel }: { items: WorkItem[]; onOpen: (w: WorkItem) => void; environmentId: string; integrationLabel?: (taskQueue?: string) => string }) {
   return (
     <ListingTable>
       <ListingTable.Head>
         <ListingTable.Row>
-          <HeaderCell label="Task" help="The human task waiting for a person — its title, or its name in the workflow." />
+          <HeaderCell label="Task" help="The work waiting for a person: a human task (generated form), or a review activity — a fixed decision the workflow feature provides, marked with a wrench." />
           <HeaderCell label="Workflow Name" help="The workflow definition the parent instance executes." />
-          {integrationLabel && <HeaderCell label="Integration" help="The integration whose runtime owns this task, resolved from its task queue." />}
-          <HeaderCell label="Workflow ID" help="The parent workflow instance waiting on this task — click to open it." />
-          <HeaderCell label="Status" help="The task's current state." />
-          <HeaderCell label="Started" help="When the task was created." />
+          {integrationLabel && <HeaderCell label="Integration" help="The integration whose runtime owns this item, resolved from its task queue." />}
+          <HeaderCell label="Workflow ID" help="The parent workflow instance waiting on this item — click to open it." />
+          <HeaderCell label="Status" help="The item's current state. A rejected review completes — its failure travels to the workflow." />
+          <HeaderCell label="Started" help="When the item was created." />
         </ListingTable.Row>
       </ListingTable.Head>
       <ListingTable.Body>
-        {tasks.map((t) => (
-          <ListingTable.Row key={t.taskId} onClick={() => onOpen(t)} sx={{ cursor: 'pointer', '&:hover': { bgcolor: 'action.hover' } }}>
-            <ListingTable.Cell>
-              <Stack direction="row" alignItems="center" gap={1}>
-                <Typography variant="body2">{taskDisplayName(t)}</Typography>
-                {taskDisplayStatus(t.status) === 'PENDING' && t.canComplete === false && (
-                  <Tooltip title="You do not have a matching role to complete this task">
-                    <Chip label="Read-only" size="small" variant="outlined" sx={{ fontSize: 10, height: 18 }} />
-                  </Tooltip>
-                )}
-              </Stack>
-            </ListingTable.Cell>
-            <ListingTable.Cell>
-              <Typography variant="body2">{t.parentWorkflowType ?? '—'}</Typography>
-            </ListingTable.Cell>
-            {integrationLabel && (
+        {items.map((w) => {
+          const Icon = w.kind === 'review' ? Wrench : UserCheck;
+          return (
+            <ListingTable.Row key={`${w.kind}:${w.id}`} onClick={() => onOpen(w)} sx={{ cursor: 'pointer', '&:hover': { bgcolor: 'action.hover' } }}>
               <ListingTable.Cell>
-                <Typography variant="body2">{integrationLabel(t.taskQueue)}</Typography>
+                <Stack direction="row" alignItems="center" gap={1}>
+                  <Tooltip title={w.kind === 'review' ? 'Review activity — a fixed decision the workflow feature provides' : 'Human task'}>
+                    <Box sx={{ display: 'flex', color: 'text.secondary', flexShrink: 0 }}>
+                      <Icon size={14} />
+                    </Box>
+                  </Tooltip>
+                  <Typography variant="body2">{w.title}</Typography>
+                  {w.kind === 'review' && <Chip label={triggerChipLabel(w.trigger)} size="small" variant="outlined" sx={{ fontSize: 10, height: 18 }} />}
+                  {w.readOnly && (
+                    <Tooltip title="You do not have a matching role to complete this task">
+                      <Chip label="Read-only" size="small" variant="outlined" sx={{ fontSize: 10, height: 18 }} />
+                    </Tooltip>
+                  )}
+                </Stack>
               </ListingTable.Cell>
-            )}
-            <ListingTable.Cell>
-              <WorkflowIdLink workflowId={t.parentWorkflowId} environmentId={environmentId} />
-            </ListingTable.Cell>
-            <ListingTable.Cell>
-              <StatusChip status={taskDisplayStatus(t.status)} />
-            </ListingTable.Cell>
-            <ListingTable.Cell>{formatTime(t.startTime)}</ListingTable.Cell>
-          </ListingTable.Row>
-        ))}
+              <ListingTable.Cell>
+                <Typography variant="body2">{w.workflowName ?? '—'}</Typography>
+              </ListingTable.Cell>
+              {integrationLabel && (
+                <ListingTable.Cell>
+                  <Typography variant="body2">{integrationLabel(w.taskQueue)}</Typography>
+                </ListingTable.Cell>
+              )}
+              <ListingTable.Cell>
+                <WorkflowIdLink workflowId={w.parentWorkflowId} environmentId={environmentId} />
+              </ListingTable.Cell>
+              <ListingTable.Cell>
+                <StatusChip status={w.status} />
+              </ListingTable.Cell>
+              <ListingTable.Cell>{formatTime(w.startTime)}</ListingTable.Cell>
+            </ListingTable.Row>
+          );
+        })}
       </ListingTable.Body>
     </ListingTable>
   );
 }
 
-function MyTasks({ scope, onToast, initialTaskId }: { scope: PortalScope; onToast: (t: Toast) => void; initialTaskId?: string }) {
-  // Opened against the integration that owns the task, per the task's own task queue.
-  const [open, setOpen] = useState<HumanTask | null>(null);
-  // A deep link names a task this list may not hold (a completed one, another page); fetch it
-  // directly and open its dialog once it arrives.
+/** A scope that never fetches — how a source the caller may not see (or filtered out) is skipped. */
+const disabledScope: WorkflowScope = { componentId: '', environmentId: '' };
+
+function WorkQueue({
+  scope,
+  onToast,
+  canViewTasks,
+  canViewReviews,
+  initialKind,
+  initialTaskId,
+  initialReviewId,
+}: {
+  scope: PortalScope;
+  onToast: (t: Toast) => void;
+  canViewTasks: boolean;
+  canViewReviews: boolean;
+  initialKind?: 'reviews';
+  initialTaskId?: string;
+  initialReviewId?: string;
+}) {
+  // Each kind opens against the integration that owns it, per the row's own task queue.
+  const [openTask, setOpenTask] = useState<{ taskId: string; taskQueue?: string; status?: string } | null>(null);
+  const [openReview, setOpenReview] = useState<{ taskId: string; taskQueue?: string } | null>(null);
+  // A deep link names an item this list may not hold (a completed one, another page); fetch it
+  // directly and open its drawer once it arrives.
   const { data: linkedTask } = useHumanTask(gatewayScope(scope), initialTaskId ?? null);
   useEffect(() => {
-    if (linkedTask) setOpen(linkedTask);
+    if (linkedTask) setOpenTask({ taskId: linkedTask.taskId, taskQueue: linkedTask.taskQueue, status: linkedTask.status });
   }, [linkedTask]);
+  useEffect(() => {
+    if (initialReviewId) setOpenReview({ taskId: initialReviewId });
+  }, [initialReviewId]);
+
+  const [workType, setWorkType] = useState<WorkTypeFilter>(initialKind === 'reviews' ? 'review' : 'all');
   const [status, setStatus] = useState('PENDING');
   const [search, setSearch] = useState('');
   const [selectedType, setSelectedType] = useState<WorkflowDefinition | null>(null);
@@ -146,9 +219,12 @@ function MyTasks({ scope, onToast, initialTaskId }: { scope: PortalScope; onToas
   const multi = scope.targets.length > 1;
   const taskQueue = integration?.handler ?? scope.taskQueue;
   const definitions = useWorkflowDefinitionsAcross(scope.targets, scope.environmentId);
-  // Every filter is the runtime's own — parent workflow id, workflow type, queue, time bounds —
-  // so paging stays honest: what "Load more" appends is the next page of the same question.
-  const { data, isLoading, error, refetch, isFetching, hasNextPage, fetchNextPage, isFetchingNextPage } = useHumanTasksInfinite(gatewayScope(scope), {
+
+  // Two sources, one question each. A source outside the caller's permissions or the current
+  // filters is skipped entirely (its scope never fetches), not fetched-and-hidden.
+  const wantTasks = canViewTasks && workType !== 'review' && status !== 'CANCELED';
+  const wantReviews = canViewReviews && workType !== 'task' && status !== 'FAILED';
+  const tasksQuery = useHumanTasksInfinite(wantTasks ? gatewayScope(scope) : disabledScope, {
     status: status === 'All' ? undefined : status,
     parentWorkflowId: search || undefined,
     parentWorkflowType: selectedType?.workflowType || undefined,
@@ -157,8 +233,65 @@ function MyTasks({ scope, onToast, initialTaskId }: { scope: PortalScope; onToas
     startTimeTo: timeFilter.bounds.startTimeTo,
     limit: 50,
   });
-  const tasks = sortByStartTimeDesc((data?.pages ?? []).flatMap((p) => p.items ?? []));
-  const hasFilters = status !== 'PENDING' || !!selectedType || !!search || !!integration || timeFilter.active;
+  const reviewsQuery = useReviewActivities(wantReviews ? gatewayScope(scope) : disabledScope, {
+    status: status === 'All' ? undefined : status,
+    parentWorkflowId: search || undefined,
+    taskQueue,
+    startTimeFrom: timeFilter.bounds.startTimeFrom,
+    startTimeTo: timeFilter.bounds.startTimeTo,
+    limit: 50,
+  });
+
+  const taskItems: WorkItem[] = wantTasks
+    ? (tasksQuery.data?.pages ?? [])
+        .flatMap((p) => p.items ?? [])
+        .map((t) => ({
+          kind: 'task' as const,
+          id: t.taskId,
+          title: taskDisplayName(t),
+          workflowName: t.parentWorkflowType ?? undefined,
+          parentWorkflowId: t.parentWorkflowId,
+          taskQueue: t.taskQueue,
+          status: taskDisplayStatus(t.status),
+          startTime: t.startTime,
+          readOnly: taskDisplayStatus(t.status) === 'PENDING' && t.canComplete === false,
+        }))
+    : [];
+  // The review API has no workflow-name filter; the qualified task name carries it, so that one
+  // filter runs client-side over the bounded fetch.
+  const reviewItems: WorkItem[] = wantReviews
+    ? (reviewsQuery.data?.items ?? [])
+        .filter((t) => !selectedType || splitQualifiedName(t.taskName ?? t.activityName).workflow === selectedType.workflowType)
+        .map((t) => ({
+          kind: 'review' as const,
+          id: t.taskId,
+          title: (typeof t.title === 'string' && t.title) || splitQualifiedName(t.taskName ?? t.activityName).task || t.taskId,
+          workflowName: splitQualifiedName(t.taskName ?? t.activityName).workflow,
+          parentWorkflowId: t.parentWorkflowId,
+          taskQueue: t.taskQueue,
+          status: t.status,
+          startTime: t.startTime,
+          trigger: t.trigger as string | undefined,
+        }))
+    : [];
+  const items = sortByStartTimeDesc([...taskItems, ...reviewItems]);
+
+  const isLoading = (wantTasks && tasksQuery.isLoading) || (wantReviews && reviewsQuery.isLoading);
+  const error = (wantTasks ? tasksQuery.error : null) ?? (wantReviews ? reviewsQuery.error : null);
+  const isFetching = tasksQuery.isFetching || reviewsQuery.isFetching;
+  const refetchAll = () => {
+    if (wantTasks) void tasksQuery.refetch();
+    if (wantReviews) void reviewsQuery.refetch();
+  };
+  // Tasks page by token; the bounded review fetch reports hasMore without one to continue from.
+  const hasMore = (wantTasks && tasksQuery.hasNextPage) || (wantReviews && reviewsQuery.data?.hasMore === true);
+  const loadMore = wantTasks && tasksQuery.hasNextPage ? () => tasksQuery.fetchNextPage() : undefined;
+  const hasFilters = status !== 'PENDING' || workType !== (initialKind === 'reviews' ? 'review' : 'all') || !!selectedType || !!search || !!integration || timeFilter.active;
+
+  const openItem = (w: WorkItem) => {
+    if (w.kind === 'review') setOpenReview({ taskId: w.id, taskQueue: w.taskQueue });
+    else setOpenTask({ taskId: w.id, taskQueue: w.taskQueue, status: w.status });
+  };
 
   return (
     <>
@@ -166,14 +299,23 @@ function MyTasks({ scope, onToast, initialTaskId }: { scope: PortalScope; onToas
         <SearchField value={search} onChange={setSearch} placeholder="Search by workflow ID" sx={{ width: 320 }} />
         <Box sx={{ flex: 1 }} />
         <Tooltip title="Refresh">
-          <IconButton size="small" onClick={() => refetch()} aria-label="Refresh">
+          <IconButton size="small" onClick={refetchAll} aria-label="Refresh">
             <RefreshCw size={16} style={{ animation: isFetching ? 'spin 1s linear infinite' : 'none' }} />
           </IconButton>
         </Tooltip>
       </Stack>
 
       <Stack direction="row" gap={1.5} sx={{ mb: 2 }} flexWrap="wrap" alignItems="center">
-        <StatusFilter options={HUMAN_TASK_STATUSES} value={status} onChange={setStatus} />
+        {canViewTasks && canViewReviews && (
+          <TextField select size="small" label="Type" value={workType} onChange={(e) => setWorkType(e.target.value as WorkTypeFilter)} sx={{ width: 140 }}>
+            {WORK_TYPE_OPTIONS.map((o) => (
+              <MenuItem key={o.value} value={o.value}>
+                {o.label}
+              </MenuItem>
+            ))}
+          </TextField>
+        )}
+        <StatusFilter options={WORK_STATUSES} value={status} onChange={setStatus} />
         <WorkflowNameFilter definitions={distinctWorkflowTypes(definitions.items)} value={selectedType} onChange={setSelectedType} />
         {multi && <IntegrationFilter targets={scope.targets} value={integration} onChange={setIntegration} />}
         {timeFilter.controls}
@@ -181,6 +323,7 @@ function MyTasks({ scope, onToast, initialTaskId }: { scope: PortalScope; onToas
           <Button
             size="small"
             onClick={() => {
+              setWorkType(initialKind === 'reviews' ? 'review' : 'all');
               setStatus('PENDING');
               setSelectedType(null);
               setSearch('');
@@ -196,16 +339,17 @@ function MyTasks({ scope, onToast, initialTaskId }: { scope: PortalScope; onToas
         <CircularProgress size={24} sx={{ display: 'block', mx: 'auto', py: 4 }} />
       ) : error ? (
         <Typography sx={emptySx}>{error instanceof Error ? error.message : 'Failed to load tasks.'}</Typography>
-      ) : tasks.length === 0 ? (
+      ) : items.length === 0 ? (
         <Typography sx={emptySx}>{status === 'All' ? 'No tasks.' : `No ${status.toLowerCase()} tasks.`}</Typography>
       ) : (
         <>
-          <TaskTable tasks={tasks} onOpen={setOpen} environmentId={scope.environmentId} integrationLabel={multi ? (taskQueue) => ownerLabel(scope, taskQueue) : undefined} />
-          <ListFooter count={tasks.length} singular="task" plural="tasks" hasMore={hasNextPage} loadingMore={isFetchingNextPage} onLoadMore={() => fetchNextPage()} />
+          <WorkItemTable items={items} onOpen={openItem} environmentId={scope.environmentId} integrationLabel={multi ? (q) => ownerLabel(scope, q) : undefined} />
+          <ListFooter count={items.length} singular="item" plural="items" hasMore={hasMore} loadingMore={tasksQuery.isFetchingNextPage} onLoadMore={loadMore} />
         </>
       )}
 
-      {open && <TaskDetailDialog scope={ownerScope(scope, open.taskQueue)} taskId={open.taskId} actionable={taskDisplayStatus(open.status) === 'PENDING'} onClose={() => setOpen(null)} onToast={onToast} />}
+      {openTask && <TaskDetailDialog scope={ownerScope(scope, openTask.taskQueue)} taskId={openTask.taskId} actionable={taskDisplayStatus(openTask.status) === 'PENDING'} onClose={() => setOpenTask(null)} onToast={onToast} />}
+      {openReview && <ReviewActivityDetailDialog scope={ownerScope(scope, openReview.taskQueue)} taskId={openReview.taskId} onClose={() => setOpenReview(null)} onToast={onToast} />}
     </>
   );
 }
@@ -309,48 +453,16 @@ function TaskDetailDialog({ scope, taskId, actionable, onClose, onToast }: { sco
     setSubmitError(null);
   };
 
-  const actions = (
-    <>
-      <Button onClick={onClose}>Close</Button>
-      <Box sx={{ flex: 1 }} />
-      {/* Acting on human tasks requires the workflow manage-human-tasks permission. */}
-      <Authorized permissions={[Permissions.WORKFLOW_MANAGE_HUMAN_TASKS]}>
-        {mode === 'complete' && (
-          <>
-            <Button disabled={busy} onClick={() => backTo('view')}>
-              Back
-            </Button>
-            <Button variant="contained" disabled={busy} onClick={stageComplete}>
-              Review &amp; Complete
-            </Button>
-          </>
-        )}
-        {mode === 'confirm-complete' && (
-          <>
-            <Button disabled={busy} onClick={() => backTo('complete')}>
-              Back
-            </Button>
-            <Button variant="contained" disabled={busy} onClick={submitComplete}>
-              {complete.isPending ? 'Completing…' : 'Complete Task'}
-            </Button>
-          </>
-        )}
-        {mode === 'fail' && (
-          <>
-            <Button disabled={busy} onClick={() => backTo('view')}>
-              Back
-            </Button>
-            <Button variant="contained" color="warning" disabled={busy} onClick={submitFail}>
-              {fail.isPending ? 'Submitting…' : 'Mark as Failed'}
-            </Button>
-          </>
-        )}
-      </Authorized>
-    </>
+  // A small right-aligned button row at the bottom of the active step's card — actions live
+  // beside the content they act on, not in a footer a screen-height away.
+  const stepButtons = (...buttons: ReactNode[]) => (
+    <Stack direction="row" justifyContent="flex-end" gap={1}>
+      {buttons}
+    </Stack>
   );
 
   return (
-    <DetailDrawer title={task ? taskDisplayName(task) : displayWorkflowId(taskId)} status={taskDisplayStatus(task?.status)} onClose={onClose} actions={actions}>
+    <DetailDrawer title={task ? taskDisplayName(task) : displayWorkflowId(taskId)} status={taskDisplayStatus(task?.status)} onClose={onClose}>
       {isLoading ? (
         <CircularProgress size={24} sx={{ display: 'block', mx: 'auto', py: 4 }} />
       ) : taskError || !task ? (
@@ -394,29 +506,28 @@ function TaskDetailDialog({ scope, taskId, actionable, onClose, onToast }: { sco
           {actionable && mode === 'view' && (
             <Authorized permissions={[Permissions.WORKFLOW_MANAGE_HUMAN_TASKS]}>
               <SectionCard title="Actions">
-                <Stack gap={2}>
-                  <ActionRow
-                    caption="Complete the task: submit a result, and the waiting workflow resumes with it."
-                    button={
-                      <Tooltip title={canComplete ? '' : 'You do not have a matching role to complete this task'}>
-                        <span>
-                          <Button variant="contained" disabled={busy || !canComplete} onClick={() => setMode('complete')}>
-                            Complete…
-                          </Button>
-                        </span>
-                      </Tooltip>
-                    }
-                  />
-                  <Divider />
-                  <ActionRow
-                    caption="Task operation — mark the task as FAILED. The failure is surfaced to the workflow, which decides what happens next."
-                    button={
-                      <Button variant="text" color="warning" size="small" disabled={busy} onClick={() => setMode('fail')}>
-                        Mark as failed…
-                      </Button>
-                    }
-                  />
-                </Stack>
+                <ActionRow
+                  caption="Complete the task: submit a result, and the waiting workflow resumes with it."
+                  button={
+                    <Tooltip title={canComplete ? '' : 'You do not have a matching role to complete this task'}>
+                      <span>
+                        <Button variant="contained" disabled={busy || !canComplete} onClick={() => setMode('complete')}>
+                          Complete…
+                        </Button>
+                      </span>
+                    </Tooltip>
+                  }
+                />
+              </SectionCard>
+              <SectionCard title="Task operations">
+                <ActionRow
+                  caption="Mark as failed — a fail operation: the task is recorded as FAILED and the failure is propagated to the workflow, which decides what happens next."
+                  button={
+                    <Button variant="text" color="warning" size="small" disabled={busy} onClick={() => setMode('fail')}>
+                      Mark as failed…
+                    </Button>
+                  }
+                />
               </SectionCard>
             </Authorized>
           )}
@@ -466,11 +577,27 @@ function TaskDetailDialog({ scope, taskId, actionable, onClose, onToast }: { sco
                         slotProps={{ input: { sx: { fontFamily: 'monospace', fontSize: 13 } } }}
                       />
                     )}
+                    {stepButtons(
+                      <Button key="b" disabled={busy} onClick={() => backTo('view')}>
+                        Back
+                      </Button>,
+                      <Button key="r" variant="contained" disabled={busy} onClick={stageComplete}>
+                        Review before completion
+                      </Button>,
+                    )}
                   </>
                 ) : (
                   <>
                     <Alert severity="info">The task completes with the result below, and the waiting workflow resumes with it. This cannot be undone.</Alert>
                     <StructuredValue title="Result to submit" raw={jsonPretty(pendingResult) || '{}'} environmentId={scope.environmentId} />
+                    {stepButtons(
+                      <Button key="b" disabled={busy} onClick={() => backTo('complete')}>
+                        Back
+                      </Button>,
+                      <Button key="c" variant="contained" disabled={busy} onClick={submitComplete}>
+                        {complete.isPending ? 'Completing…' : 'Complete Task'}
+                      </Button>,
+                    )}
                   </>
                 )}
               </Stack>
@@ -480,7 +607,7 @@ function TaskDetailDialog({ scope, taskId, actionable, onClose, onToast }: { sco
           {mode === 'fail' && (
             <SectionCard title="Mark task as failed">
               <Stack gap={2}>
-                <Alert severity="warning">The task is recorded as FAILED and the failure is surfaced to the workflow — the workflow decides what happens next. This cannot be undone.</Alert>
+                <Alert severity="warning">Failing is a fail operation: the task is recorded as FAILED and the failure is propagated to the workflow — the workflow decides what happens next. This cannot be undone.</Alert>
                 <TextField
                   label="Reason"
                   fullWidth
@@ -493,6 +620,14 @@ function TaskDetailDialog({ scope, taskId, actionable, onClose, onToast }: { sco
                   error={!!err}
                   helperText={err || 'Relayed to the workflow as the failure reason.'}
                 />
+                {stepButtons(
+                  <Button key="b" disabled={busy} onClick={() => backTo('view')}>
+                    Back
+                  </Button>,
+                  <Button key="f" variant="contained" color="warning" disabled={busy} onClick={submitFail}>
+                    {fail.isPending ? 'Submitting…' : 'Mark as Failed'}
+                  </Button>,
+                )}
               </Stack>
             </SectionCard>
           )}

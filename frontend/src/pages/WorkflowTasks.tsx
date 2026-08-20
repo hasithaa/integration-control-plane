@@ -16,29 +16,13 @@
  * under the License.
  */
 
-import { Box, Chip, Stack, Tab, Tabs } from '@wso2/oxygen-ui';
 import { useState, type JSX } from 'react';
 import { useSearchParams } from 'react-router';
-import { usePendingReviewActivityCount, usePendingTaskCount } from '../api/workflows';
 import NotFound from '../components/NotFound';
 import UserPortal from '../components/workflow/UserPortal';
 import WorkflowPageFrame from '../components/workflow/WorkflowPageFrame';
-import { gatewayScope } from '../components/workflow/helpers';
 import { useWorkflowPageScope } from '../components/workflow/useWorkflowPageScope';
 import { resourceUrl, broaden, hasComponent, type ComponentScope, type ProjectScope } from '../nav';
-
-/**
- * Tab title with the amount of work waiting behind it. Omitted at zero, and while the count is
- * still loading, so a tab only grows a badge when there is something to act on.
- */
-function TabLabel({ title, count, capped }: { title: string; count?: number; capped?: boolean }): JSX.Element {
-  return (
-    <Stack direction="row" alignItems="center" gap={0.75}>
-      <span>{title}</span>
-      {count !== undefined && count > 0 && <Chip label={capped ? `${count}+` : count} size="small" color="primary" sx={{ height: 18, fontSize: 11, fontWeight: 600, '& .MuiChip-label': { px: 0.75 } }} />}
-    </Stack>
-  );
-}
 
 /**
  * The person's own workflow work: human tasks assigned to their roles, and review activities
@@ -54,29 +38,12 @@ export default function WorkflowTasks(scope: ComponentScope | ProjectScope): JSX
   const pageScope = useWorkflowPageScope(scope, selectedEnvId);
   const { environments, activeEnvId, targets, taskQueue, component, project, canViewHumanTasks, canViewWorkflows } = pageScope;
 
-  // The tab is URL-driven so links land deterministically ("reviews" from a review notification).
-  const requestedTab = searchParams.get('tab');
-  const wantedTab: 'tasks' | 'reviews' = requestedTab === 'reviews' ? 'reviews' : 'tasks';
-  // Resolve the requested tab to one the user may see. Reviews is gated on the workflow
-  // permissions (the proxy authorizes /review-activities on that branch), tasks on the human-task
-  // ones — so either tab may be the only one on offer.
-  const allowed: Record<'tasks' | 'reviews', boolean> = { tasks: canViewHumanTasks, reviews: canViewWorkflows };
-  const activeTab: 'tasks' | 'reviews' | null = allowed[wantedTab] ? wantedTab : allowed.tasks ? 'tasks' : allowed.reviews ? 'reviews' : null;
-  const setTab = (v: 'tasks' | 'reviews') =>
-    setSearchParams(
-      (prev) => {
-        const next = new URLSearchParams(prev);
-        next.set('tab', v);
-        return next;
-      },
-      { replace: true },
-    );
-
-  // Badge counts poll, so each is skipped when its tab is not on offer. Both read through the same
-  // gateway runtime the views themselves use, narrowed to this integration's queue when there is one.
-  const gateway = gatewayScope({ targets, environmentId: activeEnvId, taskQueue });
-  const { data: pendingTasks } = usePendingTaskCount(gateway, taskQueue, allowed.tasks);
-  const { data: pendingReviews } = usePendingReviewActivityCount(gateway, taskQueue, allowed.reviews);
+  // One queue now holds both kinds of work; an old ?tab=reviews link presets the type filter.
+  // Tasks are gated on the human-task permissions, reviews on the workflow ones (the proxy
+  // authorizes /review-activities on that branch) — each source shows only to those allowed.
+  const initialKind = searchParams.get('tab') === 'reviews' ? ('reviews' as const) : undefined;
+  void setSearchParams;
+  const permitted = canViewHumanTasks || canViewWorkflows;
 
   if (!pageScope.loading && componentLevel && !component) {
     return <NotFound message="Component not found" backTo={resourceUrl(broaden(scope)!, 'overview')} backLabel="Back to Project" />;
@@ -88,11 +55,11 @@ export default function WorkflowTasks(scope: ComponentScope | ProjectScope): JSX
       description={
         componentLevel ? (
           <>
-            Complete human tasks and decide review activities for <strong>{component?.displayName ?? scope.component}</strong>. Only tasks applicable to you are shown.
+            Complete human tasks — including review activities — for <strong>{component?.displayName ?? scope.component}</strong>. Only tasks applicable to you are shown.
           </>
         ) : (
           <>
-            Complete human tasks and decide review activities across all integrations in <strong>{project?.name ?? scope.project}</strong>. Only tasks applicable to you are shown.
+            Complete human tasks — including review activities — across all integrations in <strong>{project?.name ?? scope.project}</strong>. Only tasks applicable to you are shown.
           </>
         )
       }
@@ -100,15 +67,20 @@ export default function WorkflowTasks(scope: ComponentScope | ProjectScope): JSX
       environments={environments}
       activeEnvId={activeEnvId}
       onEnvChange={setSelectedEnvId}
-      permitted={activeTab !== null}
+      permitted={permitted}
       noPermissionMessage={componentLevel ? 'You do not have permission to view tasks for this integration.' : 'You do not have permission to view tasks for this project.'}>
-      <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 3 }}>
-        <Tabs value={activeTab} onChange={(_, v) => setTab(v as 'tasks' | 'reviews')}>
-          {allowed.tasks && <Tab label={<TabLabel title="Human Tasks" count={pendingTasks} />} value="tasks" />}
-          {allowed.reviews && <Tab label={<TabLabel title="Review Activities" count={pendingReviews?.count} capped={pendingReviews?.capped} />} value="reviews" />}
-        </Tabs>
-      </Box>
-      {activeTab && <UserPortal targets={targets} environmentId={activeEnvId} taskQueue={taskQueue} view={activeTab} initialTaskId={searchParams.get('task') ?? undefined} initialReviewId={searchParams.get('review') ?? undefined} />}
+      {permitted && (
+        <UserPortal
+          targets={targets}
+          environmentId={activeEnvId}
+          taskQueue={taskQueue}
+          canViewTasks={canViewHumanTasks}
+          canViewReviews={canViewWorkflows}
+          initialKind={initialKind}
+          initialTaskId={searchParams.get('task') ?? undefined}
+          initialReviewId={searchParams.get('review') ?? undefined}
+        />
+      )}
     </WorkflowPageFrame>
   );
 }

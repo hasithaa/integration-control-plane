@@ -18,7 +18,7 @@
 
 import { Alert, Autocomplete, Box, Button, CircularProgress, Dialog, DialogActions, DialogContent, DialogTitle, Divider, IconButton, ListingTable, MenuItem, Select, Snackbar, Stack, TextField, Tooltip, Typography } from '@wso2/oxygen-ui';
 import { Copy, Eye, Play, RefreshCw } from '@wso2/oxygen-ui-icons-react';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router';
 import { resourceUrl, useScope } from '../../nav';
 import SearchField from '../SearchField';
@@ -31,7 +31,6 @@ import Authorized from '../Authorized';
 import { Permissions } from '../../constants/permissions';
 import {
   distinctWorkflowTypes,
-  useReviewActivities,
   useReviewActivity,
   useReviewDecision,
   useStartWorkflow,
@@ -44,8 +43,6 @@ import {
 } from '../../api/workflows';
 
 const WORKFLOW_STATUSES = ['All', 'RUNNING', 'COMPLETED', 'FAILED', 'TERMINATED', 'CANCELED', 'TIMED_OUT'];
-// Rejecting a review activity completes it (there is no REJECTED status).
-const REVIEW_ACTIVITY_STATUSES = ['All', 'PENDING', 'COMPLETED', 'CANCELED', 'TERMINATED'];
 const emptySx = { py: 4, textAlign: 'center', color: 'text.secondary' } as const;
 
 const statusLabel = (s: string) => (s === 'All' ? 'All' : s.charAt(0) + s.slice(1).toLowerCase().replace(/_/g, ' '));
@@ -518,134 +515,13 @@ export function StartWorkflowDialog({ scope, initialWorkflowType, onClose, onToa
   );
 }
 
-// ── Review activities ───────────────────────────────────────────────────────────
+// ── Review activity detail (opened from the unified Human Tasks queue) ──────────
 
-/**
- * Review activities are human-in-the-loop decisions on gated or failed activities, so they belong
- * with the user's own work rather than with workflow administration — UserPortal renders this.
- */
-export function ReviewActivities({ scope, onToast, initialReviewId }: { scope: PortalScope; onToast: (t: Toast) => void; initialReviewId?: string }) {
-  const [search, setSearch] = useState('');
-  // Pending is what a reviewer is here for; the other statuses are a look back.
-  const [status, setStatus] = useState('PENDING');
-  const [selectedType, setSelectedType] = useState<WorkflowDefinition | null>(null);
-  // Like the workflow list, the dialog opens against the integration that owns the row.
-  const [open, setOpen] = useState<{ taskId: string; taskQueue?: string } | null>(null);
-  const [integration, setIntegration] = useState<WorkflowTarget | null>(null);
-  // A deep link names a review directly; the dialog fetches everything else from the id.
-  useEffect(() => {
-    if (initialReviewId) setOpen({ taskId: initialReviewId });
-  }, [initialReviewId]);
-  const timeFilter = useTimeRangeFilter();
-
-  const multi = scope.targets.length > 1;
-  const taskQueue = integration?.handler ?? scope.taskQueue;
-  const definitions = useWorkflowDefinitionsAcross(scope.targets, scope.environmentId);
-  const {
-    data: page,
-    isLoading,
-    error,
-    refetch,
-    isFetching,
-  } = useReviewActivities(gatewayScope(scope), {
-    status: status === 'All' ? undefined : status,
-    parentWorkflowId: search || undefined,
-    taskQueue,
-    startTimeFrom: timeFilter.bounds.startTimeFrom,
-    startTimeTo: timeFilter.bounds.startTimeTo,
-    limit: 50,
-  });
-
-  // The review-activity API has no workflow-name filter; the qualified task name carries it, so filter client-side.
-  const items = sortByStartTimeDesc((page?.items ?? []).filter((t) => !selectedType || splitQualifiedName(t.taskName ?? t.activityName).workflow === selectedType.workflowType));
-  const hasFilters = status !== 'PENDING' || !!selectedType || !!search || !!integration || timeFilter.active;
-
-  return (
-    <>
-      <Stack direction="row" alignItems="center" gap={1.5} sx={{ mb: 2 }}>
-        <SearchField value={search} onChange={setSearch} placeholder="Search by workflow ID" sx={{ width: 320 }} />
-        <Box sx={{ flex: 1 }} />
-        <Tooltip title="Refresh">
-          <IconButton size="small" onClick={() => refetch()} aria-label="Refresh">
-            <RefreshCw size={16} style={{ animation: isFetching ? 'spin 1s linear infinite' : 'none' }} />
-          </IconButton>
-        </Tooltip>
-      </Stack>
-
-      <Stack direction="row" gap={1.5} sx={{ mb: 2 }} flexWrap="wrap" alignItems="center">
-        <StatusFilter options={REVIEW_ACTIVITY_STATUSES} value={status} onChange={setStatus} />
-        <WorkflowNameFilter definitions={distinctWorkflowTypes(definitions.items)} value={selectedType} onChange={setSelectedType} />
-        {multi && <IntegrationFilter targets={scope.targets} value={integration} onChange={setIntegration} />}
-        {timeFilter.controls}
-        {hasFilters && (
-          <Button
-            size="small"
-            onClick={() => {
-              setStatus('PENDING');
-              setSelectedType(null);
-              setSearch('');
-              setIntegration(null);
-              timeFilter.reset();
-            }}>
-            Clear
-          </Button>
-        )}
-      </Stack>
-
-      <DefinitionsUnavailableNotice failed={definitions.failed} />
-
-      {isLoading ? (
-        <CircularProgress size={24} sx={{ display: 'block', mx: 'auto', py: 4 }} />
-      ) : error ? (
-        <Typography sx={emptySx}>{error instanceof Error ? error.message : 'Failed to load review activities.'}</Typography>
-      ) : items.length === 0 ? (
-        <Typography sx={emptySx}>No review activities found.</Typography>
-      ) : (
-        <ListingTable>
-          <ListingTable.Head>
-            <ListingTable.Row>
-              <HeaderCell label="Activity Name" help="The gated or failed activity awaiting a person's decision." />
-              <HeaderCell label="Workflow Name" help="The workflow definition the parent instance executes." />
-              {multi && <HeaderCell label="Integration" help="The integration whose runtime owns this activity, resolved from its task queue." />}
-              <HeaderCell label="Workflow ID" help="The parent workflow instance waiting on this decision — click to open it." />
-              <HeaderCell label="Status" help="The review's current state." />
-              <HeaderCell label="Started" help="When the review was created." />
-            </ListingTable.Row>
-          </ListingTable.Head>
-          <ListingTable.Body>
-            {items.map((t) => {
-              const qualified = splitQualifiedName(t.taskName ?? t.activityName);
-              return (
-                <ListingTable.Row key={t.taskId} onClick={() => setOpen({ taskId: t.taskId, taskQueue: t.taskQueue })} sx={{ cursor: 'pointer', '&:hover': { bgcolor: 'action.hover' } }}>
-                  <ListingTable.Cell>
-                    <Typography variant="body2">{qualified.task ?? t.taskId}</Typography>
-                  </ListingTable.Cell>
-                  <ListingTable.Cell>
-                    <Typography variant="body2">{qualified.workflow ?? '—'}</Typography>
-                  </ListingTable.Cell>
-                  {multi && (
-                    <ListingTable.Cell>
-                      <Typography variant="body2">{ownerLabel(scope, t.taskQueue)}</Typography>
-                    </ListingTable.Cell>
-                  )}
-                  <ListingTable.Cell>
-                    <WorkflowIdLink workflowId={t.parentWorkflowId} environmentId={scope.environmentId} />
-                  </ListingTable.Cell>
-                  <ListingTable.Cell>
-                    <StatusChip status={t.status} />
-                  </ListingTable.Cell>
-                  <ListingTable.Cell>{formatTime(t.startTime)}</ListingTable.Cell>
-                </ListingTable.Row>
-              );
-            })}
-          </ListingTable.Body>
-        </ListingTable>
-      )}
-      {!isLoading && !error && items.length > 0 && <ListFooter count={items.length} singular="review activity" plural="review activities" hasMore={page?.hasMore === true} />}
-
-      {open && <ReviewActivityDetailDialog scope={ownerScope(scope, open.taskQueue)} taskId={open.taskId} onClose={() => setOpen(null)} onToast={onToast} />}
-    </>
-  );
+/** Why a review exists, in words: an approval gate before the run, or a decision after a failure. */
+export function reviewTriggerLabel(trigger?: string): string {
+  if (trigger === 'PRE_RUN') return 'Approval gate — review before the activity runs';
+  if (trigger === 'ON_FAILURE') return 'Failure review — decide a failed activity\u2019s rerun';
+  return trigger || '—';
 }
 
 /**
@@ -664,7 +540,7 @@ function reviewActivityDisplayName(taskName?: string, activityName?: string, fal
  * and states exactly which fields were changed before anything runs; Reject warns that the
  * activity is recorded as failed and the workflow is told. Every path confirms in a second step.
  */
-function ReviewActivityDetailDialog({ scope, taskId, onClose, onToast }: { scope: WorkflowScope; taskId: string; onClose: () => void; onToast: (t: Toast) => void }) {
+export function ReviewActivityDetailDialog({ scope, taskId, onClose, onToast }: { scope: WorkflowScope; taskId: string; onClose: () => void; onToast: (t: Toast) => void }) {
   const { data: activity, isLoading, error: loadError } = useReviewActivity(scope, taskId);
   const decide = useReviewDecision(scope);
   const [mode, setMode] = useState<'view' | 'confirm-proceed' | 'edit' | 'review-changes' | 'reject'>('view');
@@ -752,58 +628,16 @@ function ReviewActivityDetailDialog({ scope, taskId, onClose, onToast }: { scope
 
   const busy = decide.isPending;
 
-  const actions = (
-    <>
-      <Button onClick={onClose}>Close</Button>
-      <Box sx={{ flex: 1 }} />
-      {/* Deciding a review activity requires the workflow manage permission. */}
-      <Authorized permissions={[Permissions.WORKFLOW_MANAGE_WORKFLOWS]}>
-        {canDecide && mode === 'confirm-proceed' && (
-          <>
-            <Button disabled={busy} onClick={() => backTo('view')}>
-              Back
-            </Button>
-            <Button variant="contained" disabled={busy} onClick={() => runDecision('proceed-with-input', activity?.activityArgs ?? {})}>
-              {busy ? 'Submitting…' : 'Proceed'}
-            </Button>
-          </>
-        )}
-        {canDecide && mode === 'edit' && (
-          <>
-            <Button disabled={busy} onClick={() => backTo('view')}>
-              Back
-            </Button>
-            <Button variant="contained" disabled={busy} onClick={stageEdited}>
-              Review Changes
-            </Button>
-          </>
-        )}
-        {canDecide && mode === 'review-changes' && (
-          <>
-            <Button disabled={busy} onClick={() => backTo('edit')}>
-              Back
-            </Button>
-            <Button variant="contained" disabled={busy} onClick={() => runDecision('proceed-with-input', pendingInput)}>
-              {busy ? 'Submitting…' : 'Proceed with Changes'}
-            </Button>
-          </>
-        )}
-        {canDecide && mode === 'reject' && (
-          <>
-            <Button disabled={busy} onClick={() => backTo('view')}>
-              Back
-            </Button>
-            <Button variant="contained" color="error" disabled={busy} onClick={() => runDecision('reject', undefined, feedback.trim() || undefined)}>
-              {busy ? 'Submitting…' : 'Reject Activity'}
-            </Button>
-          </>
-        )}
-      </Authorized>
-    </>
+  // A small right-aligned button row at the bottom of the active step's card — actions live
+  // beside the content they act on, not in a footer a screen-height away.
+  const stepButtons = (...buttons: ReactNode[]) => (
+    <Stack direction="row" justifyContent="flex-end" gap={1}>
+      {buttons}
+    </Stack>
   );
 
   return (
-    <DetailDrawer title={heading} status={activity?.status} onClose={onClose} actions={actions}>
+    <DetailDrawer title={heading} status={activity?.status} onClose={onClose}>
       {isLoading ? (
         <CircularProgress size={24} sx={{ display: 'block', mx: 'auto', py: 4 }} />
       ) : loadError || !activity ? (
@@ -826,6 +660,7 @@ function ReviewActivityDetailDialog({ scope, taskId, onClose, onToast }: { scope
               <DetailRow label="Parent Workflow">
                 <WorkflowIdLink workflowId={activity.parentWorkflowId} environmentId={scope.environmentId} onNavigate={onClose} />
               </DetailRow>
+              <DetailRow label="Trigger">{reviewTriggerLabel(activity.trigger)}</DetailRow>
               <DetailRow label="Created">{formatTime(activity.startTime)}</DetailRow>
               {activity.errorMessage && <DetailRow label="Error">{activity.errorMessage}</DetailRow>}
             </Stack>
@@ -840,7 +675,7 @@ function ReviewActivityDetailDialog({ scope, taskId, onClose, onToast }: { scope
               <SectionCard title="Decisions">
                 <Stack gap={2}>
                   <ActionRow
-                    caption="Proceed: rerun the activity with the original arguments, exactly as shown above."
+                    caption={activity.trigger === 'ON_FAILURE' ? 'Proceed: rerun the failed activity with the original arguments, exactly as shown above.' : 'Proceed: run the activity with the original arguments, exactly as shown above.'}
                     button={
                       <Button variant="contained" disabled={busy} onClick={() => setMode('confirm-proceed')}>
                         Proceed…
@@ -856,23 +691,34 @@ function ReviewActivityDetailDialog({ scope, taskId, onClose, onToast }: { scope
                       </Button>
                     }
                   />
-                  <Divider />
-                  <ActionRow
-                    caption="Reject: the activity is recorded as failed and the failure is surfaced to the workflow."
-                    button={
-                      <Button variant="text" color="error" size="small" disabled={busy} onClick={() => setMode('reject')}>
-                        Reject…
-                      </Button>
-                    }
-                  />
                 </Stack>
+              </SectionCard>
+              <SectionCard title="Review operations">
+                <ActionRow
+                  caption="Reject — a fail operation: the review completes, and the failure is propagated to the workflow, which decides what happens next."
+                  button={
+                    <Button variant="text" color="error" size="small" disabled={busy} onClick={() => setMode('reject')}>
+                      Reject…
+                    </Button>
+                  }
+                />
               </SectionCard>
             </Authorized>
           )}
 
           {mode === 'confirm-proceed' && (
             <SectionCard title="Confirm proceed">
-              <Alert severity="info">The activity reruns with the original arguments, exactly as shown above. This cannot be undone.</Alert>
+              <Stack gap={2}>
+                <Alert severity="info">The activity {activity.trigger === 'ON_FAILURE' ? 'reruns' : 'runs'} with the original arguments, exactly as shown above. This cannot be undone.</Alert>
+                {stepButtons(
+                  <Button key="b" disabled={busy} onClick={() => backTo('view')}>
+                    Back
+                  </Button>,
+                  <Button key="p" variant="contained" disabled={busy} onClick={() => runDecision('proceed-with-input', activity?.activityArgs ?? {})}>
+                    {busy ? 'Submitting…' : 'Proceed'}
+                  </Button>,
+                )}
+              </Stack>
             </SectionCard>
           )}
 
@@ -903,6 +749,14 @@ function ReviewActivityDetailDialog({ scope, taskId, onClose, onToast }: { scope
                     helperText={rawErr}
                     slotProps={{ input: { sx: { fontFamily: 'monospace', fontSize: 13 } } }}
                   />
+                )}
+                {stepButtons(
+                  <Button key="b" disabled={busy} onClick={() => backTo('view')}>
+                    Back
+                  </Button>,
+                  <Button key="r" variant="contained" disabled={busy} onClick={stageEdited}>
+                    Review Changes
+                  </Button>,
                 )}
               </Stack>
             </SectionCard>
@@ -937,6 +791,14 @@ function ReviewActivityDetailDialog({ scope, taskId, onClose, onToast }: { scope
                 ) : (
                   <StructuredValue title="Arguments to submit" raw={jsonPretty(pendingInput) || '{}'} environmentId={scope.environmentId} />
                 )}
+                {stepButtons(
+                  <Button key="b" disabled={busy} onClick={() => backTo('edit')}>
+                    Back
+                  </Button>,
+                  <Button key="p" variant="contained" disabled={busy} onClick={() => runDecision('proceed-with-input', pendingInput)}>
+                    {busy ? 'Submitting…' : 'Proceed with Changes'}
+                  </Button>,
+                )}
               </Stack>
             </SectionCard>
           )}
@@ -944,8 +806,16 @@ function ReviewActivityDetailDialog({ scope, taskId, onClose, onToast }: { scope
           {mode === 'reject' && (
             <SectionCard title="Reject activity">
               <Stack gap={2}>
-                <Alert severity="warning">The activity is recorded as FAILED and the failure is surfaced to the workflow — the workflow decides what happens next. This cannot be undone.</Alert>
+                <Alert severity="warning">Rejecting is a fail operation: the review completes, and the failure is propagated to the workflow — the workflow decides what happens next. This cannot be undone.</Alert>
                 <TextField label="Feedback (optional)" fullWidth multiline minRows={2} value={feedback} onChange={(e) => setFeedback(e.target.value)} helperText="Relayed to the workflow as the rejection reason." />
+                {stepButtons(
+                  <Button key="b" disabled={busy} onClick={() => backTo('view')}>
+                    Back
+                  </Button>,
+                  <Button key="r" variant="contained" color="error" disabled={busy} onClick={() => runDecision('reject', undefined, feedback.trim() || undefined)}>
+                    {busy ? 'Submitting…' : 'Reject Activity'}
+                  </Button>,
+                )}
               </Stack>
             </SectionCard>
           )}
