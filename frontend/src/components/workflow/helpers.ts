@@ -152,6 +152,48 @@ export interface FormField {
 /** Joins a parent path and a field name into the dotted key used for a leaf field's value. */
 export const fieldPath = (prefix: string, name: string): string => (prefix ? `${prefix}.${name}` : name);
 
+/**
+ * The type and value set of one leaf schema, read defensively: `type` may be a string, an array
+ * (nullable unions spell `["string","null"]`), or absent; an enum may be a plain `enum`, or an
+ * `anyOf`/`oneOf` of `const`/`enum` members (how some generators spell unions of literals). A
+ * schema this can't place still renders — as a JSON textarea — rather than breaking the form.
+ */
+function normalizeLeafSchema(d: Record<string, unknown>): { type: string; enumValues?: string[] } {
+  let type: string | undefined;
+  if (typeof d.type === 'string') type = d.type;
+  else if (Array.isArray(d.type)) type = d.type.find((t): t is string => typeof t === 'string' && t !== 'null');
+
+  let enumValues = Array.isArray(d.enum) ? d.enum.filter((v) => v !== null).map(String) : undefined;
+  let enumSamples: unknown[] = Array.isArray(d.enum) ? d.enum.filter((v) => v !== null) : [];
+  if (!enumValues) {
+    const variants = Array.isArray(d.anyOf) ? d.anyOf : Array.isArray(d.oneOf) ? d.oneOf : null;
+    if (variants) {
+      const collected: unknown[] = [];
+      let allLiteral = true;
+      for (const v of variants) {
+        const vo = v !== null && typeof v === 'object' ? (v as Record<string, unknown>) : {};
+        if (vo.const !== undefined) collected.push(vo.const);
+        else if (Array.isArray(vo.enum)) collected.push(...vo.enum.filter((e) => e !== null));
+        else if (vo.type === 'null') continue;
+        else {
+          allLiteral = false;
+          break;
+        }
+      }
+      if (allLiteral && collected.length > 0) {
+        enumValues = collected.map(String);
+        enumSamples = collected;
+      }
+    }
+  }
+  // A value set without a declared type still says what it holds.
+  if (!type && enumSamples.length > 0) {
+    type = enumSamples.every((v) => typeof v === 'number') ? (enumSamples.every((v) => Number.isInteger(v)) ? 'integer' : 'number') : enumSamples.every((v) => typeof v === 'boolean') ? 'boolean' : 'string';
+  }
+  if (!type) type = d.properties ? 'object' : 'string';
+  return { type, ...(enumValues ? { enumValues } : {}) };
+}
+
 /** Parses a JSON-schema object (already-parsed) into a field list, recursing into nested objects. */
 function parseObjectSchema(s: unknown): FormField[] | null {
   if (s === null || typeof s !== 'object' || Array.isArray(s)) return null;
@@ -161,7 +203,7 @@ function parseObjectSchema(s: unknown): FormField[] | null {
   const required = new Set(Array.isArray(obj.required) ? obj.required.filter((r): r is string => typeof r === 'string') : []);
   const fields = Object.entries(props as Record<string, unknown>).map(([name, def]): FormField => {
     const d = (def !== null && typeof def === 'object' ? def : {}) as Record<string, unknown>;
-    const type = typeof d.type === 'string' ? d.type : 'string';
+    const { type, enumValues } = normalizeLeafSchema(d);
     // An object with its own properties becomes a group; a freeform object stays a JSON textarea.
     const nested = type === 'object' ? parseObjectSchema(d) : null;
     return {
@@ -170,7 +212,7 @@ function parseObjectSchema(s: unknown): FormField[] | null {
       label: typeof d.title === 'string' ? d.title : humanizeKey(name),
       required: required.has(name),
       description: typeof d.description === 'string' ? d.description : undefined,
-      enumValues: Array.isArray(d.enum) ? d.enum.map(String) : undefined,
+      enumValues,
       ...(nested ? { fields: nested } : {}),
     };
   });
@@ -293,6 +335,38 @@ export function formValuesFromObject(fields: FormField[], source: Record<string,
   const values: Record<string, string | boolean> = {};
   fillValues(fields, source, '', values);
   return values;
+}
+
+/** One field a person edited away from its original value — what a review confirms before acting. */
+export interface FieldChange {
+  path: string;
+  label: string;
+  from: string;
+  to: string;
+}
+
+/**
+ * Which leaf fields differ from their seeded values, with display labels — the evidence an
+ * edited-rerun confirmation shows, so what changed is stated rather than remembered.
+ */
+export function diffFormValues(fields: FormField[], original: Record<string, string | boolean>, current: Record<string, string | boolean>): FieldChange[] {
+  const changes: FieldChange[] = [];
+  const asText = (v: string | boolean | undefined): string => (v === undefined ? '' : typeof v === 'boolean' ? (v ? 'Yes' : 'No') : v);
+  const walk = (fs: FormField[], prefix: string, labelPrefix: string) => {
+    for (const f of fs) {
+      const path = fieldPath(prefix, f.name);
+      const label = labelPrefix ? `${labelPrefix} › ${f.label}` : f.label;
+      if (f.fields) {
+        walk(f.fields, path, label);
+        continue;
+      }
+      const from = asText(original[path]);
+      const to = asText(current[path]);
+      if (from !== to) changes.push({ path, label, from: from || '—', to: to || '—' });
+    }
+  };
+  walk(fields, '', '');
+  return changes;
 }
 
 /** Returns a copy of `items` sorted by their `startTime`, newest first (missing/invalid times last). */

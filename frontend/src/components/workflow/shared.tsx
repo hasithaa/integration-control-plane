@@ -16,13 +16,15 @@
  * under the License.
  */
 
-import { Alert, Box, Button, Chip, Collapse, Link, ListingTable, Stack, Tooltip, Typography } from '@wso2/oxygen-ui';
+import { Alert, Box, Button, Card, Chip, Collapse, Divider, Drawer, Link, ListingTable, Stack, Tooltip, Typography } from '@wso2/oxygen-ui';
 import { ChevronRight } from '@wso2/oxygen-ui-icons-react';
 import { useState, type JSX, type ReactNode } from 'react';
 import { useNavigate } from 'react-router';
 import { resourceUrl, useScope } from '../../nav';
 import CodeViewer from '../CodeViewer';
-import { displayWorkflowId, STATUS_COLORS } from './helpers';
+import { displayWorkflowId, sectionTitleSx, STATUS_COLORS } from './helpers';
+import { useLayout } from '../../contexts/LayoutContext';
+import { X } from '@wso2/oxygen-ui-icons-react';
 
 export interface WorkflowScope {
   componentId: string;
@@ -58,6 +60,69 @@ export function WorkflowIdLink({ workflowId, environmentId, onNavigate }: { work
       sx={{ fontFamily: 'monospace', fontSize: 12, textAlign: 'left', wordBreak: 'break-all', cursor: 'pointer', color: 'text.primary', textDecorationColor: 'inherit' }}>
       {displayWorkflowId(workflowId)}
     </Link>
+  );
+}
+
+/**
+ * The full-page detail surface every workflow entity shares: a right drawer covering everything but
+ * the left navigation, with a fixed header (title, status, close), a scrollable body, and a pinned
+ * action bar. Human tasks and reviews used to open in a small modal while workflow instances got
+ * this; the information density is the same, so the surface now is too.
+ */
+export function DetailDrawer({ title, status, onClose, actions, children }: { title: ReactNode; status?: string; onClose: () => void; actions?: ReactNode; children: ReactNode }): JSX.Element {
+  const { sidebarWidth } = useLayout();
+  return (
+    <Drawer
+      anchor="right"
+      open
+      variant="persistent"
+      onClose={onClose}
+      sx={{ '& .MuiDrawer-paper': { width: `calc(100% - ${sidebarWidth}px)`, position: 'fixed', top: 64, height: 'calc(100% - 64px)', borderLeft: '1px solid', borderColor: 'divider', display: 'flex', flexDirection: 'column' } }}>
+      <Stack direction="row" alignItems="center" justifyContent="space-between" gap={1} sx={{ px: 3, py: 1.5, borderBottom: '1px solid', borderColor: 'divider', flexShrink: 0 }}>
+        <Stack direction="row" alignItems="center" gap={1.5} sx={{ minWidth: 0 }}>
+          <Typography variant="subtitle1" component="div" sx={{ fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {title}
+          </Typography>
+          {status && <StatusChip status={status} />}
+        </Stack>
+        <Button size="small" onClick={onClose} sx={{ minWidth: 0, px: 1 }} aria-label="close">
+          <X size={16} />
+        </Button>
+      </Stack>
+      <Box sx={{ flex: 1, overflow: 'auto', px: 3, py: 2.5 }}>
+        <Box sx={{ maxWidth: 860 }}>{children}</Box>
+      </Box>
+      {actions && (
+        <Stack direction="row" alignItems="center" gap={1} sx={{ px: 3, py: 1.5, borderTop: '1px solid', borderColor: 'divider', flexShrink: 0 }}>
+          {actions}
+        </Stack>
+      )}
+    </Drawer>
+  );
+}
+
+/** A titled section card used through the task and review drawers. */
+export function SectionCard({ title, children }: { title: string; children: ReactNode }): JSX.Element {
+  return (
+    <Card variant="outlined" sx={{ bgcolor: 'action.hover' }}>
+      <Typography variant="subtitle2" sx={{ px: 2, py: 1.5, ...sectionTitleSx }}>
+        {title}
+      </Typography>
+      <Divider />
+      <Box sx={{ px: 2, py: 2 }}>{children}</Box>
+    </Card>
+  );
+}
+
+/** One offered action: what it does in a sentence, then the button that starts it. */
+export function ActionRow({ caption, button }: { caption: string; button: ReactNode }): JSX.Element {
+  return (
+    <Stack direction="row" alignItems="center" justifyContent="space-between" gap={2}>
+      <Typography variant="body2" color="text.secondary" sx={{ flex: 1 }}>
+        {caption}
+      </Typography>
+      <Box sx={{ flexShrink: 0 }}>{button}</Box>
+    </Stack>
   );
 }
 

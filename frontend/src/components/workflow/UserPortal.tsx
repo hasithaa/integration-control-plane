@@ -16,13 +16,14 @@
  * under the License.
  */
 
-import { Alert, Box, Button, Card, Chip, CircularProgress, Dialog, DialogActions, DialogContent, DialogTitle, Divider, IconButton, ListingTable, Snackbar, Stack, TextField, Tooltip, Typography } from '@wso2/oxygen-ui';
+import { Alert, Box, Button, Chip, CircularProgress, Divider, IconButton, ListingTable, Snackbar, Stack, TextField, Tooltip, Typography } from '@wso2/oxygen-ui';
 import SearchField from '../SearchField';
 import { RefreshCw } from '@wso2/oxygen-ui-icons-react';
 import { useEffect, useState } from 'react';
 import SchemaFormFields from './SchemaFormFields';
-import { buildFormResult, formatTime, gatewayScope, humanizeKey, ownerLabel, ownerScope, parseFormSchema, sectionTitleSx, sortByStartTimeDesc, unescapeRoleName, type PortalScope } from './helpers';
-import { HeaderCell, DetailRow, ListFooter, StatusChip, SubmitError, WorkflowIdLink, type WorkflowScope } from './shared';
+import StructuredValue from './StructuredValue';
+import { buildFormResult, displayWorkflowId, formatTime, gatewayScope, jsonPretty, ownerLabel, ownerScope, parseFormSchema, sortByStartTimeDesc, unescapeRoleName, type PortalScope } from './helpers';
+import { ActionRow, DetailDrawer, DetailRow, HeaderCell, ListFooter, SectionCard, StatusChip, SubmitError, WorkflowIdLink, type WorkflowScope } from './shared';
 import { IntegrationFilter, ReviewActivities, StatusFilter, useTimeRangeFilter, WorkflowNameFilter } from './AdminPortal';
 import Authorized from '../Authorized';
 import { Permissions } from '../../constants/permissions';
@@ -209,31 +210,34 @@ function MyTasks({ scope, onToast, initialTaskId }: { scope: PortalScope; onToas
   );
 }
 
-/** Extracts key/value pairs from the task's `payload` JSON object; null when absent or empty. */
-function payloadDetailEntries(payload: unknown): Array<[string, string]> | null {
-  if (payload === null || typeof payload !== 'object' || Array.isArray(payload)) return null;
-  const entries = Object.entries(payload as Record<string, unknown>);
-  if (entries.length === 0) return null;
-  return entries.map(([k, v]) => [k, typeof v === 'string' ? v : JSON.stringify(v)]);
-}
-
+/**
+ * The human-task drawer. Reading and acting are kept apart: the task's own facts (who may act,
+ * when it was created, the payload it carries) are read-only sections, and each action states
+ * what it does before it can be taken — completing is the task's purpose and leads; failing is a
+ * task *operation* with consequences, so it is quieter and warns. Both submit in two steps.
+ */
 function TaskDetailDialog({ scope, taskId, actionable, onClose, onToast }: { scope: WorkflowScope; taskId: string; actionable?: boolean; onClose: () => void; onToast: (t: Toast) => void }) {
   const { data: task, isLoading, error: taskError } = useHumanTask(scope, taskId);
   const complete = useCompleteHumanTask(scope);
   const fail = useFailHumanTask(scope);
-  const [mode, setMode] = useState<'view' | 'complete' | 'fail'>('view');
+  const [mode, setMode] = useState<'view' | 'complete' | 'confirm-complete' | 'fail'>('view');
+  // The escape hatch: a generated form cannot express every value (and a schema bug should not
+  // block a completion), so the result is always editable as raw JSON too.
+  const [rawMode, setRawMode] = useState(false);
   const [resultText, setResultText] = useState('{}');
   const [reason, setReason] = useState('');
   const [err, setErr] = useState('');
   const [formValues, setFormValues] = useState<Record<string, string | boolean>>({});
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [submitError, setSubmitError] = useState<string | null>(null);
+  // The result confirmed in step two — built once when entering the confirmation.
+  const [pendingResult, setPendingResult] = useState<unknown>(null);
 
   const busy = complete.isPending || fail.isPending;
   const canComplete = task?.canComplete !== false;
   const eligibleRoles = task?.eligibleRoles ?? (Array.isArray(task?.roles) ? (task.roles as string[]) : undefined) ?? task?.userRoles;
-  const payloadDetails = payloadDetailEntries(task?.payload);
   const formFields = parseFormSchema(task?.formSchema);
+  const payloadJson = task?.payload !== undefined && task?.payload !== null ? jsonPretty(task.payload) : null;
 
   const setFormValue = (name: string, value: string | boolean) => {
     setFormValues((prev) => ({ ...prev, [name]: value }));
@@ -245,10 +249,30 @@ function TaskDetailDialog({ scope, taskId, actionable, onClose, onToast }: { sco
     });
   };
 
-  const mutateComplete = (result: unknown) => {
+  // Step one: validate and stage the result; step two actually submits it.
+  const stageComplete = () => {
+    if (formFields && !rawMode) {
+      const { result, errors } = buildFormResult(formFields, formValues);
+      if (Object.keys(errors).length > 0) {
+        setFieldErrors(errors);
+        return;
+      }
+      setPendingResult(result);
+      setMode('confirm-complete');
+      return;
+    }
+    try {
+      setPendingResult(resultText.trim() ? JSON.parse(resultText) : {});
+      setMode('confirm-complete');
+    } catch {
+      setErr('Result must be valid JSON.');
+    }
+  };
+
+  const submitComplete = () => {
     setSubmitError(null);
     complete.mutate(
-      { taskId, result },
+      { taskId, result: pendingResult },
       {
         onSuccess: () => {
           onToast({ severity: 'success', message: 'Task completed.' });
@@ -257,28 +281,6 @@ function TaskDetailDialog({ scope, taskId, actionable, onClose, onToast }: { sco
         onError: (e) => setSubmitError(e instanceof Error && e.message ? e.message : 'Failed to complete task.'),
       },
     );
-  };
-
-  const submitComplete = () => {
-    // With a form schema, build the result from the generated form; otherwise fall back to raw JSON.
-    if (formFields) {
-      const { result, errors } = buildFormResult(formFields, formValues);
-      if (Object.keys(errors).length > 0) {
-        setFieldErrors(errors);
-        return;
-      }
-      mutateComplete(result);
-      return;
-    }
-
-    let result: unknown;
-    try {
-      result = resultText.trim() ? JSON.parse(resultText) : {};
-    } catch {
-      setErr('Result must be valid JSON.');
-      return;
-    }
-    mutateComplete(result);
   };
 
   const submitFail = () => {
@@ -299,139 +301,203 @@ function TaskDetailDialog({ scope, taskId, actionable, onClose, onToast }: { sco
     );
   };
 
-  // Returns to the initial view, keeping entered values but clearing validation errors.
-  const backToView = () => {
-    setMode('view');
+  // Returns one step back, keeping entered values but clearing validation errors.
+  const backTo = (m: 'view' | 'complete') => {
+    setMode(m);
     setErr('');
     setFieldErrors({});
     setSubmitError(null);
   };
 
+  const actions = (
+    <>
+      <Button onClick={onClose}>Close</Button>
+      <Box sx={{ flex: 1 }} />
+      {/* Acting on human tasks requires the workflow manage-human-tasks permission. */}
+      <Authorized permissions={[Permissions.WORKFLOW_MANAGE_HUMAN_TASKS]}>
+        {mode === 'complete' && (
+          <>
+            <Button disabled={busy} onClick={() => backTo('view')}>
+              Back
+            </Button>
+            <Button variant="contained" disabled={busy} onClick={stageComplete}>
+              Review &amp; Complete
+            </Button>
+          </>
+        )}
+        {mode === 'confirm-complete' && (
+          <>
+            <Button disabled={busy} onClick={() => backTo('complete')}>
+              Back
+            </Button>
+            <Button variant="contained" disabled={busy} onClick={submitComplete}>
+              {complete.isPending ? 'Completing…' : 'Complete Task'}
+            </Button>
+          </>
+        )}
+        {mode === 'fail' && (
+          <>
+            <Button disabled={busy} onClick={() => backTo('view')}>
+              Back
+            </Button>
+            <Button variant="contained" color="warning" disabled={busy} onClick={submitFail}>
+              {fail.isPending ? 'Submitting…' : 'Mark as Failed'}
+            </Button>
+          </>
+        )}
+      </Authorized>
+    </>
+  );
+
   return (
-    <Dialog open onClose={onClose} maxWidth="sm" fullWidth>
-      <DialogTitle sx={sectionTitleSx}>
-        <Stack direction="row" alignItems="center" gap={1.5}>
-          <span>{task ? taskDisplayName(task) : taskId}</span>
-          {task?.status && <StatusChip status={taskDisplayStatus(task.status)} />}
-        </Stack>
-      </DialogTitle>
-      <DialogContent>
-        {isLoading ? (
-          <CircularProgress size={24} sx={{ display: 'block', mx: 'auto', py: 4 }} />
-        ) : taskError || !task ? (
-          <Typography sx={emptySx}>{taskError instanceof Error ? taskError.message : 'Failed to load task details.'}</Typography>
-        ) : (
-          <Stack gap={2} sx={{ mt: 1 }}>
-            <SubmitError message={submitError} onClear={() => setSubmitError(null)} />
-            {task?.description && (
-              <Card variant="outlined" sx={{ bgcolor: 'action.hover' }}>
-                <Typography variant="subtitle2" sx={{ px: 2, py: 1.5, ...sectionTitleSx }}>
-                  Description
-                </Typography>
-                <Divider />
-                <Typography variant="body2" color="text.secondary" sx={{ px: 2, py: 2 }}>
-                  {task.description}
-                </Typography>
-              </Card>
-            )}
-
-            <Card variant="outlined" sx={{ bgcolor: 'action.hover' }}>
-              <Typography variant="subtitle2" sx={{ px: 2, py: 1.5, ...sectionTitleSx }}>
-                Task Detail
+    <DetailDrawer title={task ? taskDisplayName(task) : displayWorkflowId(taskId)} status={taskDisplayStatus(task?.status)} onClose={onClose} actions={actions}>
+      {isLoading ? (
+        <CircularProgress size={24} sx={{ display: 'block', mx: 'auto', py: 4 }} />
+      ) : taskError || !task ? (
+        <Typography sx={emptySx}>{taskError instanceof Error ? taskError.message : 'Failed to load task details.'}</Typography>
+      ) : (
+        <Stack gap={2}>
+          <SubmitError message={submitError} onClear={() => setSubmitError(null)} />
+          {task?.description && (
+            <SectionCard title="Description">
+              <Typography variant="body2" color="text.secondary">
+                {task.description}
               </Typography>
-              <Divider />
-              <Stack gap={1.25} sx={{ px: 2, py: 2 }}>
-                <DetailRow label="Created">{formatTime(task?.startTime)}</DetailRow>
-                <DetailRow label="Eligible Roles">
-                  {eligibleRoles?.length ? (
-                    <Stack direction="row" gap={0.5} flexWrap="wrap">
-                      {eligibleRoles.map((role) => (
-                        <Chip key={role} label={unescapeRoleName(role)} size="small" variant="outlined" />
-                      ))}
-                    </Stack>
-                  ) : (
-                    '—'
-                  )}
-                </DetailRow>
-                {payloadDetails?.map(([key, value]) => (
-                  <DetailRow key={key} label={humanizeKey(key)}>
-                    {value}
-                  </DetailRow>
-                ))}
-              </Stack>
-            </Card>
+            </SectionCard>
+          )}
 
-            {mode === 'complete' &&
-              (formFields ? (
-                <SchemaFormFields fields={formFields} values={formValues} errors={fieldErrors} onChange={setFormValue} />
-              ) : (
+          <SectionCard title="Task">
+            <Stack gap={1.25}>
+              <DetailRow label="Task Name">{taskDisplayName(task)}</DetailRow>
+              <DetailRow label="Workflow Name">{task.parentWorkflowType ?? '—'}</DetailRow>
+              <DetailRow label="Parent Workflow">
+                <WorkflowIdLink workflowId={task.parentWorkflowId} environmentId={scope.environmentId} onNavigate={onClose} />
+              </DetailRow>
+              <DetailRow label="Created">{formatTime(task?.startTime)}</DetailRow>
+              <DetailRow label="Eligible Roles">
+                {eligibleRoles?.length ? (
+                  <Stack direction="row" gap={0.5} flexWrap="wrap">
+                    {eligibleRoles.map((role) => (
+                      <Chip key={role} label={unescapeRoleName(role)} size="small" variant="outlined" />
+                    ))}
+                  </Stack>
+                ) : (
+                  '—'
+                )}
+              </DetailRow>
+            </Stack>
+          </SectionCard>
+
+          {/* What the workflow handed this task — context to decide with, never something to edit. */}
+          {payloadJson && <StructuredValue title="Task payload (read-only)" raw={payloadJson} environmentId={scope.environmentId} />}
+
+          {actionable && mode === 'view' && (
+            <Authorized permissions={[Permissions.WORKFLOW_MANAGE_HUMAN_TASKS]}>
+              <SectionCard title="Actions">
+                <Stack gap={2}>
+                  <ActionRow
+                    caption="Complete the task: submit a result, and the waiting workflow resumes with it."
+                    button={
+                      <Tooltip title={canComplete ? '' : 'You do not have a matching role to complete this task'}>
+                        <span>
+                          <Button variant="contained" disabled={busy || !canComplete} onClick={() => setMode('complete')}>
+                            Complete…
+                          </Button>
+                        </span>
+                      </Tooltip>
+                    }
+                  />
+                  <Divider />
+                  <ActionRow
+                    caption="Task operation — mark the task as FAILED. The failure is surfaced to the workflow, which decides what happens next."
+                    button={
+                      <Button variant="text" color="warning" size="small" disabled={busy} onClick={() => setMode('fail')}>
+                        Mark as failed…
+                      </Button>
+                    }
+                  />
+                </Stack>
+              </SectionCard>
+            </Authorized>
+          )}
+
+          {(mode === 'complete' || mode === 'confirm-complete') && (
+            <SectionCard title={mode === 'complete' ? 'Result' : 'Confirm completion'}>
+              <Stack gap={2}>
+                {mode === 'complete' ? (
+                  <>
+                    <Stack direction="row" alignItems="center" justifyContent="space-between" gap={2}>
+                      <Typography variant="body2" color="text.secondary">
+                        The result the workflow resumes with.
+                      </Typography>
+                      {formFields && (
+                        <Button
+                          size="small"
+                          variant="text"
+                          onClick={() => {
+                            // Entering raw mode carries the form's current state along; a raw edit
+                            // can express what the form cannot, so it never converts back.
+                            if (!rawMode) {
+                              const { result } = buildFormResult(formFields, formValues);
+                              setResultText(jsonPretty(result) || '{}');
+                            }
+                            setRawMode((v) => !v);
+                            setErr('');
+                          }}>
+                          {rawMode ? 'Back to form' : 'Edit as JSON'}
+                        </Button>
+                      )}
+                    </Stack>
+                    {formFields && !rawMode ? (
+                      <SchemaFormFields fields={formFields} values={formValues} errors={fieldErrors} onChange={setFormValue} />
+                    ) : (
+                      <TextField
+                        label="Result (JSON)"
+                        fullWidth
+                        multiline
+                        minRows={5}
+                        value={resultText}
+                        onChange={(e) => {
+                          setResultText(e.target.value);
+                          setErr('');
+                        }}
+                        error={!!err}
+                        helperText={err || (formFields ? 'Raw mode: submitted exactly as typed — the form is bypassed.' : 'This task declares no result schema; the JSON is submitted as the result.')}
+                        slotProps={{ input: { sx: { fontFamily: 'monospace', fontSize: 13 } } }}
+                      />
+                    )}
+                  </>
+                ) : (
+                  <>
+                    <Alert severity="info">The task completes with the result below, and the waiting workflow resumes with it. This cannot be undone.</Alert>
+                    <StructuredValue title="Result to submit" raw={jsonPretty(pendingResult) || '{}'} environmentId={scope.environmentId} />
+                  </>
+                )}
+              </Stack>
+            </SectionCard>
+          )}
+
+          {mode === 'fail' && (
+            <SectionCard title="Mark task as failed">
+              <Stack gap={2}>
+                <Alert severity="warning">The task is recorded as FAILED and the failure is surfaced to the workflow — the workflow decides what happens next. This cannot be undone.</Alert>
                 <TextField
-                  label="Result (JSON)"
+                  label="Reason"
                   fullWidth
-                  multiline
-                  minRows={4}
-                  value={resultText}
+                  required
+                  value={reason}
                   onChange={(e) => {
-                    setResultText(e.target.value);
+                    setReason(e.target.value);
                     setErr('');
                   }}
                   error={!!err}
-                  helperText={err || 'Payload submitted as the task result.'}
-                  slotProps={{ input: { sx: { fontFamily: 'monospace', fontSize: 13 } } }}
+                  helperText={err || 'Relayed to the workflow as the failure reason.'}
                 />
-              ))}
-            {mode === 'fail' && (
-              <TextField
-                label="Reason"
-                fullWidth
-                required
-                value={reason}
-                onChange={(e) => {
-                  setReason(e.target.value);
-                  setErr('');
-                }}
-                error={!!err}
-                helperText={err}
-              />
-            )}
-          </Stack>
-        )}
-      </DialogContent>
-      <DialogActions sx={{ flexWrap: 'wrap', gap: 1 }}>
-        <Button onClick={onClose}>Close</Button>
-        {/* Acting on human tasks requires the workflow manage-human-tasks permission. */}
-        <Authorized permissions={[Permissions.WORKFLOW_MANAGE_HUMAN_TASKS]}>
-          {actionable && !!task && mode === 'view' && (
-            <>
-              <Button color="warning" disabled={busy} onClick={() => setMode('fail')}>
-                Fail
-              </Button>
-              <Tooltip title={canComplete ? '' : 'You do not have a matching role to complete this task'}>
-                <span>
-                  <Button variant="contained" disabled={busy || !canComplete} onClick={() => setMode('complete')}>
-                    Complete
-                  </Button>
-                </span>
-              </Tooltip>
-            </>
+              </Stack>
+            </SectionCard>
           )}
-          {mode !== 'view' && (
-            <Button disabled={busy} onClick={backToView}>
-              Back
-            </Button>
-          )}
-          {mode === 'complete' && (
-            <Button variant="contained" disabled={busy} onClick={submitComplete}>
-              {complete.isPending ? 'Completing…' : 'Submit Completion'}
-            </Button>
-          )}
-          {mode === 'fail' && (
-            <Button variant="contained" color="warning" disabled={busy} onClick={submitFail}>
-              {fail.isPending ? 'Submitting…' : 'Fail Task'}
-            </Button>
-          )}
-        </Authorized>
-      </DialogActions>
-    </Dialog>
+        </Stack>
+      )}
+    </DetailDrawer>
   );
 }
