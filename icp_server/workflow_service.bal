@@ -173,6 +173,13 @@ function handleWorkflowRequest(string componentId, string environmentId, string[
         allowedPermissions = method == http:GET
             ? [auth:PERMISSION_WORKFLOW_VIEW_HUMAN_TASKS, auth:PERMISSION_WORKFLOW_MANAGE_HUMAN_TASKS]
             : [auth:PERMISSION_WORKFLOW_MANAGE_HUMAN_TASKS];
+    } else if firstSeg == "work-items" {
+        // The unified queue spans both permission domains: holding either side grants the
+        // listing, and the kinds the caller may see are narrowed below.
+        allowedPermissions = [
+            auth:PERMISSION_WORKFLOW_VIEW_HUMAN_TASKS, auth:PERMISSION_WORKFLOW_MANAGE_HUMAN_TASKS,
+            auth:PERMISSION_WORKFLOW_VIEW_WORKFLOWS, auth:PERMISSION_WORKFLOW_MANAGE_WORKFLOWS
+        ];
     } else {
         allowedPermissions = method == http:GET
             ? [auth:PERMISSION_WORKFLOW_VIEW_WORKFLOWS, auth:PERMISSION_WORKFLOW_MANAGE_WORKFLOWS]
@@ -239,13 +246,61 @@ function handleWorkflowRequest(string componentId, string environmentId, string[
             return workflowErrorResponse(400, "Request body must be a JSON object");
         }
     }
+    map<json> queryParams = workflowQueryParams(req.getQueryParams());
+    if firstSeg == "work-items" {
+        // Narrow the queue to the kinds this caller's permissions cover, intersected with any
+        // kind they asked for. Asking only for a kind they may not see is a plain denial, not
+        // an empty page that reads as "no work".
+        string?|http:Response kinds = resolveWorkItemKinds(userContext.userId, scope,
+                queryParams["kind"]);
+        if kinds is http:Response {
+            return kinds;
+        }
+        if kinds is string {
+            queryParams["kinds"] = kinds;
+        }
+        _ = queryParams.removeIfHasKey("kind");
+    }
     [string, map<json>]? operation = mapWorkflowRequestToOperation(
-            method, wfPath, workflowQueryParams(req.getQueryParams()), body);
+            method, wfPath, queryParams, body);
     if operation is () {
         return workflowErrorResponse(404, "Unknown workflow operation: " + string:'join("/", ...wfPath));
     }
     return executeTunneledWorkflowCommand(tunnelTarget, operation[0], operation[1],
             userContext.userId, escapedRoles);
+}
+
+# The kinds of work a caller may list, as the operation's `kinds` parameter: the intersection
+# of their permissions (human-task perms → HUMAN_TASK, workflow perms → REVIEW_ACTIVITY) and the
+# `kind` they requested. A request for a kind outside their permissions is answered 403.
+#
+# + userId - the caller
+# + scope - the integration/environment scope the permissions are checked in
+# + requestedKind - the raw `kind` query value, if any
+# + return - the comma-joined kinds, or a 403/500 response
+isolated function resolveWorkItemKinds(string userId, types:AccessScope scope, json requestedKind)
+        returns string?|http:Response {
+    boolean|error canTasks = auth:hasAnyPermission(userId,
+            [auth:PERMISSION_WORKFLOW_VIEW_HUMAN_TASKS, auth:PERMISSION_WORKFLOW_MANAGE_HUMAN_TASKS], scope);
+    boolean|error canReviews = auth:hasAnyPermission(userId,
+            [auth:PERMISSION_WORKFLOW_VIEW_WORKFLOWS, auth:PERMISSION_WORKFLOW_MANAGE_WORKFLOWS], scope);
+    if canTasks is error || canReviews is error {
+        return workflowErrorResponse(500, "Authorization check failed");
+    }
+    string[] allowed = [];
+    if canTasks {
+        allowed.push("HUMAN_TASK");
+    }
+    if canReviews {
+        allowed.push("REVIEW_ACTIVITY");
+    }
+    if requestedKind is string && requestedKind != "" {
+        if allowed.indexOf(requestedKind) is () {
+            return workflowErrorResponse(403, "Access denied for kind: " + requestedKind);
+        }
+        return requestedKind;
+    }
+    return string:'join(",", ...allowed);
 }
 
 @http:ServiceConfig {

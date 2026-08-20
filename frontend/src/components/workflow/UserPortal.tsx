@@ -27,7 +27,7 @@ import { ActionRow, DetailDrawer, DetailRow, HeaderCell, ListFooter, SectionCard
 import { IntegrationFilter, ReviewActivityDetailDialog, StatusFilter, useTimeRangeFilter, WorkflowNameFilter } from './AdminPortal';
 import Authorized from '../Authorized';
 import { Permissions } from '../../constants/permissions';
-import { distinctWorkflowTypes, useCompleteHumanTask, useFailHumanTask, useHumanTask, useHumanTasksInfinite, useReviewActivities, useWorkflowDefinitionsAcross, type HumanTask, type WorkflowDefinition, type WorkflowTarget } from '../../api/workflows';
+import { distinctWorkflowTypes, useCompleteHumanTask, useFailHumanTask, useHumanTask, useWorkflowDefinitionsAcross, useWorkItemsInfinite, type HumanTask, type WorkflowDefinition, type WorkflowTarget } from '../../api/workflows';
 
 const emptySx = { py: 4, textAlign: 'center', color: 'text.secondary' } as const;
 
@@ -176,9 +176,6 @@ function WorkItemTable({ items, onOpen, environmentId, integrationLabel }: { ite
   );
 }
 
-/** A scope that never fetches — how a source the caller may not see (or filtered out) is skipped. */
-const disabledScope: WorkflowScope = { componentId: '', environmentId: '' };
-
 function WorkQueue({
   scope,
   onToast,
@@ -220,11 +217,12 @@ function WorkQueue({
   const taskQueue = integration?.handler ?? scope.taskQueue;
   const definitions = useWorkflowDefinitionsAcross(scope.targets, scope.environmentId);
 
-  // Two sources, one question each. A source outside the caller's permissions or the current
-  // filters is skipped entirely (its scope never fetches), not fetched-and-hidden.
-  const wantTasks = canViewTasks && workType !== 'review' && status !== 'CANCELED';
-  const wantReviews = canViewReviews && workType !== 'task' && status !== 'FAILED';
-  const tasksQuery = useHumanTasksInfinite(wantTasks ? gatewayScope(scope) : disabledScope, {
+  // One source: the module's unified work-items listing. The proxy narrows the kinds to the
+  // caller's permissions, so an unpermitted side simply never appears; the Type filter narrows
+  // further by choice. Every filter — including the workflow name — runs server-side, and both
+  // kinds ride one token stream.
+  const query = useWorkItemsInfinite(gatewayScope(scope), {
+    kind: workType === 'task' ? 'HUMAN_TASK' : workType === 'review' ? 'REVIEW_ACTIVITY' : undefined,
     status: status === 'All' ? undefined : status,
     parentWorkflowId: search || undefined,
     parentWorkflowType: selectedType?.workflowType || undefined,
@@ -233,59 +231,33 @@ function WorkQueue({
     startTimeTo: timeFilter.bounds.startTimeTo,
     limit: 50,
   });
-  const reviewsQuery = useReviewActivities(wantReviews ? gatewayScope(scope) : disabledScope, {
-    status: status === 'All' ? undefined : status,
-    parentWorkflowId: search || undefined,
-    taskQueue,
-    startTimeFrom: timeFilter.bounds.startTimeFrom,
-    startTimeTo: timeFilter.bounds.startTimeTo,
-    limit: 50,
-  });
-
-  const taskItems: WorkItem[] = wantTasks
-    ? (tasksQuery.data?.pages ?? [])
-        .flatMap((p) => p.items ?? [])
-        .map((t) => ({
-          kind: 'task' as const,
+  const items: WorkItem[] = sortByStartTimeDesc(
+    (query.data?.pages ?? [])
+      .flatMap((p) => p.items ?? [])
+      .map((t) => {
+        const kind: WorkKind = t.kind === 'REVIEW_ACTIVITY' ? 'review' : 'task';
+        const { workflow, task } = splitQualifiedName(t.taskName);
+        return {
+          kind,
           id: t.taskId,
-          title: taskDisplayName(t),
-          workflowName: t.parentWorkflowType ?? undefined,
-          parentWorkflowId: t.parentWorkflowId,
-          taskQueue: t.taskQueue,
-          status: taskDisplayStatus(t.status),
-          startTime: t.startTime,
-          readOnly: taskDisplayStatus(t.status) === 'PENDING' && t.canComplete === false,
-        }))
-    : [];
-  // The review API has no workflow-name filter; the qualified task name carries it, so that one
-  // filter runs client-side over the bounded fetch.
-  const reviewItems: WorkItem[] = wantReviews
-    ? (reviewsQuery.data?.items ?? [])
-        .filter((t) => !selectedType || splitQualifiedName(t.taskName ?? t.activityName).workflow === selectedType.workflowType)
-        .map((t) => ({
-          kind: 'review' as const,
-          id: t.taskId,
-          title: (typeof t.title === 'string' && t.title) || splitQualifiedName(t.taskName ?? t.activityName).task || t.taskId,
-          workflowName: splitQualifiedName(t.taskName ?? t.activityName).workflow,
+          title: t.title || task || t.taskId,
+          workflowName: t.parentWorkflowType ?? workflow,
           parentWorkflowId: t.parentWorkflowId,
           taskQueue: t.taskQueue,
           status: t.status,
           startTime: t.startTime,
-          trigger: t.trigger as string | undefined,
-        }))
-    : [];
-  const items = sortByStartTimeDesc([...taskItems, ...reviewItems]);
+          trigger: t.trigger,
+          readOnly: kind === 'task' && t.status === 'PENDING' && t.canComplete === false,
+        };
+      }),
+  );
 
-  const isLoading = (wantTasks && tasksQuery.isLoading) || (wantReviews && reviewsQuery.isLoading);
-  const error = (wantTasks ? tasksQuery.error : null) ?? (wantReviews ? reviewsQuery.error : null);
-  const isFetching = tasksQuery.isFetching || reviewsQuery.isFetching;
-  const refetchAll = () => {
-    if (wantTasks) void tasksQuery.refetch();
-    if (wantReviews) void reviewsQuery.refetch();
-  };
-  // Tasks page by token; the bounded review fetch reports hasMore without one to continue from.
-  const hasMore = (wantTasks && tasksQuery.hasNextPage) || (wantReviews && reviewsQuery.data?.hasMore === true);
-  const loadMore = wantTasks && tasksQuery.hasNextPage ? () => tasksQuery.fetchNextPage() : undefined;
+  const isLoading = query.isLoading;
+  const error = query.error;
+  const isFetching = query.isFetching;
+  const refetchAll = () => void query.refetch();
+  const hasMore = query.hasNextPage;
+  const loadMore = () => query.fetchNextPage();
   const hasFilters = status !== 'PENDING' || workType !== (initialKind === 'reviews' ? 'review' : 'all') || !!selectedType || !!search || !!integration || timeFilter.active;
 
   const openItem = (w: WorkItem) => {
@@ -344,7 +316,7 @@ function WorkQueue({
       ) : (
         <>
           <WorkItemTable items={items} onOpen={openItem} environmentId={scope.environmentId} integrationLabel={multi ? (q) => ownerLabel(scope, q) : undefined} />
-          <ListFooter count={items.length} singular="item" plural="items" hasMore={hasMore} loadingMore={tasksQuery.isFetchingNextPage} onLoadMore={loadMore} />
+          <ListFooter count={items.length} singular="item" plural="items" hasMore={hasMore} loadingMore={query.isFetchingNextPage} onLoadMore={loadMore} />
         </>
       )}
 

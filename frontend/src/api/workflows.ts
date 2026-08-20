@@ -498,6 +498,54 @@ export function useFailHumanTask(s: Scope) {
 // (Replaces the deprecated retry-tasks routes; the runtime still exposes /retry-tasks
 // for pre-0.7.0 clients but the UI uses /review-activities.)
 
+// ── The unified work queue ──
+
+/** One row of a person's work queue: a human task, or a review activity (a fixed decision). */
+export interface WorkItemRow {
+  kind: 'HUMAN_TASK' | 'REVIEW_ACTIVITY';
+  taskId: string;
+  taskName?: string;
+  title?: string;
+  /** Reviews only: PRE_RUN (approval gate) | ON_FAILURE (rerun decision). */
+  trigger?: string;
+  parentWorkflowId?: string;
+  parentWorkflowType?: string;
+  taskQueue?: string;
+  status?: string;
+  startTime?: string;
+  closeTime?: string;
+  canComplete?: boolean;
+  [key: string]: unknown;
+}
+
+export interface WorkItemFilters {
+  /** HUMAN_TASK or REVIEW_ACTIVITY; both when absent. The proxy narrows to the caller's permissions. */
+  kind?: string;
+  status?: string;
+  parentWorkflowId?: string;
+  parentWorkflowType?: string;
+  taskQueue?: string;
+  startTimeFrom?: string;
+  startTimeTo?: string;
+  limit?: number;
+  pageToken?: string;
+}
+
+function fetchWorkItems(componentId: string, environmentId: string, filters: WorkItemFilters): Promise<Page<WorkItemRow>> {
+  return wfRequest<Page<WorkItemRow>>(componentId, environmentId, `work-items${buildQuery({ ...filters })}`);
+}
+
+/** Paged the way the runtime pages — one token stream across both kinds. */
+export function useWorkItemsInfinite(s: Scope, filters: Omit<WorkItemFilters, 'pageToken'>) {
+  return useInfiniteQuery({
+    queryKey: ['wf', 'work-items', s.componentId, s.environmentId, filters],
+    queryFn: ({ pageParam }) => fetchWorkItems(s.componentId, s.environmentId, { ...filters, pageToken: pageParam || undefined }),
+    initialPageParam: '',
+    getNextPageParam: (last) => (last.hasMore && last.nextPageToken ? last.nextPageToken : undefined),
+    enabled: enabledFor(s),
+  });
+}
+
 export interface ReviewActivityFilters {
   status?: string;
   parentWorkflowId?: string;

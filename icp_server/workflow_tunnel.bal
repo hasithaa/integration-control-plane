@@ -352,6 +352,14 @@ isolated function mapWorkflowRequestToOperation(string method, string[] wfPath,
                         {workflowId: workflowId, runId: wfPath[2]}];
                 }
             }
+            "work-items" => {
+                if segments == 1 {
+                    // The unified queue: tasks and reviews together. The service layer injects
+                    // `kinds` as the intersection of what the caller asked for and what their
+                    // permissions allow — this mapping never decides visibility.
+                    return ["workItems.list", queryParams];
+                }
+            }
             "human-tasks" => {
                 if segments == 1 {
                     return ["humanTasks.list", queryParams];
