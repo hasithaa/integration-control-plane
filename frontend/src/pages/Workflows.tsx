@@ -23,7 +23,7 @@ import AdminPortal from '../components/workflow/AdminPortal';
 import WorkflowPageFrame from '../components/workflow/WorkflowPageFrame';
 import { useWorkflowPageScope } from '../components/workflow/useWorkflowPageScope';
 import { gatewayScope } from '../components/workflow/helpers';
-import { useWorkflowInfo } from '../api/workflows';
+import { valueOf, useWorkflowInfo } from '../api/workflows';
 import { resourceUrl, broaden, hasComponent, type ComponentScope, type ProjectScope } from '../nav';
 
 /**
@@ -73,7 +73,7 @@ export default function Workflows(scope: ComponentScope | ProjectScope): JSX.Ele
   const { data: linkedInfo } = useWorkflowInfo(gatewayForResolve, deepLink.workflowId ?? null);
   const navigate = useNavigate();
   useEffect(() => {
-    const kind = (linkedInfo?.kind ?? '').toUpperCase();
+    const kind = (valueOf(linkedInfo)?.kind ?? '').toUpperCase();
     if (!deepLink.workflowId || (kind !== 'HUMAN_TASK' && kind !== 'REVIEW_ACTIVITY')) return;
     const params = new URLSearchParams(kind === 'HUMAN_TASK' ? { tab: 'tasks', task: deepLink.workflowId } : { tab: 'reviews', review: deepLink.workflowId });
     if (activeEnvId) params.set('env', activeEnvId);

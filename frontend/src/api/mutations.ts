@@ -123,6 +123,11 @@ export function useCreateEnvironment() {
 export function useUpdateEnvironment() {
   const qc = useQueryClient();
   return useMutation({
+    // Typed against what UPDATE_ENVIRONMENT actually sends ($handler), not against
+    // EnvironmentInput, whose field is environmentHandler — the create and update mutations
+    // simply name this variable differently. Borrowing the create type here made every
+    // caller pass a `handler` the type did not admit, so the frontend did not typecheck and
+    // `pnpm build` (tsc -b && vite build) could not produce a bundle.
     mutationFn: (input: { environmentId: string; name: string; handler?: string; description: string; critical: boolean }) => gql<{ updateEnvironment: GqlEnvironment }>(UPDATE_ENVIRONMENT, { ...input }).then((d) => d.updateEnvironment),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['environments'] }),
   });

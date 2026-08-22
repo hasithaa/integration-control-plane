@@ -20,7 +20,7 @@ import { Alert, Box, Button, CircularProgress, Dialog, DialogActions, DialogCont
 import { Ban, OctagonX, PauseCircle, PlayCircle, X } from '@wso2/oxygen-ui-icons-react';
 import { useState } from 'react';
 import WorkflowFlowTab from './WorkflowFlowTab';
-import { useWorkflowExecutionGraph, useWorkflowHistory, useWorkflowInfo, useWorkflowInstanceGraph, useWorkflowLifecycle, type WorkflowLifecycleAction } from '../../api/workflows';
+import { isPreparing, useWorkflowExecutionGraph, useWorkflowHistory, useWorkflowInfo, useWorkflowInstanceGraph, useWorkflowLifecycle, valueOf, type WorkflowLifecycleAction } from '../../api/workflows';
 import { type WorkflowScope } from './shared';
 import Authorized from '../Authorized';
 import { Permissions } from '../../constants/permissions';
@@ -40,17 +40,24 @@ export default function WorkflowDetailDrawer({ scope, workflowId, onClose }: { s
   const [toast, setToast] = useState<{ severity: 'success' | 'error'; message: string } | null>(null);
   const { sidebarWidth } = useLayout();
 
-  const { data: info, isLoading: loadingInfo, error: infoError } = useWorkflowInfo(scope, workflowId);
+  const { data: infoResult, isLoading: loadingInfo, error: infoError } = useWorkflowInfo(scope, workflowId);
   // History is loaded eagerly: the Timeline tab derives the start input from it, renders the timeline,
   // and the History tab renders the raw events.
-  const { data: history = [], isLoading: loadingHistory } = useWorkflowHistory(scope, workflowId);
+  const { data: historyResult, isLoading: loadingHistory } = useWorkflowHistory(scope, workflowId);
   // Fetched for the Execution Graph tab (1) and also the Timeline tab (0), which uses the graph's
   // authoritative node types to fix categories/icons the history alone can't determine.
-  const { data: graph, isLoading: loadingGraph } = useWorkflowExecutionGraph(scope, workflowId);
+  const { data: graphResult, isLoading: loadingGraph } = useWorkflowExecutionGraph(scope, workflowId);
   // The Flow tab (1) draws the workflow's own structure with this run's path on it. It needs the
   // published descriptor, which an integration built by an older runtime won't have — in that case
   // `graph` comes back null and the tab falls back to the node-link view of the history alone.
   const { data: instanceGraph, isLoading: loadingInstanceGraph } = useWorkflowInstanceGraph(scope, workflowId);
+  // These reads are materialized through the integration, so a freshly opened drawer is still
+  // being prepared. `preparing` folds into each pane's own loading state rather than rendering
+  // an empty pane, which would be a wrong answer rather than a slow one.
+  const info = valueOf(infoResult);
+  const history = valueOf(historyResult) ?? [];
+  const graph = valueOf(graphResult);
+  const preparing = isPreparing(infoResult) || isPreparing(historyResult) || isPreparing(graphResult);
   const lifecycle = useWorkflowLifecycle(scope);
 
   const status = (info?.status as string | undefined) ?? '';
@@ -115,7 +122,7 @@ export default function WorkflowDetailDrawer({ scope, workflowId, onClose }: { s
       )}
 
       <Box sx={{ px: 2, pt: 1 }}>
-        {loadingInfo || loadingHistory || loadingGraph || loadingInstanceGraph ? (
+        {loadingInfo || loadingHistory || loadingGraph || loadingInstanceGraph || preparing ? (
           <CircularProgress size={24} sx={{ display: 'block', mx: 'auto', py: 4 }} />
         ) : infoError ? (
           <Typography sx={emptySx}>Could not load workflow info.</Typography>

@@ -31,11 +31,13 @@ import Authorized from '../Authorized';
 import { Permissions } from '../../constants/permissions';
 import {
   distinctWorkflowTypes,
+  isPreparing,
   useReviewActivity,
   useReviewDecision,
   useStartWorkflow,
   useWorkflowDefinitionsAcross,
   useWorkflowInstancesInfinite,
+  valueOf,
   type Owned,
   type ReviewDecision,
   type WorkflowDefinition,
@@ -251,7 +253,12 @@ function WorkflowsAdmin({
   };
   // Paged the way Temporal's visibility API pages — forward-only tokens — so "Load more" appends.
   const { data, isLoading, error, refetch, isFetching, hasNextPage, fetchNextPage, isFetchingNextPage } = useWorkflowInstancesInfinite(gatewayScope(scope), filters);
-  const items = sortByStartTimeDesc((data?.pages ?? []).flatMap((p) => p.items ?? []));
+  // Each page is a Fetchable, so only the ready ones contribute rows. A page still being
+  // prepared is announced instead of being flattened to nothing, which would read as "no
+  // instances" while the answer is on its way.
+  const pages = (data?.pages ?? []).map((page) => valueOf(page)).filter((page) => page !== undefined);
+  const items = sortByStartTimeDesc(pages.flatMap((page) => page?.items ?? []));
+  const preparing = (data?.pages ?? []).some((page) => isPreparing(page));
   const hasFilters = status !== 'All' || !!selectedType || !!search || !!integration || timeFilter.active;
 
   return (
@@ -297,6 +304,8 @@ function WorkflowsAdmin({
         <CircularProgress size={24} sx={{ display: 'block', mx: 'auto', py: 4 }} />
       ) : error ? (
         <Typography sx={emptySx}>{error instanceof Error ? error.message : 'Failed to load workflows.'}</Typography>
+      ) : preparing && items.length === 0 ? (
+        <Typography sx={emptySx}>Fetching executions from the integration…</Typography>
       ) : items.length === 0 ? (
         <Typography sx={emptySx}>No workflows found.</Typography>
       ) : (
@@ -314,10 +323,7 @@ function WorkflowsAdmin({
             </ListingTable.Head>
             <ListingTable.Body>
               {items.map((wf) => (
-                <ListingTable.Row
-                  key={`${wf.workflowId}:${wf.runId ?? ''}`}
-                  onClick={() => setDetail({ workflowId: wf.workflowId, taskQueue: wf.taskQueue })}
-                  sx={{ cursor: 'pointer', '&:hover': { bgcolor: 'action.hover' } }}>
+                <ListingTable.Row key={`${wf.workflowId}:${wf.runId ?? ''}`} onClick={() => setDetail({ workflowId: wf.workflowId, taskQueue: wf.taskQueue })} sx={{ cursor: 'pointer', '&:hover': { bgcolor: 'action.hover' } }}>
                   <ListingTable.Cell>
                     <Typography title={wf.workflowId} sx={{ fontFamily: 'monospace', fontSize: 12 }}>
                       {displayWorkflowId(wf.workflowId)}
@@ -541,7 +547,10 @@ function reviewActivityDisplayName(taskName?: string, activityName?: string, fal
  * activity is recorded as failed and the workflow is told. Every path confirms in a second step.
  */
 export function ReviewActivityDetailDialog({ scope, taskId, onClose, onToast }: { scope: WorkflowScope; taskId: string; onClose: () => void; onToast: (t: Toast) => void }) {
-  const { data: activity, isLoading, error: loadError } = useReviewActivity(scope, taskId);
+  const { data: activityResult, isLoading, error: loadError } = useReviewActivity(scope, taskId);
+  const activity = valueOf(activityResult);
+  // A decision form whose fields are still being prepared shows a spinner, not blank inputs.
+  const waiting = isLoading || isPreparing(activityResult);
   const decide = useReviewDecision(scope);
   const [mode, setMode] = useState<'view' | 'confirm-proceed' | 'edit' | 'review-changes' | 'reject'>('view');
   const [formValues, setFormValues] = useState<Record<string, string | boolean>>({});
@@ -638,7 +647,7 @@ export function ReviewActivityDetailDialog({ scope, taskId, onClose, onToast }: 
 
   return (
     <DetailDrawer title={heading} status={activity?.status} onClose={onClose}>
-      {isLoading ? (
+      {waiting ? (
         <CircularProgress size={24} sx={{ display: 'block', mx: 'auto', py: 4 }} />
       ) : loadError || !activity ? (
         <Typography sx={emptySx}>{loadError instanceof Error ? loadError.message : 'Failed to load activity details.'}</Typography>
@@ -726,11 +735,7 @@ export function ReviewActivityDetailDialog({ scope, taskId, onClose, onToast }: 
             <SectionCard title="Edit arguments">
               <Stack gap={2}>
                 <Typography variant="body2" color="text.secondary">
-                  {formFields
-                    ? changes.length === 0
-                      ? 'No changes yet — edit the values the rerun should use.'
-                      : `Changed: ${changes.map((c) => c.label).join(', ')}`
-                    : 'This activity declares no schema; edit the raw JSON the rerun should use.'}
+                  {formFields ? (changes.length === 0 ? 'No changes yet — edit the values the rerun should use.' : `Changed: ${changes.map((c) => c.label).join(', ')}`) : 'This activity declares no schema; edit the raw JSON the rerun should use.'}
                 </Typography>
                 {formFields ? (
                   <SchemaFormFields fields={formFields} values={formValues} errors={fieldErrors} onChange={setFormValue} />

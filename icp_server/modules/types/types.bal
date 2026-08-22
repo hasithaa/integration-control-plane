@@ -2747,3 +2747,95 @@ public type MoesifApplication record {|
     string id;
     string name;
 |};
+
+// ============================================================================
+// REQUEST CACHE
+// ============================================================================
+// Rows of cache_entry and cache_operation_outbox, shared by every ICP node: the node that
+// accepts a user's request is usually not the node that delivers it to a runtime, so nothing
+// about a request may live in memory.
+//
+// Both types are deliberately free of any workflow vocabulary. `kind` says what a row is
+// about and `data` carries the rest, so a second feature wanting the same shape - answers
+// that take a round trip to fetch, operations that need confirming - adds a kind rather than
+// a table.
+//
+// Every time field is epoch SECONDS rather than a timestamp. They are compared on every
+// read, claim and sweep, and integers compare identically on all five supported engines
+// while timestamp arithmetic needs four implementations (see storage/database_dialect.bal).
+
+// Lifecycle of a cached answer. A stale READY row is still served while its refresh runs, so
+// "expired" is not the same as "unusable".
+public const string CACHE_FETCHING = "FETCHING";
+public const string CACHE_READY = "READY";
+public const string CACHE_FAILED = "FAILED";
+
+// Lifecycle of a queued operation. EXPIRED is the state that matters: it means nobody
+// established the outcome, which is what has to reach a person rather than be dropped.
+public const string CACHE_OP_PENDING = "PENDING";
+public const string CACHE_OP_DELIVERED = "DELIVERED";
+public const string CACHE_OP_COMPLETED = "COMPLETED";
+public const string CACHE_OP_FAILED = "FAILED";
+public const string CACHE_OP_EXPIRED = "EXPIRED";
+
+// One row of cache_entry.
+//
+// `cacheKey` is computed from everything that makes the request unique - its kind, its owner,
+// the request itself and the caller's identity - so none of those parts needs a column of its
+// own. Two callers whose identity differs in a way the answer depends on compute different
+// keys and cannot read each other's rows.
+//
+// `data` holds one document: the request, and the response once it arrives. One blob, because
+// nothing queries inside it; the claim reads the request out, the result write adds the
+// response beside it.
+//
+// `token` is non-nil exactly while a fetch is in flight, and is that fetch's id. It fences a
+// late answer: a result carrying a token the row no longer holds belongs to a superseded or
+// invalidated attempt and is discarded.
+public type CacheEntry record {
+    @sql:Column {name: "cache_key"}
+    string cacheKey;
+    string kind;
+    // The scope this row belongs to, and what a delivery claim filters on.
+    string owner;
+    string? token = ();
+    string status;
+    @sql:Column {name: "expires_at"}
+    int expiresAt;
+    @sql:Column {name: "claimed_at"}
+    int? claimedAt = ();
+    string? data = ();
+};
+
+// An entry a heartbeat should ask a runtime to fill. `token` is the command id.
+public type CachePendingFetch record {
+    @sql:Column {name: "cache_key"}
+    string cacheKey;
+    string token;
+    string data;
+};
+
+// One row of cache_operation_outbox.
+//
+// `operationId` is the caller's idempotency key as well as the command id, so a repeated
+// submission collides on the primary key instead of becoming a second operation. `target`
+// names who executes it - a runtime today, and nothing here assumes that.
+public type CacheOperation record {
+    @sql:Column {name: "operation_id"}
+    string operationId;
+    string target;
+    // The scope this operation affects. Completing it invalidates that scope's cached
+    // answers, so the value has to be here rather than derived from the target.
+    string owner;
+    string kind;
+    string status;
+    @sql:Column {name: "issued_at"}
+    int issuedAt;
+    int deadline;
+    @sql:Column {name: "delivered_at"}
+    int? deliveredAt = ();
+    @sql:Column {name: "completed_at"}
+    int? completedAt = ();
+    string data;
+    string? result = ();
+};

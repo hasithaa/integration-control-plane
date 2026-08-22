@@ -35,8 +35,7 @@ import { WorkflowIdLink } from './shared';
 // Legacy prefixed values from older runs still link by their prefix alone.
 const ENDS_WITH_UUID = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const ID_KEY = /(workflowid|taskid|reviewid|instanceid)$/i;
-const isWorkflowId = (key: string, value: unknown): value is string =>
-  typeof value === 'string' && (/^(workflow|humantask|reviewactivity|childwf|childagent)-/.test(value) || (ID_KEY.test(key) && ENDS_WITH_UUID.test(value)));
+const isWorkflowId = (key: string, value: unknown): value is string => typeof value === 'string' && (/^(workflow|humantask|reviewactivity|childwf|childagent)-/.test(value) || (ID_KEY.test(key) && ENDS_WITH_UUID.test(value)));
 
 export default function StructuredValue({ title, raw, environmentId }: { title: string; raw: string; environmentId?: string }): ReactElement {
   const [showRaw, setShowRaw] = useState(false);

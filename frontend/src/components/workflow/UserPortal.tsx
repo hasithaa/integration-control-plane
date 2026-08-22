@@ -27,7 +27,7 @@ import { ActionRow, DetailDrawer, DetailRow, HeaderCell, ListFooter, SectionCard
 import { IntegrationFilter, ReviewActivityDetailDialog, StatusFilter, useTimeRangeFilter, WorkflowNameFilter } from './AdminPortal';
 import Authorized from '../Authorized';
 import { Permissions } from '../../constants/permissions';
-import { distinctWorkflowTypes, useCompleteHumanTask, useFailHumanTask, useHumanTask, useWorkflowDefinitionsAcross, useWorkItemsInfinite, type HumanTask, type WorkflowDefinition, type WorkflowTarget } from '../../api/workflows';
+import { distinctWorkflowTypes, isPreparing, useCompleteHumanTask, useFailHumanTask, useHumanTask, useWorkflowDefinitionsAcross, useWorkItemsInfinite, valueOf, type HumanTask, type WorkflowDefinition, type WorkflowTarget } from '../../api/workflows';
 
 const emptySx = { py: 4, textAlign: 'center', color: 'text.secondary' } as const;
 
@@ -198,7 +198,8 @@ function WorkQueue({
   const [openReview, setOpenReview] = useState<{ taskId: string; taskQueue?: string } | null>(null);
   // A deep link names an item this list may not hold (a completed one, another page); fetch it
   // directly and open its drawer once it arrives.
-  const { data: linkedTask } = useHumanTask(gatewayScope(scope), initialTaskId ?? null);
+  const { data: linkedTaskResult } = useHumanTask(gatewayScope(scope), initialTaskId ?? null);
+  const linkedTask = valueOf(linkedTaskResult);
   useEffect(() => {
     if (linkedTask) setOpenTask({ taskId: linkedTask.taskId, taskQueue: linkedTask.taskQueue, status: linkedTask.status });
   }, [linkedTask]);
@@ -333,7 +334,11 @@ function WorkQueue({
  * task *operation* with consequences, so it is quieter and warns. Both submit in two steps.
  */
 function TaskDetailDialog({ scope, taskId, actionable, onClose, onToast }: { scope: WorkflowScope; taskId: string; actionable?: boolean; onClose: () => void; onToast: (t: Toast) => void }) {
-  const { data: task, isLoading, error: taskError } = useHumanTask(scope, taskId);
+  const { data: taskResult, isLoading, error: taskError } = useHumanTask(scope, taskId);
+  const task = valueOf(taskResult);
+  // A dialog whose detail is still being prepared shows its spinner rather than a form with
+  // every field blank.
+  const waiting = isLoading || isPreparing(taskResult);
   const complete = useCompleteHumanTask(scope);
   const fail = useFailHumanTask(scope);
   const [mode, setMode] = useState<'view' | 'complete' | 'confirm-complete' | 'fail'>('view');
@@ -435,7 +440,7 @@ function TaskDetailDialog({ scope, taskId, actionable, onClose, onToast }: { sco
 
   return (
     <DetailDrawer title={task ? taskDisplayName(task) : displayWorkflowId(taskId)} status={taskDisplayStatus(task?.status)} onClose={onClose}>
-      {isLoading ? (
+      {waiting ? (
         <CircularProgress size={24} sx={{ display: 'block', mx: 'auto', py: 4 }} />
       ) : taskError || !task ? (
         <Typography sx={emptySx}>{taskError instanceof Error ? taskError.message : 'Failed to load task details.'}</Typography>

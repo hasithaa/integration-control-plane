@@ -190,7 +190,10 @@ export default function AgentRail({
                 <Box sx={{ color: statusColor, display: 'flex', flexShrink: 0 }}>
                   <Icon size={13} />
                 </Box>
-                <Typography variant="body2" sx={{ fontWeight: ran ? 600 : 400, fontSize: 12.5, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0, flex: 1 }} title={`${row.label} · ${row.id}${ran ? ` · ${row.exec?.status ?? ''}` : ' · not executed'}`}>
+                <Typography
+                  variant="body2"
+                  sx={{ fontWeight: ran ? 600 : 400, fontSize: 12.5, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0, flex: 1 }}
+                  title={`${row.label} · ${row.id}${ran ? ` · ${row.exec?.status ?? ''}` : ' · not executed'}`}>
                   {row.label}
                 </Typography>
                 {row.exec?.recovered && (
