@@ -152,7 +152,10 @@ final string[] & readonly WF_TASK_QUEUE_SCOPED_OPERATIONS = [
     "instances.list",
     "humanTasks.list",
     "humanTasks.pendingCount",
-    "reviewActivities.list"
+    "reviewActivities.list",
+    // The unified queue is two of the listings above read as one, so it needs the same
+    // narrowing. Left out, it was the one view that answered namespace-wide.
+    "workItems.list"
 ];
 
 # Narrows a listing to the target runtime's task queue, unless the caller named one.

@@ -50,14 +50,15 @@ export default function WorkflowDetailDrawer({ scope, workflowId, onClose }: { s
   // The Flow tab (1) draws the workflow's own structure with this run's path on it. It needs the
   // published descriptor, which an integration built by an older runtime won't have — in that case
   // `graph` comes back null and the tab falls back to the node-link view of the history alone.
-  const { data: instanceGraph, isLoading: loadingInstanceGraph } = useWorkflowInstanceGraph(scope, workflowId);
+  const { data: instanceGraphResult, isLoading: loadingInstanceGraph } = useWorkflowInstanceGraph(scope, workflowId);
+  const instanceGraph = valueOf(instanceGraphResult);
   // These reads are materialized through the integration, so a freshly opened drawer is still
   // being prepared. `preparing` folds into each pane's own loading state rather than rendering
   // an empty pane, which would be a wrong answer rather than a slow one.
   const info = valueOf(infoResult);
   const history = valueOf(historyResult) ?? [];
   const graph = valueOf(graphResult);
-  const preparing = isPreparing(infoResult) || isPreparing(historyResult) || isPreparing(graphResult);
+  const preparing = isPreparing(infoResult) || isPreparing(historyResult) || isPreparing(graphResult) || isPreparing(instanceGraphResult);
   const lifecycle = useWorkflowLifecycle(scope);
 
   const status = (info?.status as string | undefined) ?? '';

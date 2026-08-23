@@ -480,7 +480,11 @@ export function useWorkflowExecutionGraph(s: Scope, workflowId: string | null) {
 export function useWorkflowInstanceGraph(s: Scope, workflowId: string | null) {
   return useQuery({
     queryKey: ['wf', 'instanceGraph', s.componentId, s.environmentId, workflowId],
-    queryFn: () => wfRequest<InstanceGraph>(s.componentId, s.environmentId, `workflows/${encodeURIComponent(workflowId!)}/instance-graph`),
+    // Follows the same contract as every other read. On the blocking helper this was the one
+    // view that still polled inside the request, so opening the graph on a cold cache sat there
+    // until the client deadline instead of saying it was being prepared.
+    queryFn: () => wfFetchable<InstanceGraph>(s.componentId, s.environmentId, `workflows/${encodeURIComponent(workflowId!)}/instance-graph`),
+    refetchInterval: ({ state }) => fetchableRefetch(state.data),
     enabled: enabledFor(s) && !!workflowId,
   });
 }
