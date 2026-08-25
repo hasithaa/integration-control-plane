@@ -73,7 +73,11 @@ jobs:
       - name: Setup pnpm
         uses: pnpm/action-setup@v2
         with:
-          version: 8
+          # 10, because the committed lockfile is lockfileVersion 9 — a format pnpm 8 cannot
+          # read. With 8 the install logged "Ignoring not compatible lockfile" and resolved
+          # every dependency FRESH on each run, so the build floated with upstream releases
+          # and eventually broke on a type change in a package nobody here touched.
+          version: 10
 
       - name: Install frontend dependencies
         run: |
