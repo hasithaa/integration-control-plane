@@ -29,6 +29,7 @@ import Authorized from '../Authorized';
 import { Permissions } from '../../constants/permissions';
 import {
   distinctWorkflowTypes,
+  fetchedAtOf,
   isPreparing,
   isRefreshing,
   useCompleteHumanTask,
@@ -249,6 +250,7 @@ function WorkQueue({
   // announced, and a stale one keeps the rows visible while saying fresher ones are coming.
   const queuePreparing = (query.data?.pages ?? []).some((p) => isPreparing(p));
   const queueRefreshing = (query.data?.pages ?? []).some((p) => isRefreshing(p));
+  const queueUpdatedAt = (query.data?.pages ?? []).map((p) => fetchedAtOf(p)).filter((ts): ts is number => !!ts)[0];
   const items: WorkItem[] = sortByStartTimeDesc(
     (query.data?.pages ?? [])
       .map((p) => valueOf(p))
@@ -327,7 +329,7 @@ function WorkQueue({
         )}
       </Stack>
 
-      <RefreshingNote show={queueRefreshing} />
+      <RefreshingNote show={queueRefreshing} fetchedAt={queueUpdatedAt} />
       {isLoading ? (
         <CircularProgress size={24} sx={{ display: 'block', mx: 'auto', py: 4 }} />
       ) : error ? (

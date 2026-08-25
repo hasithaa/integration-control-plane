@@ -91,17 +91,20 @@ export function WorkflowIdLink({ workflowId, environmentId, onNavigate, truncate
 }
 
 /**
- * Shown while an answer on screen is being replaced: a mutation invalidated it, the server is
- * serving the last copy while one refresh runs behind it, and the queries are polling for the
- * fresh one. The data stays visible — blanking a list because it is seconds old would punish
- * every reader for one writer — but the page says what it is showing.
+ * The freshness line under a cached view: when the data was produced, that the page refreshes
+ * itself — stated, so the periodic update is never a surprise — and, while an answer is being
+ * replaced after a mutation, that fresher data is on its way. The data stays visible throughout;
+ * blanking a list because it is seconds old would punish every reader for one writer.
  */
-export function RefreshingNote({ show, label = 'Refreshing — fetching the latest from the integration…' }: { show: boolean; label?: string }): JSX.Element | null {
-  if (!show) return null;
+export function RefreshingNote({ show, fetchedAt, label = 'refreshing — fetching the latest from the integration…' }: { show: boolean; fetchedAt?: number; label?: string }): JSX.Element | null {
+  if (!show && !fetchedAt) return null;
   return (
     <Stack direction="row" alignItems="center" gap={1} sx={{ color: 'text.secondary' }}>
-      <CircularProgress size={12} thickness={5} />
-      <Typography variant="caption">{label}</Typography>
+      {show && <CircularProgress size={12} thickness={5} />}
+      <Typography variant="caption">
+        {fetchedAt ? `Updated ${new Date(fetchedAt * 1000).toLocaleTimeString()} · auto-refreshes` : ''}
+        {show ? `${fetchedAt ? ' · ' : ''}${label}` : ''}
+      </Typography>
     </Stack>
   );
 }
@@ -175,7 +178,9 @@ export function DetailDrawer({ title, status, onClose, actions, menu, children }
         </Stack>
       </Stack>
       <Box sx={{ flex: 1, overflow: 'auto', px: 3, py: 2.5 }}>
-        <Box sx={{ maxWidth: 860 }}>{children}</Box>
+        {/* Centered like the listing pages behind it — pinned left, the drawer read as a different
+            surface from the lists it opens over. */}
+        <Box sx={{ maxWidth: 860, mx: 'auto' }}>{children}</Box>
       </Box>
       {actions && (
         <Stack direction="row" alignItems="center" gap={1} sx={{ px: 3, py: 1.5, borderTop: '1px solid', borderColor: 'divider', flexShrink: 0 }}>

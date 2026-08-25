@@ -31,6 +31,7 @@ import Authorized from '../Authorized';
 import { Permissions } from '../../constants/permissions';
 import {
   distinctWorkflowTypes,
+  fetchedAtOf,
   isPreparing,
   isRefreshing,
   useReviewActivity,
@@ -263,6 +264,7 @@ function WorkflowsAdmin({
   // A page marked stale is being replaced: a mutation invalidated it and the queries are
   // polling for the fresh copy. Said out loud, since the rows on screen predate the action.
   const refreshing = (data?.pages ?? []).some((page) => isRefreshing(page));
+  const updatedAt = (data?.pages ?? []).map((page) => fetchedAtOf(page)).filter((t): t is number => !!t)[0];
   const hasFilters = status !== 'All' || !!selectedType || !!search || !!integration || timeFilter.active;
 
   return (
@@ -304,7 +306,7 @@ function WorkflowsAdmin({
 
       <DefinitionsUnavailableNotice failed={definitions.failed} />
 
-      <RefreshingNote show={refreshing} />
+      <RefreshingNote show={refreshing} fetchedAt={updatedAt} />
       {isLoading ? (
         <CircularProgress size={24} sx={{ display: 'block', mx: 'auto', py: 4 }} />
       ) : error ? (
@@ -725,7 +727,13 @@ export function ReviewActivityDetailDialog({ scope, taskId, onClose, onToast }: 
                           : 'Runs the activity with the arguments exactly as recorded above. Confirmed before anything runs.'
                       }
                       disabled={busy}
-                      onClick={() => setConfirmProceedOpen(true)}
+                      onClick={() => {
+                        // Opening one decision closes the other. Without this, Proceed's modal
+                        // rose over the still-open edit form — two half-taken decisions at once,
+                        // and Back landed the user on an editor they never meant to keep.
+                        closeEdit();
+                        setConfirmProceedOpen(true);
+                      }}
                     />
                     <ActionCard
                       title="Proceed with changes"

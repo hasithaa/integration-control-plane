@@ -20,7 +20,7 @@ import { Box, Card, CardActionArea, Chip, Stack, Typography } from '@wso2/oxygen
 import { UserCheck, Workflow } from '@wso2/oxygen-ui-icons-react';
 import type { JSX } from 'react';
 import { useNavigate } from 'react-router';
-import { usePendingReviewActivityCount, usePendingTaskCount, valueOf } from '../../api/workflows';
+import { usePendingReviewActivityCount, usePendingTaskCount, useWorkflowDefinitionsAcross, valueOf } from '../../api/workflows';
 import { narrow, resourceUrl, type ProjectScope } from '../../nav';
 import type { WorkflowIntegrationEntry } from './useWorkflowPageScope';
 
@@ -86,12 +86,17 @@ function IntegrationCard({
   const navigate = useNavigate();
   // Component-scoped counts: the server narrows each to that integration's own published queue,
   // so these are correct whatever namespace or Temporal server the integration runs against.
+  // Each page's dashboard shows its own facts — tasks for the Human Tasks page, workflow types
+  // and reviews for Executions — rather than one card pretending to serve both.
   const componentScope = { componentId: integration.componentId, environmentId };
-  const { data: tasksResult } = usePendingTaskCount(componentScope, undefined, canViewHumanTasks);
+  const forTasks = resource === 'tasks';
+  const { data: tasksResult } = usePendingTaskCount(componentScope, undefined, forTasks && canViewHumanTasks);
   const { data: reviewsResult } = usePendingReviewActivityCount(componentScope, undefined, canViewWorkflows);
+  // Definitions come from stored heartbeat metadata — no call into the runtime.
+  const definitions = useWorkflowDefinitionsAcross(forTasks ? [] : [{ componentId: integration.componentId, componentName: integration.name, handler: integration.routeHandler }], environmentId);
   const pendingTasks = valueOf(tasksResult);
   const pendingReviews = valueOf(reviewsResult);
-  const pending = (pendingTasks ?? 0) + (pendingReviews?.count ?? 0);
+  const pending = (forTasks ? (pendingTasks ?? 0) : 0) + (pendingReviews?.count ?? 0);
 
   return (
     <Card variant="outlined">
@@ -107,7 +112,7 @@ function IntegrationCard({
             {pending > 0 && <Chip size="small" color="primary" label={pending} />}
           </Stack>
           <Stack direction="row" gap={2}>
-            {canViewHumanTasks && (
+            {forTasks && canViewHumanTasks && (
               <Stack direction="row" alignItems="center" gap={0.5} sx={{ color: 'text.secondary' }}>
                 <UserCheck size={13} />
                 <Typography variant="caption">
@@ -115,9 +120,14 @@ function IntegrationCard({
                 </Typography>
               </Stack>
             )}
+            {!forTasks && (
+              <Typography variant="caption" color="text.secondary">
+                {definitions.isLoading ? '…' : definitions.items.length} workflow type{definitions.items.length === 1 ? '' : 's'}
+              </Typography>
+            )}
             {canViewWorkflows && (
               <Typography variant="caption" color="text.secondary">
-                {pendingReviews ? `${pendingReviews.count}${pendingReviews.capped ? '+' : ''}` : '…'} review{pendingReviews?.count === 1 ? '' : 's'}
+                {pendingReviews ? `${pendingReviews.count}${pendingReviews.capped ? '+' : ''}` : '…'} pending review{pendingReviews?.count === 1 ? '' : 's'}
               </Typography>
             )}
           </Stack>

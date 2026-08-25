@@ -315,9 +315,13 @@ async function wfFetchable<T>(componentId: string, environmentId: string, subpat
   return { state: 'ready', value: body as T, stale, fetchedAt };
 }
 
-/** How often to come back for an answer the server said is stale — a refresh is already
- *  running behind it, coalesced server-side, so these polls only read the row. */
-const WF_STALE_POLL_MS = 2000;
+/** How often to come back for an answer the server said is stale. Paced like a heartbeat, not
+ *  like a spinner: every user's polls are answered from the ICP's row cache and the integration
+ *  sees at most one coalesced refresh per entry regardless of user count — but the polls
+ *  themselves land on the ICP, and a thousand open consoles at 2s would be 500 requests a
+ *  second for freshness nobody can perceive. The page says when it last updated, and the
+ *  refresh button covers impatience. */
+const WF_STALE_POLL_MS = 10000;
 
 /**
  * Comes back at the interval the server asked for while a read is still being prepared, and
@@ -329,7 +333,7 @@ const WF_STALE_POLL_MS = 2000;
  *  after a mutation can predate that mutation's effects, and a client parked on it would
  *  show the pre-mutation world until the page was reloaded. */
 const WF_SETTLE_WINDOW_S = 30;
-const WF_SETTLE_POLL_MS = 5000;
+const WF_SETTLE_POLL_MS = 10000;
 
 const fetchableRefetch = <T>(data: Fetchable<T> | undefined): number | false => {
   if (data?.state === 'fetching') return data.retryAfterMs;
@@ -343,6 +347,9 @@ const fetchableRefetch = <T>(data: Fetchable<T> | undefined): number | false => 
 };
 
 /** True while the server is replacing this answer: it is shown, and its successor is coming. */
+/** When this answer was produced (epoch seconds), for the "Updated at" display. */
+export const fetchedAtOf = <T>(r: Fetchable<T> | undefined): number | undefined => (r?.state === 'ready' ? r.fetchedAt : undefined);
+
 export const isRefreshing = <T>(r: Fetchable<T> | undefined): boolean => r?.state === 'ready' && r.stale === true;
 
 /** Applies a projection to a ready value, so a hook can unwrap an envelope or default a
