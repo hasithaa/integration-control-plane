@@ -129,7 +129,11 @@ export function projectRoleDetailUrl(orgHandler: string, projectHandler: string,
   return `/organizations/${orgHandler}/projects/${projectHandler}/settings/access-control/roles/${roleId}/edit`;
 }
 
-export function componentAccessControlUrl(orgHandler: string, projectHandler: string, componentHandler: string, tab: 'roles' | 'groups' = 'roles'): string {
+// 'sso-mappings' included: the component-level Access Control page offers that tab when SSO is
+// enabled, and this builder is what its tab strip navigates with. The narrower union predated
+// the SSO tab and made clicking it untypeable — a break upstream's CI missed while its
+// dependency installs were floating.
+export function componentAccessControlUrl(orgHandler: string, projectHandler: string, componentHandler: string, tab: 'roles' | 'groups' | 'sso-mappings' = 'roles'): string {
   return `/organizations/${orgHandler}/projects/${projectHandler}/components/${componentHandler}/settings/access-control/${tab}`;
 }
 

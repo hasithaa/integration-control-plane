@@ -144,13 +144,10 @@ modules = [
 [[package]]
 org = "ballerina"
 name = "io"
-version = "1.8.2"
+version = "1.8.1"
 dependencies = [
 	{org = "ballerina", name = "jballerina.java"},
 	{org = "ballerina", name = "lang.value"}
-]
-modules = [
-	{org = "ballerina", packageName = "io", moduleName = "io"}
 ]
 
 [[package]]
@@ -639,7 +636,6 @@ dependencies = [
 	{org = "ballerina", name = "file"},
 	{org = "ballerina", name = "graphql"},
 	{org = "ballerina", name = "http"},
-	{org = "ballerina", name = "io"},
 	{org = "ballerina", name = "jwt"},
 	{org = "ballerina", name = "lang.array"},
 	{org = "ballerina", name = "lang.runtime"},
@@ -675,7 +671,6 @@ modules = [
 	{org = "wso2", packageName = "icp_server", moduleName = "icp_server.storage"},
 	{org = "wso2", packageName = "icp_server", moduleName = "icp_server.sync"},
 	{org = "wso2", packageName = "icp_server", moduleName = "icp_server.types"},
-	{org = "wso2", packageName = "icp_server", moduleName = "icp_server.user_service"},
 	{org = "wso2", packageName = "icp_server", moduleName = "icp_server.utils"}
 ]
 
