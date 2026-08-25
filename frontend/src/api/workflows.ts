@@ -325,7 +325,22 @@ const WF_STALE_POLL_MS = 2000;
  * copy is on its way. Stopping on stale data was the bug: the pre-mutation answer stayed on
  * screen indefinitely, a completed task still reading as pending.
  */
-const fetchableRefetch = <T>(data: Fetchable<T> | undefined): number | false => (data?.state === 'fetching' ? data.retryAfterMs : data?.state === 'ready' && data.stale ? WF_STALE_POLL_MS : false);
+/** A fresh answer younger than this keeps a gentle settle-poll: an answer produced right
+ *  after a mutation can predate that mutation's effects, and a client parked on it would
+ *  show the pre-mutation world until the page was reloaded. */
+const WF_SETTLE_WINDOW_S = 30;
+const WF_SETTLE_POLL_MS = 5000;
+
+const fetchableRefetch = <T>(data: Fetchable<T> | undefined): number | false => {
+  if (data?.state === 'fetching') return data.retryAfterMs;
+  if (data?.state !== 'ready') return false;
+  if (data.stale) return WF_STALE_POLL_MS;
+  // Young answers keep being checked until they age out of the settle window; old ones rest.
+  // These polls read the server's row cache — a refresh only happens once the row expires,
+  // one coalesced fetch at a time, so nobody bursts.
+  if (data.fetchedAt && Date.now() / 1000 - data.fetchedAt < WF_SETTLE_WINDOW_S) return WF_SETTLE_POLL_MS;
+  return false;
+};
 
 /** True while the server is replacing this answer: it is shown, and its successor is coming. */
 export const isRefreshing = <T>(r: Fetchable<T> | undefined): boolean => r?.state === 'ready' && r.stale === true;
