@@ -602,14 +602,20 @@ export interface BulkRetryResult {
   items?: Array<{ taskId?: string; outcome?: string; detail?: string }>;
 }
 
-/** Retries or fails every pending review of one parent instance in a single decision. */
-export function useBulkRetryReviews(s: Scope) {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ parentWorkflowId, action, feedback }: { parentWorkflowId: string; action: 'retry' | 'fail'; feedback?: string }) =>
-      wfRequest<BulkRetryResult>(s.componentId, s.environmentId, 'review-activities/bulk-retry', jsonBody({ method: 'POST' }, { parentWorkflowId, action, feedback })),
-    onSuccess: () => invalidateForEnvironment(qc, s.environmentId),
-  });
+/**
+ * Retries or fails several review activities in one decision — addressed by explicit ids, which
+ * is how the work queue submits a selection. A plain request rather than a hook, because a
+ * selection can span integrations and each batch must go to the runtime that owns its task
+ * queue; the caller groups, calls this per owner, and invalidates once.
+ */
+export function bulkRetryReviewsRequest(s: Scope, body: { taskIds?: string[]; parentWorkflowId?: string; action: 'retry' | 'fail'; feedback?: string }): Promise<BulkRetryResult> {
+  return wfRequest<BulkRetryResult>(s.componentId, s.environmentId, 'review-activities/bulk-retry', jsonBody({ method: 'POST' }, body));
+}
+
+/** Invalidates every workflow query for an environment — the client-side mirror of the server's
+ *  scope-wide staling. Exported for callers that mutate outside useMutation. */
+export function invalidateWorkflowQueries(qc: ReturnType<typeof useQueryClient>, environmentId: string): void {
+  invalidateForEnvironment(qc, environmentId);
 }
 
 export type WorkflowLifecycleAction = 'suspend' | 'resume' | 'cancel' | 'terminate';

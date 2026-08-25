@@ -16,9 +16,10 @@
  * under the License.
  */
 
-import { Alert, Box, Button, Chip, CircularProgress, Dialog, DialogActions, DialogContent, DialogTitle, IconButton, ListingTable, MenuItem, Snackbar, Stack, TextField, Tooltip, Typography } from '@wso2/oxygen-ui';
+import { Alert, Box, Button, Checkbox, Chip, CircularProgress, Dialog, DialogActions, DialogContent, DialogTitle, IconButton, ListingTable, MenuItem, Snackbar, Stack, TextField, Tooltip, Typography } from '@wso2/oxygen-ui';
 import SearchField from '../SearchField';
 import { RefreshCw, UserCheck, Wrench } from '@wso2/oxygen-ui-icons-react';
+import { useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState, type ReactNode } from 'react';
 import SchemaFormFields from './SchemaFormFields';
 import StructuredValue from './StructuredValue';
@@ -28,8 +29,10 @@ import { IntegrationFilter, ReviewActivityDetailDialog, StatusFilter, useTimeRan
 import Authorized from '../Authorized';
 import { Permissions } from '../../constants/permissions';
 import {
+  bulkRetryReviewsRequest,
   distinctWorkflowTypes,
   fetchedAtOf,
+  invalidateWorkflowQueries,
   isPreparing,
   isRefreshing,
   useCompleteHumanTask,
@@ -133,11 +136,26 @@ export default function UserPortal({
   );
 }
 
-function WorkItemTable({ items, onOpen, environmentId, integrationLabel }: { items: WorkItem[]; onOpen: (w: WorkItem) => void; environmentId: string; integrationLabel?: (taskQueue?: string) => string }) {
+interface WorkItemSelection {
+  selectable: (w: WorkItem) => boolean;
+  selected: Set<string>;
+  onToggle: (id: string) => void;
+  onToggleAll: () => void;
+  allSelected: boolean;
+}
+
+function WorkItemTable({ items, onOpen, environmentId, integrationLabel, selection }: { items: WorkItem[]; onOpen: (w: WorkItem) => void; environmentId: string; integrationLabel?: (taskQueue?: string) => string; selection?: WorkItemSelection }) {
   return (
     <ListingTable>
       <ListingTable.Head>
         <ListingTable.Row>
+          {selection && (
+            <ListingTable.Cell sx={{ width: 40, px: 1 }}>
+              {/* Selects the selectable — pending reviews. Tasks are completed one at a time
+                  through their own forms, so they take no checkbox rather than a disabled one. */}
+              <Checkbox size="small" checked={selection.allSelected} indeterminate={!selection.allSelected && selection.selected.size > 0} onChange={selection.onToggleAll} inputProps={{ 'aria-label': 'select all pending reviews' }} />
+            </ListingTable.Cell>
+          )}
           <HeaderCell label="Task" help="The work waiting for a person: a human task (generated form), or a review activity — a fixed decision the workflow feature provides, marked with a wrench." />
           <HeaderCell label="Workflow Name" help="The workflow definition the parent instance executes." />
           {integrationLabel && <HeaderCell label="Integration" help="The integration whose runtime owns this item, resolved from its task queue." />}
@@ -152,6 +170,11 @@ function WorkItemTable({ items, onOpen, environmentId, integrationLabel }: { ite
           const Icon = w.kind === 'review' ? Wrench : UserCheck;
           return (
             <ListingTable.Row key={`${w.kind}:${w.id}`} onClick={() => onOpen(w)} sx={{ cursor: 'pointer', '&:hover': { bgcolor: 'action.hover' } }}>
+              {selection && (
+                <ListingTable.Cell sx={{ width: 40, px: 1 }} onClick={(e) => e.stopPropagation()}>
+                  {selection.selectable(w) && <Checkbox size="small" checked={selection.selected.has(w.id)} onChange={() => selection.onToggle(w.id)} inputProps={{ 'aria-label': `select ${w.title}` }} />}
+                </ListingTable.Cell>
+              )}
               <ListingTable.Cell>
                 <Stack direction="row" alignItems="center" gap={1}>
                   <Tooltip title={w.kind === 'review' ? 'Review activity — a fixed decision the workflow feature provides' : 'Human task'}>
@@ -226,6 +249,15 @@ function WorkQueue({
   }, [initialReviewId]);
 
   const [workType, setWorkType] = useState<WorkTypeFilter>(initialKind === 'reviews' ? 'review' : 'all');
+  // Bulk retry lives here, on a selection — retrying several failed reviews in one go is the
+  // actual use, since workflows do not run reviews in parallel and a per-instance bulk always
+  // found exactly one. Only pending reviews are selectable.
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [bulkOpen, setBulkOpen] = useState(false);
+  const [bulkAction, setBulkAction] = useState<'retry' | 'fail'>('retry');
+  const [bulkFeedback, setBulkFeedback] = useState('');
+  const [bulkBusy, setBulkBusy] = useState(false);
+  const qc = useQueryClient();
   const [status, setStatus] = useState('PENDING');
   const [search, setSearch] = useState('');
   const [selectedType, setSelectedType] = useState<WorkflowDefinition | null>(null);
@@ -233,6 +265,7 @@ function WorkQueue({
   const timeFilter = useTimeRangeFilter();
 
   const multi = scope.targets.length > 1;
+
   const taskQueue = integration?.handler ?? scope.taskQueue;
   const definitions = useWorkflowDefinitionsAcross(scope.targets, scope.environmentId);
 
@@ -283,6 +316,50 @@ function WorkQueue({
   const isFetching = query.isFetching;
   const refetchAll = () => void query.refetch();
   const hasMore = query.hasNextPage;
+
+  const selectable = items.filter((w) => w.kind === 'review' && taskDisplayStatus(w.status) === 'PENDING');
+  // Pruned against what is on screen, so a row that got decided (or scrolled out by a filter)
+  // does not linger invisibly in the selection and get acted on blind.
+  const selected = new Set(selectedIds.filter((id) => selectable.some((w) => w.id === id)));
+  const toggleSelected = (id: string) => setSelectedIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+  const toggleAll = () => setSelectedIds(selected.size === selectable.length ? [] : selectable.map((w) => w.id));
+
+  const submitBulk = async () => {
+    setBulkBusy(true);
+    // One request per owning integration: a selection can span task queues, and each batch must
+    // reach the runtime that owns its reviews. The outcomes are summed, not blurred — a partial
+    // success reports its arithmetic.
+    const chosen = selectable.filter((w) => selected.has(w.id));
+    const byQueue = new Map<string | undefined, string[]>();
+    for (const w of chosen) byQueue.set(w.taskQueue, [...(byQueue.get(w.taskQueue) ?? []), w.id]);
+    let applied = 0;
+    let skipped = 0;
+    let failed = 0;
+    let errored: string | null = null;
+    for (const [queue, ids] of byQueue) {
+      try {
+        const result = await bulkRetryReviewsRequest(ownerScope(scope, queue), { taskIds: ids, action: bulkAction, feedback: bulkAction === 'fail' ? bulkFeedback.trim() || undefined : undefined });
+        applied += result.applied;
+        skipped += result.skipped;
+        failed += result.failed;
+      } catch (e) {
+        errored = e instanceof Error ? e.message : 'Bulk decision failed.';
+      }
+    }
+    setBulkBusy(false);
+    setBulkOpen(false);
+    setSelectedIds([]);
+    invalidateWorkflowQueries(qc, scope.environmentId);
+    onToast(
+      errored
+        ? { severity: 'error', message: errored }
+        : {
+            severity: failed > 0 ? 'error' : 'success',
+            message: `${chosen.length} review(s): ${applied} ${bulkAction === 'retry' ? 'retried' : 'failed'}, ${skipped} skipped${failed > 0 ? `, ${failed} errored` : ''}.`,
+          },
+    );
+  };
+
   const loadMore = () => query.fetchNextPage();
   const hasFilters = status !== 'PENDING' || workType !== (initialKind === 'reviews' ? 'review' : 'all') || !!selectedType || !!search || !!integration || timeFilter.active;
 
@@ -346,10 +423,69 @@ function WorkQueue({
         <Typography sx={emptySx}>{status === 'All' ? 'No tasks.' : `No ${status.toLowerCase()} tasks.`}</Typography>
       ) : (
         <>
-          <WorkItemTable items={items} onOpen={openItem} environmentId={scope.environmentId} integrationLabel={multi ? (q) => ownerLabel(scope, q) : undefined} />
+          {selected.size > 0 && (
+            <Stack direction="row" alignItems="center" gap={1.5} sx={{ px: 1.5, py: 1, mb: 1, border: '1px solid', borderColor: 'primary.main', borderRadius: 1, bgcolor: 'action.selected' }}>
+              <Typography variant="body2" sx={{ flex: 1 }}>
+                {selected.size} review{selected.size === 1 ? '' : 's'} selected
+              </Typography>
+              <Button
+                size="small"
+                variant="contained"
+                disabled={bulkBusy}
+                onClick={() => {
+                  setBulkAction('retry');
+                  setBulkOpen(true);
+                }}>
+                Retry Selected
+              </Button>
+              <Button
+                size="small"
+                variant="outlined"
+                color="error"
+                disabled={bulkBusy}
+                onClick={() => {
+                  setBulkAction('fail');
+                  setBulkOpen(true);
+                }}>
+                Fail Selected
+              </Button>
+              <Button size="small" variant="text" disabled={bulkBusy} onClick={() => setSelectedIds([])}>
+                Clear
+              </Button>
+            </Stack>
+          )}
+          <WorkItemTable
+            items={items}
+            onOpen={openItem}
+            environmentId={scope.environmentId}
+            integrationLabel={multi ? (q) => ownerLabel(scope, q) : undefined}
+            selection={{ selectable: (w) => w.kind === 'review' && taskDisplayStatus(w.status) === 'PENDING', selected, onToggle: toggleSelected, onToggleAll: toggleAll, allSelected: selectable.length > 0 && selected.size === selectable.length }}
+          />
           <ListFooter count={items.length} singular="item" plural="items" hasMore={hasMore} loadingMore={query.isFetchingNextPage} onLoadMore={loadMore} />
         </>
       )}
+
+      <Dialog open={bulkOpen} onClose={() => !bulkBusy && setBulkOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>{bulkAction === 'retry' ? 'Retry selected reviews' : 'Fail selected reviews'}</DialogTitle>
+        <DialogContent>
+          <Stack gap={2} sx={{ pt: 0.5 }}>
+            <Alert severity={bulkAction === 'retry' ? 'info' : 'warning'}>
+              {bulkAction === 'retry'
+                ? `Reruns the reviewed activity of each selected review with its original arguments — a bulk decision cannot edit them. ${selected.size} review${selected.size === 1 ? '' : 's'} will be decided; per-review outcomes are reported.`
+                : `Rejects every selected review; each failure is propagated to its workflow, which decides what happens next. ${selected.size} review${selected.size === 1 ? '' : 's'} will be decided. This cannot be undone.`}
+            </Alert>
+            {bulkAction === 'fail' && <TextField label="Feedback (optional)" fullWidth multiline minRows={2} value={bulkFeedback} onChange={(e) => setBulkFeedback(e.target.value)} helperText="Relayed to each workflow as the rejection reason." />}
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button disabled={bulkBusy} onClick={() => setBulkOpen(false)}>
+            Back
+          </Button>
+          <Button variant="contained" color={bulkAction === 'fail' ? 'error' : 'primary'} disabled={bulkBusy} onClick={() => void submitBulk()}>
+            {bulkBusy ? 'Submitting…' : bulkAction === 'retry' ? `Retry ${selected.size}` : `Fail ${selected.size}`}
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       {openTask && <TaskDetailDialog scope={ownerScope(scope, openTask.taskQueue)} taskId={openTask.taskId} actionable={taskDisplayStatus(openTask.status) === 'PENDING'} onClose={() => setOpenTask(null)} onToast={onToast} />}
       {openReview && <ReviewActivityDetailDialog scope={ownerScope(scope, openReview.taskQueue)} taskId={openReview.taskId} onClose={() => setOpenReview(null)} onToast={onToast} />}

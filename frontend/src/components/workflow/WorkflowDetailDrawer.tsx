@@ -17,13 +17,13 @@
  */
 
 import { Alert, Box, Button, CircularProgress, Dialog, DialogActions, DialogContent, DialogContentText, DialogTitle, Drawer, FormControlLabel, IconButton, ListingTable, Radio, RadioGroup, Snackbar, Stack, TextField, Typography } from '@wso2/oxygen-ui';
-import { Ban, OctagonX, PauseCircle, PlayCircle, RefreshCw, RotateCcw, X } from '@wso2/oxygen-ui-icons-react';
+import { Ban, OctagonX, PauseCircle, PlayCircle, RotateCcw, X } from '@wso2/oxygen-ui-icons-react';
 import { useState } from 'react';
 import WorkflowFlowTab from './WorkflowFlowTab';
 import {
   isPreparing,
   isRefreshing,
-  useBulkRetryReviews,
+  type ResetPoint,
   useResetPoints,
   useResetWorkflow,
   useWorkflowExecutionGraph,
@@ -35,7 +35,7 @@ import {
   type ResetType,
   type WorkflowLifecycleAction,
 } from '../../api/workflows';
-import { formatTime } from './helpers';
+import { formatTime, splitQualifiedName } from './helpers';
 import { RefreshingNote, type WorkflowScope } from './shared';
 import Authorized from '../Authorized';
 import { Permissions } from '../../constants/permissions';
@@ -48,6 +48,26 @@ const drawerPaperSx = (sidebarWidth: number) => ({ '& .MuiDrawer-paper': { width
 const headerSx = { px: 2, py: 1.5, borderBottom: '1px solid', borderColor: 'divider' };
 const emptySx = { py: 4, textAlign: 'center', color: 'text.secondary' };
 
+/**
+ * A reset point named by the workflow's own steps rather than by history internals. Points carry
+ * the step names around them when the runtime could attribute them; the ones it could not (the
+ * run's opening task, the tasks between steps) used to read as bare "event 19" — accurate and
+ * useless. Position gives them a name: the first point is the start of the run, and an unnamed
+ * later point sits after whatever the previous point named. The raw event id stays visible as a
+ * second line, since it is what the audit trail will record.
+ */
+function resetPointLabel(points: ResetPoint[], index: number): string {
+  const names = (p: ResetPoint) => p.nodeNames.map((n) => splitQualifiedName(n).task ?? n);
+  const own = names(points[index]);
+  if (own.length) return own.join(', ');
+  if (index === 0) return 'Start of the run';
+  for (let i = index - 1; i >= 0; i--) {
+    const prev = names(points[i]);
+    if (prev.length) return `After ${prev[prev.length - 1]}`;
+  }
+  return `Workflow task ${points[index].eventId}`;
+}
+
 export default function WorkflowDetailDrawer({ scope, workflowId, onClose }: { scope: WorkflowScope; workflowId: string; onClose: () => void }) {
   const [historyOpen, setHistoryOpen] = useState(false);
   const [terminateOpen, setTerminateOpen] = useState(false);
@@ -56,11 +76,7 @@ export default function WorkflowDetailDrawer({ scope, workflowId, onClose }: { s
   const [resetType, setResetType] = useState<ResetType>('last-workflow-task');
   const [resetEventId, setResetEventId] = useState<number | null>(null);
   const [resetReason, setResetReason] = useState('');
-  const [retryOpen, setRetryOpen] = useState(false);
-  const [retryAction, setRetryAction] = useState<'retry' | 'fail'>('retry');
-  const [retryFeedback, setRetryFeedback] = useState('');
   const resetMutation = useResetWorkflow(scope);
-  const bulkRetry = useBulkRetryReviews(scope);
   // The points load only while the dialog is open: a history read has a cost, and most drawer
   // visits never reset anything.
   const { data: resetPointsResult } = useResetPoints(scope, workflowId, resetOpen);
@@ -136,9 +152,6 @@ export default function WorkflowDetailDrawer({ scope, workflowId, onClose }: { s
           <Stack direction="row" gap={1} sx={{ px: 2, py: 1.5, borderBottom: '1px solid', borderColor: 'divider', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
             <Button size="small" variant="outlined" startIcon={<RotateCcw size={14} />} disabled={resetMutation.isPending} onClick={() => setResetOpen(true)}>
               Reset…
-            </Button>
-            <Button size="small" variant="outlined" startIcon={<RefreshCw size={14} />} disabled={bulkRetry.isPending} onClick={() => setRetryOpen(true)}>
-              Retry Reviews…
             </Button>
             {isRunning && (
               <Button size="small" variant="outlined" startIcon={<PauseCircle size={14} />} disabled={lifecycle.isPending} onClick={() => runAction('suspend')}>
@@ -217,9 +230,17 @@ export default function WorkflowDetailDrawer({ scope, workflowId, onClose }: { s
         <DialogTitle>Reset workflow</DialogTitle>
         <DialogContent>
           <Stack gap={2} sx={{ pt: 0.5 }}>
+            {/* Replay semantics, stated accurately per choice: steps BEFORE the point are
+                replayed from the run's own history — their side effects are not repeated. Only
+                what comes after the point runs again for real. The first draft of this warning
+                claimed completed activities re-run wholesale, which overstated every option
+                except "from the beginning". */}
             <Alert severity="warning">
-              Resetting replays the run up to the chosen point and re-executes everything after it as a new run of the same workflow ID — including activities whose side effects already happened, which run again, and human tasks, which may be asked again. This
-              cannot be undone.
+              {resetType === 'first-workflow-task'
+                ? 'The whole workflow runs again as a new run of the same workflow ID, with its original input — every activity happens again, side effects included, and every human task is asked again. This cannot be undone.'
+                : resetType === 'last-workflow-task'
+                  ? 'The run is replayed from its own history up to its most recent workflow task — completed steps before it are not re-executed and their side effects are not repeated. Only the work after that point runs again, as a new run of the same workflow ID. This cannot be undone.'
+                  : 'The run is replayed from its own history up to the chosen point — completed steps before it are not re-executed and their side effects are not repeated. Everything after the point runs again for real, side effects included, and human tasks after it may be asked again. This cannot be undone.'}
             </Alert>
             <RadioGroup value={resetType} onChange={(e) => setResetType(e.target.value as ResetType)}>
               <FormControlLabel value="last-workflow-task" control={<Radio size="small" />} label="Before the last step — redo only the most recent work" />
@@ -244,10 +265,15 @@ export default function WorkflowDetailDrawer({ scope, workflowId, onClose }: { s
                       value={point.eventId}
                       control={<Radio size="small" />}
                       label={
-                        <Typography variant="body2">
-                          {point.nodeNames.length ? point.nodeNames.join(', ') : `event ${point.eventId}`} · {formatTime(point.timestamp)}
-                          {point.isFirstFailure ? ' — just before the first failure' : ''}
-                        </Typography>
+                        <Stack sx={{ py: 0.25 }}>
+                          <Typography variant="body2">
+                            {resetPointLabel(resetPoints, resetPoints.indexOf(point))}
+                            {point.isFirstFailure ? ' — just before the first failure' : ''}
+                          </Typography>
+                          <Typography variant="caption" color="text.secondary">
+                            event {point.eventId} · {formatTime(point.timestamp)}
+                          </Typography>
+                        </Stack>
                       }
                     />
                   ))}
@@ -280,52 +306,6 @@ export default function WorkflowDetailDrawer({ scope, workflowId, onClose }: { s
               )
             }>
             {resetMutation.isPending ? 'Resetting…' : 'Reset Workflow'}
-          </Button>
-        </DialogActions>
-      </Dialog>
-
-      <Dialog open={retryOpen} onClose={() => !bulkRetry.isPending && setRetryOpen(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>Decide all pending reviews</DialogTitle>
-        <DialogContent>
-          <Stack gap={2} sx={{ pt: 0.5 }}>
-            <Alert severity="info">
-              One decision over every pending review of this instance. Retrying reruns each reviewed activity with its original arguments — a bulk decision cannot edit them; failing propagates each failure to the workflow. Per-review outcomes are reported, so
-              a partial result is visible as itself.
-            </Alert>
-            <RadioGroup value={retryAction} onChange={(e) => setRetryAction(e.target.value as 'retry' | 'fail')}>
-              <FormControlLabel value="retry" control={<Radio size="small" />} label="Retry — rerun every reviewed activity with its original arguments" />
-              <FormControlLabel value="fail" control={<Radio size="small" />} label="Fail — reject them all; each failure travels to the workflow" />
-            </RadioGroup>
-            {retryAction === 'fail' && <TextField label="Feedback (optional)" fullWidth multiline minRows={2} value={retryFeedback} onChange={(e) => setRetryFeedback(e.target.value)} helperText="Relayed to the workflow as the rejection reason." />}
-          </Stack>
-        </DialogContent>
-        <DialogActions>
-          <Button disabled={bulkRetry.isPending} onClick={() => setRetryOpen(false)}>
-            Back
-          </Button>
-          <Button
-            variant="contained"
-            color={retryAction === 'fail' ? 'error' : 'primary'}
-            disabled={bulkRetry.isPending}
-            onClick={() =>
-              bulkRetry.mutate(
-                { parentWorkflowId: workflowId, action: retryAction, feedback: retryAction === 'fail' ? retryFeedback.trim() || undefined : undefined },
-                {
-                  onSuccess: (result) => {
-                    setRetryOpen(false);
-                    setToast({
-                      severity: result.failed > 0 ? 'error' : 'success',
-                      message: `${result.requested} review(s): ${result.applied} ${retryAction === 'retry' ? 'retried' : 'failed'}, ${result.skipped} skipped${result.failed > 0 ? `, ${result.failed} errored` : ''}.`,
-                    });
-                  },
-                  onError: (e) => {
-                    setRetryOpen(false);
-                    setToast({ severity: 'error', message: e instanceof Error ? e.message : 'Bulk decision failed.' });
-                  },
-                },
-              )
-            }>
-            {bulkRetry.isPending ? 'Submitting…' : retryAction === 'retry' ? 'Retry All' : 'Fail All'}
           </Button>
         </DialogActions>
       </Dialog>
