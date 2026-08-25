@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import { Alert, Box, Button, Card, CardActionArea, Chip, Collapse, Divider, Drawer, IconButton, Link, ListingTable, Menu, MenuItem, Stack, Tooltip, Typography } from '@wso2/oxygen-ui';
+import { Alert, Box, Button, Card, CardActionArea, Chip, CircularProgress, Collapse, Divider, Drawer, IconButton, Link, ListingTable, Menu, MenuItem, Stack, Tooltip, Typography } from '@wso2/oxygen-ui';
 import { ChevronDown, ChevronRight, Copy, EllipsisVertical, Info } from '@wso2/oxygen-ui-icons-react';
 import { useState, type JSX, type ReactNode } from 'react';
 import { useNavigate } from 'react-router';
@@ -86,6 +86,22 @@ export function WorkflowIdLink({ workflowId, environmentId, onNavigate, truncate
           </IconButton>
         </Tooltip>
       )}
+    </Stack>
+  );
+}
+
+/**
+ * Shown while an answer on screen is being replaced: a mutation invalidated it, the server is
+ * serving the last copy while one refresh runs behind it, and the queries are polling for the
+ * fresh one. The data stays visible — blanking a list because it is seconds old would punish
+ * every reader for one writer — but the page says what it is showing.
+ */
+export function RefreshingNote({ show, label = 'Refreshing — fetching the latest from the integration…' }: { show: boolean; label?: string }): JSX.Element | null {
+  if (!show) return null;
+  return (
+    <Stack direction="row" alignItems="center" gap={1} sx={{ color: 'text.secondary' }}>
+      <CircularProgress size={12} thickness={5} />
+      <Typography variant="caption">{label}</Typography>
     </Stack>
   );
 }

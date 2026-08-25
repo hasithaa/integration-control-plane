@@ -20,8 +20,8 @@ import { Alert, Box, Button, CircularProgress, Dialog, DialogActions, DialogCont
 import { Ban, OctagonX, PauseCircle, PlayCircle, X } from '@wso2/oxygen-ui-icons-react';
 import { useState } from 'react';
 import WorkflowFlowTab from './WorkflowFlowTab';
-import { isPreparing, useWorkflowExecutionGraph, useWorkflowHistory, useWorkflowInfo, useWorkflowInstanceGraph, useWorkflowLifecycle, valueOf, type WorkflowLifecycleAction } from '../../api/workflows';
-import { type WorkflowScope } from './shared';
+import { isPreparing, isRefreshing, useWorkflowExecutionGraph, useWorkflowHistory, useWorkflowInfo, useWorkflowInstanceGraph, useWorkflowLifecycle, valueOf, type WorkflowLifecycleAction } from '../../api/workflows';
+import { RefreshingNote, type WorkflowScope } from './shared';
 import Authorized from '../Authorized';
 import { Permissions } from '../../constants/permissions';
 import { useLayout } from '../../contexts/LayoutContext';
@@ -59,6 +59,7 @@ export default function WorkflowDetailDrawer({ scope, workflowId, onClose }: { s
   const history = valueOf(historyResult) ?? [];
   const graph = valueOf(graphResult);
   const preparing = isPreparing(infoResult) || isPreparing(historyResult) || isPreparing(graphResult) || isPreparing(instanceGraphResult);
+  const refreshing = isRefreshing(infoResult) || isRefreshing(historyResult) || isRefreshing(graphResult) || isRefreshing(instanceGraphResult);
   const lifecycle = useWorkflowLifecycle(scope);
 
   const status = (info?.status as string | undefined) ?? '';
@@ -123,6 +124,7 @@ export default function WorkflowDetailDrawer({ scope, workflowId, onClose }: { s
       )}
 
       <Box sx={{ px: 2, pt: 1 }}>
+        <RefreshingNote show={refreshing} />
         {loadingInfo || loadingHistory || loadingGraph || loadingInstanceGraph || preparing ? (
           <CircularProgress size={24} sx={{ display: 'block', mx: 'auto', py: 4 }} />
         ) : infoError ? (

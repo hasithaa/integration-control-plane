@@ -26,12 +26,13 @@ import SchemaFormFields from './SchemaFormFields';
 import WorkflowDetailDrawer from './WorkflowDetailDrawer';
 import StructuredValue from './StructuredValue';
 import { buildFormResult, diffFormValues, displayWorkflowId, formatTime, formValuesFromObject, gatewayScope, jsonPretty, ownerLabel, ownerScope, parseFormSchema, sectionTitleSx, sortByStartTimeDesc, splitQualifiedName, type PortalScope } from './helpers';
-import { ActionCard, DetailDrawer, DetailRow, HeaderCell, HeaderMenu, ListFooter, NotProvided, SchemaDisclosure, SectionCard, StatusChip, SubmitError, WorkflowIdLink, type WorkflowScope } from './shared';
+import { ActionCard, DetailDrawer, DetailRow, HeaderCell, HeaderMenu, ListFooter, NotProvided, RefreshingNote, SchemaDisclosure, SectionCard, StatusChip, SubmitError, WorkflowIdLink, type WorkflowScope } from './shared';
 import Authorized from '../Authorized';
 import { Permissions } from '../../constants/permissions';
 import {
   distinctWorkflowTypes,
   isPreparing,
+  isRefreshing,
   useReviewActivity,
   useReviewDecision,
   useStartWorkflow,
@@ -259,6 +260,9 @@ function WorkflowsAdmin({
   const pages = (data?.pages ?? []).map((page) => valueOf(page)).filter((page) => page !== undefined);
   const items = sortByStartTimeDesc(pages.flatMap((page) => page?.items ?? []));
   const preparing = (data?.pages ?? []).some((page) => isPreparing(page));
+  // A page marked stale is being replaced: a mutation invalidated it and the queries are
+  // polling for the fresh copy. Said out loud, since the rows on screen predate the action.
+  const refreshing = (data?.pages ?? []).some((page) => isRefreshing(page));
   const hasFilters = status !== 'All' || !!selectedType || !!search || !!integration || timeFilter.active;
 
   return (
@@ -300,6 +304,7 @@ function WorkflowsAdmin({
 
       <DefinitionsUnavailableNotice failed={definitions.failed} />
 
+      <RefreshingNote show={refreshing} />
       {isLoading ? (
         <CircularProgress size={24} sx={{ display: 'block', mx: 'auto', py: 4 }} />
       ) : error ? (
@@ -551,6 +556,7 @@ export function ReviewActivityDetailDialog({ scope, taskId, onClose, onToast }: 
   const activity = valueOf(activityResult);
   // A decision form whose fields are still being prepared shows a spinner, not blank inputs.
   const waiting = isLoading || isPreparing(activityResult);
+  const refreshing = isRefreshing(activityResult);
   const decide = useReviewDecision(scope);
   const [mode, setMode] = useState<'view' | 'edit'>('view');
   // Confirmations and the reject operation are modal overlays: the decision happens in front of
@@ -676,6 +682,7 @@ export function ReviewActivityDetailDialog({ scope, taskId, onClose, onToast }: 
       ) : (
         <Stack gap={2}>
           <SubmitError message={decideError} onClear={() => setDecideError(null)} />
+          <RefreshingNote show={refreshing} />
           {activity.description && (
             <SectionCard title="Description">
               <Typography variant="body2" color="text.secondary">

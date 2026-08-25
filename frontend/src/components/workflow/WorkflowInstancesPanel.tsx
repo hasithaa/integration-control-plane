@@ -18,10 +18,10 @@
 
 import { Box, CircularProgress, ListingTable, Stack, Typography } from '@wso2/oxygen-ui';
 import { useState, type JSX } from 'react';
-import { isPreparing, useWorkflowInstances, valueOf } from '../../api/workflows';
+import { isPreparing, isRefreshing, useWorkflowInstances, valueOf } from '../../api/workflows';
 import SearchField from '../SearchField';
 import { formatTime } from './helpers';
-import { StatusChip, WorkflowIdLink } from './shared';
+import { RefreshingNote, StatusChip, WorkflowIdLink } from './shared';
 
 const emptySx = { py: 3, textAlign: 'center', color: 'text.secondary' } as const;
 
@@ -54,6 +54,7 @@ export default function WorkflowInstancesPanel({ componentId, environmentId, wor
   // First request for a view the server has not materialized yet: it says so rather than
   // making the panel wait.
   const preparing = isPreparing(result);
+  const refreshing = isRefreshing(result);
   const items = page?.items ?? [];
   // The server materializes this view through the integration, so the first request for it
   // comes back "still fetching". Say so, and let the query come back for it.
@@ -68,6 +69,7 @@ export default function WorkflowInstancesPanel({ componentId, environmentId, wor
         <SearchField value={search} onChange={setSearch} placeholder="Search by workflow ID" sx={{ width: 260 }} />
       </Stack>
 
+      <RefreshingNote show={refreshing} />
       {isLoading ? (
         <CircularProgress size={20} sx={{ display: 'block', mx: 'auto', py: 3 }} />
       ) : error ? (

@@ -237,7 +237,7 @@ const WF_POLL_FALLBACK_MS = 750;
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
-async function wfFetchOnce(url: string, init: RequestInit): Promise<{ status: number; body: unknown }> {
+async function wfFetchOnce(url: string, init: RequestInit): Promise<{ status: number; body: unknown; stale: boolean; fetchedAt?: number }> {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 30000);
   try {
@@ -251,7 +251,14 @@ async function wfFetchOnce(url: string, init: RequestInit): Promise<{ status: nu
         body = { message: text };
       }
     }
-    return { status: res.status, body };
+    // The server marks an answer it is serving from an invalidated entry: a mutation staled
+    // the scope, this copy predates it, and a single refresh is already running behind it.
+    // Discarding this header was the whole stale-data bug — the client cached the
+    // pre-mutation answer as fresh and never asked again.
+    const stale = res.headers.get('x-workflow-stale') === 'true';
+    const fetchedAtRaw = res.headers.get('x-workflow-fetched-at');
+    const fetchedAt = fetchedAtRaw ? Number(fetchedAtRaw) : undefined;
+    return { status: res.status, body, stale, fetchedAt };
   } catch (error) {
     if (error instanceof Error && error.name === 'AbortError') {
       throw new Error('Workflow service is unavailable. Request timed out.');
@@ -276,7 +283,7 @@ const newIdempotencyKey = (): string => (typeof crypto !== 'undefined' && typeof
  * as long as it takes, and tells the user nothing. Surfacing the state instead lets the page
  * say so and come back for it.
  */
-export type Fetchable<T> = { state: 'ready'; value: T } | { state: 'fetching'; retryAfterMs: number };
+export type Fetchable<T> = { state: 'ready'; value: T; stale?: boolean; fetchedAt?: number } | { state: 'fetching'; retryAfterMs: number };
 
 /** Named to sit beside react-query's own `isFetching` without being mistaken for it: this is
  *  the SERVER still preparing the answer, not the browser having a request in flight. */
@@ -294,7 +301,7 @@ const WF_FETCHING_POLL_MS = 900;
  * previous answer on screen while it does.
  */
 async function wfFetchable<T>(componentId: string, environmentId: string, subpath: string): Promise<Fetchable<T>> {
-  const { status, body } = await wfFetchOnce(workflowApiUrl(componentId, environmentId, subpath), {});
+  const { status, body, stale, fetchedAt } = await wfFetchOnce(workflowApiUrl(componentId, environmentId, subpath), {});
   if (status === 202) {
     const accepted = (body ?? {}) as { retryAfterMs?: number };
     return { state: 'fetching', retryAfterMs: accepted.retryAfterMs ?? WF_FETCHING_POLL_MS };
@@ -305,15 +312,27 @@ async function wfFetchable<T>(componentId: string, environmentId: string, subpat
     (error as Error & { status?: number }).status = status;
     throw error;
   }
-  return { state: 'ready', value: body as T };
+  return { state: 'ready', value: body as T, stale, fetchedAt };
 }
 
-/** Comes back at the interval the server asked for while a read is still being prepared. */
-const fetchableRefetch = <T>(data: Fetchable<T> | undefined): number | false => (data?.state === 'fetching' ? data.retryAfterMs : false);
+/** How often to come back for an answer the server said is stale — a refresh is already
+ *  running behind it, coalesced server-side, so these polls only read the row. */
+const WF_STALE_POLL_MS = 2000;
+
+/**
+ * Comes back at the interval the server asked for while a read is still being prepared, and
+ * keeps coming back while the served answer is STALE — a mutation invalidated it and the fresh
+ * copy is on its way. Stopping on stale data was the bug: the pre-mutation answer stayed on
+ * screen indefinitely, a completed task still reading as pending.
+ */
+const fetchableRefetch = <T>(data: Fetchable<T> | undefined): number | false => (data?.state === 'fetching' ? data.retryAfterMs : data?.state === 'ready' && data.stale ? WF_STALE_POLL_MS : false);
+
+/** True while the server is replacing this answer: it is shown, and its successor is coming. */
+export const isRefreshing = <T>(r: Fetchable<T> | undefined): boolean => r?.state === 'ready' && r.stale === true;
 
 /** Applies a projection to a ready value, so a hook can unwrap an envelope or default a
  *  field without losing the `fetching` state. */
-const mapFetchable = <A, B>(r: Fetchable<A>, f: (a: A) => B): Fetchable<B> => (r.state === 'ready' ? { state: 'ready', value: f(r.value) } : r);
+const mapFetchable = <A, B>(r: Fetchable<A>, f: (a: A) => B): Fetchable<B> => (r.state === 'ready' ? { state: 'ready', value: f(r.value), stale: r.stale, fetchedAt: r.fetchedAt } : r);
 
 /**
  * A request that waits for its answer. Mutations use this: the caller pressed a button, so a
@@ -490,21 +509,27 @@ export function useWorkflowInstanceGraph(s: Scope, workflowId: string | null) {
 }
 
 /**
- * Invalidates a workflow resource for an environment whichever component key it was cached under.
- * A project shares one Temporal namespace, so a listing is cached under the runtime that served the
- * read — the gateway — while a mutation is sent to the runtime that owns the row. Keying the
- * invalidation on the component would therefore miss the very list the user is looking at.
+ * Invalidates every workflow query for an environment, whichever component key each was cached
+ * under. A project shares one Temporal namespace, so a listing is cached under the runtime that
+ * served the read — the gateway — while a mutation is sent to the runtime that owns the row;
+ * keying on the component would miss the very list the user is looking at.
+ *
+ * Deliberately not per-kind. The server invalidates its whole scope on any completed mutation,
+ * because one action moves several views at once — a completed task changes the task list, the
+ * unified queue, both badge counts, AND the parent workflow's status, history and graph. The
+ * per-kind lists this replaces kept drifting behind that (task completion never refreshed the
+ * work queue or the parent instance). Each refetch is answered from the server's row cache, so
+ * matching its breadth costs a handful of locally-served GETs, not a burst at the integration.
  */
-function invalidateForEnvironment(qc: ReturnType<typeof useQueryClient>, environmentId: string, ...kinds: string[]): void {
-  const wanted = new Set<unknown>(kinds);
-  qc.invalidateQueries({ predicate: (q) => q.queryKey[0] === 'wf' && wanted.has(q.queryKey[1]) && q.queryKey[3] === environmentId });
+function invalidateForEnvironment(qc: ReturnType<typeof useQueryClient>, environmentId: string): void {
+  qc.invalidateQueries({ predicate: (q) => q.queryKey[0] === 'wf' && q.queryKey[3] === environmentId });
 }
 
 export function useStartWorkflow(s: Scope) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (body: { workflowType: string; input?: unknown; workflowId?: string; timeoutSeconds?: number }) => wfRequest<WorkflowInstance>(s.componentId, s.environmentId, 'workflows', jsonBody({ method: 'POST' }, body)),
-    onSuccess: () => invalidateForEnvironment(qc, s.environmentId, 'instances'),
+    onSuccess: () => invalidateForEnvironment(qc, s.environmentId),
   });
 }
 
@@ -517,7 +542,7 @@ export function useWorkflowLifecycle(s: Scope) {
       const init = action === 'terminate' ? jsonBody({ method: 'POST' }, { reason: reason ?? '' }) : { method: 'POST' };
       return wfRequest<unknown>(s.componentId, s.environmentId, `workflows/${encodeURIComponent(workflowId)}/${action}`, init);
     },
-    onSuccess: () => invalidateForEnvironment(qc, s.environmentId, 'instances', 'info'),
+    onSuccess: () => invalidateForEnvironment(qc, s.environmentId),
   });
 }
 
@@ -599,7 +624,7 @@ export function useHumanTask(s: Scope, taskId: string | null) {
 }
 
 function invalidateHumanTasks(qc: ReturnType<typeof useQueryClient>, s: Scope) {
-  invalidateForEnvironment(qc, s.environmentId, 'human-tasks', 'pending-count');
+  invalidateForEnvironment(qc, s.environmentId);
 }
 
 export function useCompleteHumanTask(s: Scope) {
@@ -655,17 +680,24 @@ export interface WorkItemFilters {
   pageToken?: string;
 }
 
-function fetchWorkItems(componentId: string, environmentId: string, filters: WorkItemFilters): Promise<Page<WorkItemRow>> {
-  return wfRequest<Page<WorkItemRow>>(componentId, environmentId, `work-items${buildQuery({ ...filters })}`);
+function fetchWorkItems(componentId: string, environmentId: string, filters: WorkItemFilters): Promise<Fetchable<Page<WorkItemRow>>> {
+  return wfFetchable<Page<WorkItemRow>>(componentId, environmentId, `work-items${buildQuery({ ...filters })}`);
 }
 
 /** Paged the way the runtime pages — one token stream across both kinds. */
 export function useWorkItemsInfinite(s: Scope, filters: Omit<WorkItemFilters, 'pageToken'>) {
   return useInfiniteQuery({
     queryKey: ['wf', 'work-items', s.componentId, s.environmentId, filters],
+    // The last read hook still on the blocking helper: the work queue — the page people live
+    // on — sat on a spinner for a cold cache and, worse, held a completed task as pending
+    // because it never learned its answer had gone stale.
     queryFn: ({ pageParam }) => fetchWorkItems(s.componentId, s.environmentId, { ...filters, pageToken: pageParam || undefined }),
     initialPageParam: '',
-    getNextPageParam: (last) => (last.hasMore && last.nextPageToken ? last.nextPageToken : undefined),
+    getNextPageParam: (last) => {
+      const page = valueOf(last);
+      return page?.hasMore && page.nextPageToken ? page.nextPageToken : undefined;
+    },
+    refetchInterval: ({ state }) => fetchableRefetch(state.data?.pages[state.data.pages.length - 1]),
     enabled: enabledFor(s),
   });
 }
@@ -769,7 +801,7 @@ export function useReviewDecision(s: Scope) {
       else init = { method: 'POST' };
       return wfRequest<unknown>(s.componentId, s.environmentId, `review-activities/${encodeURIComponent(taskId)}/${decision}`, init);
     },
-    onSuccess: () => invalidateForEnvironment(qc, s.environmentId, 'review-activities', 'pending-review-count'),
+    onSuccess: () => invalidateForEnvironment(qc, s.environmentId),
   });
 }
 

@@ -23,11 +23,24 @@ import { useEffect, useState, type ReactNode } from 'react';
 import SchemaFormFields from './SchemaFormFields';
 import StructuredValue from './StructuredValue';
 import { buildFormResult, displayWorkflowId, formatTime, gatewayScope, jsonPretty, ownerLabel, ownerScope, parseFormSchema, sortByStartTimeDesc, splitQualifiedName, unescapeRoleName, type PortalScope } from './helpers';
-import { ActionCard, DetailDrawer, DetailRow, HeaderCell, HeaderMenu, ListFooter, NotProvided, SectionCard, StatusChip, SubmitError, WorkflowIdLink, type WorkflowScope } from './shared';
+import { ActionCard, DetailDrawer, DetailRow, HeaderCell, HeaderMenu, ListFooter, NotProvided, RefreshingNote, SectionCard, StatusChip, SubmitError, WorkflowIdLink, type WorkflowScope } from './shared';
 import { IntegrationFilter, ReviewActivityDetailDialog, StatusFilter, useTimeRangeFilter, WorkflowNameFilter } from './AdminPortal';
 import Authorized from '../Authorized';
 import { Permissions } from '../../constants/permissions';
-import { distinctWorkflowTypes, isPreparing, useCompleteHumanTask, useFailHumanTask, useHumanTask, useWorkflowDefinitionsAcross, useWorkItemsInfinite, valueOf, type HumanTask, type WorkflowDefinition, type WorkflowTarget } from '../../api/workflows';
+import {
+  distinctWorkflowTypes,
+  isPreparing,
+  isRefreshing,
+  useCompleteHumanTask,
+  useFailHumanTask,
+  useHumanTask,
+  useWorkflowDefinitionsAcross,
+  useWorkItemsInfinite,
+  valueOf,
+  type HumanTask,
+  type WorkflowDefinition,
+  type WorkflowTarget,
+} from '../../api/workflows';
 
 const emptySx = { py: 4, textAlign: 'center', color: 'text.secondary' } as const;
 
@@ -232,9 +245,15 @@ function WorkQueue({
     startTimeTo: timeFilter.bounds.startTimeTo,
     limit: 50,
   });
+  // Pages are Fetchable now: only ready ones contribute rows, a page being prepared is
+  // announced, and a stale one keeps the rows visible while saying fresher ones are coming.
+  const queuePreparing = (query.data?.pages ?? []).some((p) => isPreparing(p));
+  const queueRefreshing = (query.data?.pages ?? []).some((p) => isRefreshing(p));
   const items: WorkItem[] = sortByStartTimeDesc(
     (query.data?.pages ?? [])
-      .flatMap((p) => p.items ?? [])
+      .map((p) => valueOf(p))
+      .filter((p) => p !== undefined)
+      .flatMap((p) => p?.items ?? [])
       .map((t) => {
         const kind: WorkKind = t.kind === 'REVIEW_ACTIVITY' ? 'review' : 'task';
         const { workflow, task } = splitQualifiedName(t.taskName);
@@ -308,10 +327,15 @@ function WorkQueue({
         )}
       </Stack>
 
+      <RefreshingNote show={queueRefreshing} />
       {isLoading ? (
         <CircularProgress size={24} sx={{ display: 'block', mx: 'auto', py: 4 }} />
       ) : error ? (
         <Typography sx={emptySx}>{error instanceof Error ? error.message : 'Failed to load tasks.'}</Typography>
+      ) : queuePreparing && items.length === 0 ? (
+        // Not the same statement as "no tasks": the integration has not answered this view yet
+        // and the query is already coming back for it.
+        <Typography sx={emptySx}>Fetching tasks from the integration…</Typography>
       ) : items.length === 0 ? (
         <Typography sx={emptySx}>{status === 'All' ? 'No tasks.' : `No ${status.toLowerCase()} tasks.`}</Typography>
       ) : (
@@ -339,6 +363,7 @@ function TaskDetailDialog({ scope, taskId, actionable, onClose, onToast }: { sco
   // A dialog whose detail is still being prepared shows its spinner rather than a form with
   // every field blank.
   const waiting = isLoading || isPreparing(taskResult);
+  const refreshing = isRefreshing(taskResult);
   const complete = useCompleteHumanTask(scope);
   const fail = useFailHumanTask(scope);
   const [mode, setMode] = useState<'view' | 'complete'>('view');
@@ -468,6 +493,7 @@ function TaskDetailDialog({ scope, taskId, actionable, onClose, onToast }: { sco
       ) : (
         <Stack gap={2}>
           <SubmitError message={submitError} onClear={() => setSubmitError(null)} />
+          <RefreshingNote show={refreshing} />
           {task?.description && (
             <SectionCard title="Description">
               <Typography variant="body2" color="text.secondary">
