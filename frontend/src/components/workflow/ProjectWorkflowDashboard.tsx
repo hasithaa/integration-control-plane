@@ -57,7 +57,7 @@ export default function ProjectWorkflowDashboard({
   return (
     <Stack gap={2}>
       <Typography variant="body2" color="text.secondary">
-        Workflow work is listed per integration — each runs against its own Temporal task queue. Pick an integration to see its {resource === 'tasks' ? 'tasks' : 'executions'}.
+        Workflow work is listed per integration — each runs against its own Temporal task queue. Pick an integration to see its {resource === 'tasks' ? 'tasks' : 'executions'}. Counts show work applicable to you; pending tasks and reviews open in Human Tasks.
       </Typography>
       <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 2 }}>
         {integrations.map((integration) => (
@@ -126,7 +126,15 @@ function IntegrationCard({
               </Typography>
             )}
             {canViewWorkflows && (
-              <Typography variant="caption" color="text.secondary">
+              // Reviews are decided in Human Tasks, so this number goes THERE — following it to
+              // the executions list left the reader hunting for rows that page does not show.
+              <Typography
+                variant="caption"
+                sx={{ color: 'text.secondary', textDecoration: 'underline', textDecorationStyle: 'dotted', cursor: 'pointer', '&:hover': { color: 'primary.main' } }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  navigate(`${resourceUrl(narrow(scope, integration.routeHandler), 'tasks')}?tab=reviews&env=${encodeURIComponent(environmentId)}`);
+                }}>
                 {pendingReviews ? `${pendingReviews.count}${pendingReviews.capped ? '+' : ''}` : '…'} pending review{pendingReviews?.count === 1 ? '' : 's'}
               </Typography>
             )}

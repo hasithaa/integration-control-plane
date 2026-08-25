@@ -63,7 +63,15 @@ export default function WorkflowTasks(scope: ComponentScope | ProjectScope): JSX
           </>
         ) : (
           <>
-            Complete human tasks — including review activities — across all integrations in <strong>{project?.name ?? scope.project}</strong>. Only tasks applicable to you are shown.
+            {dashboard ? (
+              <>
+                Human tasks in <strong>{project?.name ?? scope.project}</strong> are listed per integration. Pick one to see its tasks and review activities — only work applicable to you is counted and shown.
+              </>
+            ) : (
+              <>
+                Complete human tasks — including review activities — for <strong>{soleWorkflowIntegration?.name ?? project?.name ?? scope.project}</strong>. Only tasks applicable to you are shown.
+              </>
+            )}
           </>
         )
       }
