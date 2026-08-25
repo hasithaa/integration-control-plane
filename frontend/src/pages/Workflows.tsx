@@ -17,7 +17,8 @@
  */
 
 import { useEffect, useState, type JSX } from 'react';
-import { Navigate, useNavigate, useSearchParams } from 'react-router';
+import { Navigate, useLocation, useNavigate, useSearchParams } from 'react-router';
+import { Alert, Snackbar } from '@wso2/oxygen-ui';
 import NotFound from '../components/NotFound';
 import ProjectWorkflowDashboard from '../components/workflow/ProjectWorkflowDashboard';
 import AdminPortal from '../components/workflow/AdminPortal';
@@ -37,6 +38,14 @@ export default function Workflows(scope: ComponentScope | ProjectScope): JSX.Ele
   const componentLevel = hasComponent(scope);
   const [searchParams, setSearchParams] = useSearchParams();
   const [selectedEnvId, setSelectedEnvId] = useState(searchParams.get('env') ?? '');
+
+  // A page that sent the user here can send one confirmation along (completing a task navigates
+  // here — its own toast would unmount with it). Read once; a refresh does not replay it.
+  const location = useLocation();
+  const [arrivalToast, setArrivalToast] = useState<string | null>(() => {
+    const state = location.state as { toast?: string } | null;
+    return typeof state?.toast === 'string' ? state.toast : null;
+  });
 
   // Deep-link params (from the Overview page's "View Workflows", the start-workflow success dialog,
   // or a task's workflow link). Held in state rather than read from the URL on every render: the
@@ -133,6 +142,13 @@ export default function Workflows(scope: ComponentScope | ProjectScope): JSX.Ele
       ) : (
         <AdminPortal key={deepLinkKey} targets={targets} environmentId={activeEnvId} taskQueue={taskQueue} initialWorkflowType={deepLink.workflowType} initialWorkflowId={deepLink.workflowId} />
       )}
+      <Snackbar open={arrivalToast !== null} autoHideDuration={6000} onClose={() => setArrivalToast(null)} anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}>
+        {arrivalToast ? (
+          <Alert severity="success" onClose={() => setArrivalToast(null)} sx={{ width: '100%' }}>
+            {arrivalToast}
+          </Alert>
+        ) : undefined}
+      </Snackbar>
     </WorkflowPageFrame>
   );
 }

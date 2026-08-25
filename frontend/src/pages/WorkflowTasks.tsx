@@ -17,7 +17,7 @@
  */
 
 import { useState, type JSX } from 'react';
-import { useSearchParams } from 'react-router';
+import { useNavigate, useSearchParams } from 'react-router';
 import NotFound from '../components/NotFound';
 import ProjectWorkflowDashboard from '../components/workflow/ProjectWorkflowDashboard';
 import UserPortal from '../components/workflow/UserPortal';
@@ -33,6 +33,7 @@ import { resourceUrl, broaden, hasComponent, type ComponentScope, type ProjectSc
  */
 export default function WorkflowTasks(scope: ComponentScope | ProjectScope): JSX.Element {
   const componentLevel = hasComponent(scope);
+  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const [selectedEnvId, setSelectedEnvId] = useState(searchParams.get('env') ?? '');
 
@@ -94,6 +95,10 @@ export default function WorkflowTasks(scope: ComponentScope | ProjectScope): JSX
             initialKind={initialKind}
             initialTaskId={searchParams.get('task') ?? undefined}
             initialReviewId={searchParams.get('review') ?? undefined}
+            // The queue's own list needs a refresh cycle before it reflects a decision; the
+            // executions list shows the consequence at once, so completion lands there — but
+            // only for someone allowed to see it. Others keep the in-place confirmation.
+            onTaskDecided={canViewWorkflows ? (message) => navigate(`${resourceUrl(scope, 'workflows')}?env=${encodeURIComponent(activeEnvId)}`, { state: { toast: message } }) : undefined}
           />
         ))}
     </WorkflowPageFrame>

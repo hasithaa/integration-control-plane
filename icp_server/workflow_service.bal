@@ -501,8 +501,11 @@ function handleWorkflowRequest(string componentId, string environmentId, string[
         return serveWorkflowRead(componentId, environmentId, operation[0], operationParams,
                 escapedRoles, forceRefresh);
     }
+    // The actor travels by username, not by user id: the integration stores it verbatim as
+    // `completedBy`/`decidedBy`, and a person reading a task's decision should see who — a
+    // name — not an opaque UUID only this ICP's user table can resolve.
     return acceptWorkflowMutation(req, componentId, environmentId, operation[0], operationParams,
-            userContext.userId, escapedRoles);
+            userContext.username, escapedRoles);
 }
 
 # The kinds of work a caller may list, as the operation's `kinds` parameter: the intersection

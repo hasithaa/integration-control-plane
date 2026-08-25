@@ -117,13 +117,14 @@ export default function UserPortal({
   initialKind,
   initialTaskId,
   initialReviewId,
-}: PortalScope & { canViewTasks: boolean; canViewReviews: boolean; initialKind?: 'reviews'; initialTaskId?: string; initialReviewId?: string }) {
+  onTaskDecided,
+}: PortalScope & { canViewTasks: boolean; canViewReviews: boolean; initialKind?: 'reviews'; initialTaskId?: string; initialReviewId?: string; onTaskDecided?: (message: string) => void }) {
   const scope: PortalScope = { targets, environmentId, taskQueue };
   const [toast, setToast] = useState<Toast>(null);
 
   return (
     <>
-      <WorkQueue scope={scope} onToast={setToast} canViewTasks={canViewTasks} canViewReviews={canViewReviews} initialKind={initialKind} initialTaskId={initialTaskId} initialReviewId={initialReviewId} />
+      <WorkQueue scope={scope} onToast={setToast} canViewTasks={canViewTasks} canViewReviews={canViewReviews} initialKind={initialKind} initialTaskId={initialTaskId} initialReviewId={initialReviewId} onTaskDecided={onTaskDecided} />
 
       <Snackbar open={toast !== null} autoHideDuration={4000} onClose={() => setToast(null)} anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}>
         {toast ? (
@@ -225,6 +226,7 @@ function WorkQueue({
   initialKind,
   initialTaskId,
   initialReviewId,
+  onTaskDecided,
 }: {
   scope: PortalScope;
   onToast: (t: Toast) => void;
@@ -233,6 +235,7 @@ function WorkQueue({
   initialKind?: 'reviews';
   initialTaskId?: string;
   initialReviewId?: string;
+  onTaskDecided?: (message: string) => void;
 }) {
   // Each kind opens against the integration that owns it, per the row's own task queue.
   const [openTask, setOpenTask] = useState<{ taskId: string; taskQueue?: string; status?: string } | null>(null);
@@ -487,7 +490,7 @@ function WorkQueue({
         </DialogActions>
       </Dialog>
 
-      {openTask && <TaskDetailDialog scope={ownerScope(scope, openTask.taskQueue)} taskId={openTask.taskId} actionable={taskDisplayStatus(openTask.status) === 'PENDING'} onClose={() => setOpenTask(null)} onToast={onToast} />}
+      {openTask && <TaskDetailDialog scope={ownerScope(scope, openTask.taskQueue)} taskId={openTask.taskId} actionable={taskDisplayStatus(openTask.status) === 'PENDING'} onClose={() => setOpenTask(null)} onToast={onToast} onDecided={onTaskDecided} />}
       {openReview && <ReviewActivityDetailDialog scope={ownerScope(scope, openReview.taskQueue)} taskId={openReview.taskId} onClose={() => setOpenReview(null)} onToast={onToast} />}
     </>
   );
@@ -499,7 +502,7 @@ function WorkQueue({
  * what it does before it can be taken — completing is the task's purpose and leads; failing is a
  * task *operation* with consequences, so it is quieter and warns. Both submit in two steps.
  */
-function TaskDetailDialog({ scope, taskId, actionable, onClose, onToast }: { scope: WorkflowScope; taskId: string; actionable?: boolean; onClose: () => void; onToast: (t: Toast) => void }) {
+function TaskDetailDialog({ scope, taskId, actionable, onClose, onToast, onDecided }: { scope: WorkflowScope; taskId: string; actionable?: boolean; onClose: () => void; onToast: (t: Toast) => void; onDecided?: (message: string) => void }) {
   const [pausePolling, setPausePolling] = useState(false);
   const { data: taskResult, isLoading, error: taskError } = useHumanTask(scope, taskId, pausePolling);
   const task = valueOf(taskResult);
@@ -573,8 +576,12 @@ function TaskDetailDialog({ scope, taskId, actionable, onClose, onToast }: { sco
       { taskId, result: pendingResult },
       {
         onSuccess: () => {
-          onToast({ severity: 'success', message: 'Task completed.' });
           onClose();
+          // The task list needs a refresh cycle before it shows this decision; the executions
+          // list is where the consequence is visible immediately, so take the person there.
+          // The confirmation travels with the navigation — this page unmounts with its toast.
+          if (onDecided) onDecided('Task completed — its workflow run continues below.');
+          else onToast({ severity: 'success', message: 'Task completed.' });
         },
         onError: (e) => {
           setConfirmOpen(false);
@@ -594,8 +601,9 @@ function TaskDetailDialog({ scope, taskId, actionable, onClose, onToast }: { sco
       { taskId, reason: reason.trim() },
       {
         onSuccess: () => {
-          onToast({ severity: 'success', message: 'Task marked as failed.' });
           onClose();
+          if (onDecided) onDecided('Task marked as failed — its workflow run reacts below.');
+          else onToast({ severity: 'success', message: 'Task marked as failed.' });
         },
         onError: (e) => {
           setFailOpen(false);

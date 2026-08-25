@@ -319,13 +319,14 @@ async function wfFetchable<T>(componentId: string, environmentId: string, subpat
   return { state: 'ready', value: body as T, stale, fetchedAt };
 }
 
-/** How often to come back for an answer the server said is stale. Paced like a heartbeat, not
- *  like a spinner: every user's polls are answered from the ICP's row cache and the integration
- *  sees at most one coalesced refresh per entry regardless of user count — but the polls
- *  themselves land on the ICP, and a thousand open consoles at 2s would be 500 requests a
- *  second for freshness nobody can perceive. The page says when it last updated, and the
- *  refresh button covers impatience. */
-const WF_STALE_POLL_MS = 30000;
+/** How soon to come back for the replacement of a STALE answer. Reading a stale entry is what
+ *  claims its refresh, and that refresh lands within a second or two — but the entry TTLs
+ *  (15s) are shorter than the resting cadence (30s), so a view that waited 30s found the row
+ *  expired *again*, was served stale *again*, and never once displayed a fresh copy: the
+ *  "refreshing…" line burned permanently. Coming back quickly collects the copy this very
+ *  request triggered, the flag drops, and the view rests. The follow-up reads the row cache —
+ *  the refresh itself stays coalesced to one command however many viewers follow up. */
+const WF_STALE_FOLLOWUP_MS = 3000;
 
 /**
  * Comes back at the interval the server asked for while a read is still being prepared, and
@@ -368,7 +369,7 @@ const fetchableRefetch = <T>(data: Fetchable<T> | undefined): number | false => 
   if (data?.state === 'fetching') return data.retryAfterMs;
   if (!autoRefreshEnabled()) return false;
   if (data?.state !== 'ready') return false;
-  if (data.stale) return WF_STALE_POLL_MS;
+  if (data.stale) return WF_STALE_FOLLOWUP_MS;
   // Young answers keep being checked until they age out of the settle window; old ones rest.
   // These polls read the server's row cache — a refresh only happens once the row expires,
   // one coalesced fetch at a time, so nobody bursts.
