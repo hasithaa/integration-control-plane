@@ -20,8 +20,8 @@ import { Box, Collapse, IconButton, Stack, Tooltip, Typography } from '@wso2/oxy
 import { Braces, ChevronDown, Copy } from '@wso2/oxygen-ui-icons-react';
 import { useState, type ReactElement } from 'react';
 import CodeViewer from '../CodeViewer';
-import { humanizeKey } from './helpers';
-import { WorkflowIdLink } from './shared';
+import { formatTime, humanizeKey } from './helpers';
+import { IdText, WorkflowIdLink } from './shared';
 
 /**
  * A JSON value read the way its shape wants to be read. An object's primitive fields become
@@ -36,6 +36,14 @@ import { WorkflowIdLink } from './shared';
 const ENDS_WITH_UUID = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const ID_KEY = /(workflowid|taskid|reviewid|instanceid)$/i;
 const isWorkflowId = (key: string, value: unknown): value is string => typeof value === 'string' && (/^(workflow|humantask|reviewactivity|childwf|childagent)-/.test(value) || (ID_KEY.test(key) && ENDS_WITH_UUID.test(value)));
+
+// A value that IS a UUID but whose key claims nothing navigable (completedBy, runId, correlation
+// ids) still deserves the id treatment — truncated with a copy button — instead of a 36-character
+// monospace string wrapping mid-token across two lines.
+const BARE_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+// A machine timestamp (RFC 3339, any fractional precision) reads as a local time, with the raw
+// value kept in the tooltip — `2026-08-25T15:55:56.106171571Z` is for logs, not for people.
+const ISO_TIMESTAMP = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}:?\d{2})$/;
 
 export default function StructuredValue({ title, raw, environmentId, collapsible }: { title: string; raw: string; environmentId?: string; collapsible?: boolean }): ReactElement {
   const [showRaw, setShowRaw] = useState(false);
@@ -137,8 +145,10 @@ function ObjectRows({ value, depth, environmentId }: { value: Record<string, unk
   return (
     <Stack gap={0.5} sx={{ minWidth: 0, pl: depth * 1.5, borderLeft: depth > 0 ? '2px solid' : 'none', borderColor: 'divider' }}>
       {entries.map(([key, v]) => {
+        // Labels wrap rather than ellipsize: "Workflow Definition Na…" hides the one word that
+        // distinguishes the row, and these keys are two or three words at most.
         const label = (
-          <Typography variant="caption" sx={{ color: 'text.secondary', width: 132, flexShrink: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={key}>
+          <Typography variant="caption" sx={{ color: 'text.secondary', width: 132, flexShrink: 0, overflowWrap: 'break-word' }} title={key}>
             {humanizeKey(key)}
           </Typography>
         );
@@ -146,7 +156,25 @@ function ObjectRows({ value, depth, environmentId }: { value: Record<string, unk
           return (
             <Stack key={key} direction="row" gap={1} alignItems="baseline" sx={{ minWidth: 0 }}>
               {label}
-              <WorkflowIdLink workflowId={v} environmentId={environmentId} />
+              <WorkflowIdLink workflowId={v} environmentId={environmentId} truncate copy />
+            </Stack>
+          );
+        }
+        if (typeof v === 'string' && BARE_UUID.test(v)) {
+          return (
+            <Stack key={key} direction="row" gap={1} alignItems="baseline" sx={{ minWidth: 0 }}>
+              {label}
+              <IdText id={v} />
+            </Stack>
+          );
+        }
+        if (typeof v === 'string' && ISO_TIMESTAMP.test(v)) {
+          return (
+            <Stack key={key} direction="row" gap={1} alignItems="baseline" sx={{ minWidth: 0 }}>
+              {label}
+              <Typography variant="body2" title={v} sx={{ minWidth: 0, fontSize: 12.5 }}>
+                {formatTime(v)}
+              </Typography>
             </Stack>
           );
         }

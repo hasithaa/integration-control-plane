@@ -128,7 +128,7 @@ export default function NodeDetailPanel({ node, detail, hasHistory, onClose, ful
             <Typography variant="caption" sx={{ color: 'text.secondary' }}>
               Instance
             </Typography>
-            <WorkflowIdLink workflowId={detail.childWorkflowId} environmentId={environmentId} />
+            <WorkflowIdLink workflowId={detail.childWorkflowId} environmentId={environmentId} truncate copy />
           </Stack>
         )}
         {detail.callConfig && Object.keys(detail.callConfig).length > 0 && (
