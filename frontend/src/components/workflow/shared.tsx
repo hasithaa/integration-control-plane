@@ -109,6 +109,33 @@ export function RefreshingNote({ show, fetchedAt, label = 'refreshing — fetchi
   );
 }
 
+/**
+ * A long identifier in a table cell: middle-ellipsized with the full value in the title, and a
+ * copy button — the one thing anyone does with an id a list is too narrow to show whole. For ids
+ * that navigate, use WorkflowIdLink; this is for the rest (run ids, task ids).
+ */
+export function IdText({ id, muted }: { id?: string; muted?: boolean }): JSX.Element {
+  if (!id) return <NotProvided />;
+  return (
+    <Stack direction="row" alignItems="center" gap={0.25} sx={{ minWidth: 0 }}>
+      <Typography component="span" title={id} sx={{ fontFamily: 'monospace', fontSize: 12, color: muted ? 'text.secondary' : 'text.primary', whiteSpace: 'nowrap' }}>
+        {truncateId(id)}
+      </Typography>
+      <Tooltip title="Copy ID">
+        <IconButton
+          size="small"
+          aria-label="copy id"
+          onClick={(e) => {
+            e.stopPropagation();
+            void navigator.clipboard.writeText(id);
+          }}>
+          <Copy size={12} />
+        </IconButton>
+      </Tooltip>
+    </Stack>
+  );
+}
+
 /** A missing value stated as such — an em-dash reads as a rendering bug, "Not provided" as a fact. */
 export function NotProvided({ label = 'Not provided' }: { label?: string }): JSX.Element {
   return (

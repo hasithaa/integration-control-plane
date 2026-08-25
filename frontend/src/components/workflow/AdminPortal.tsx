@@ -26,7 +26,7 @@ import SchemaFormFields from './SchemaFormFields';
 import WorkflowDetailDrawer from './WorkflowDetailDrawer';
 import StructuredValue from './StructuredValue';
 import { buildFormResult, diffFormValues, displayWorkflowId, formatTime, formValuesFromObject, gatewayScope, jsonPretty, ownerLabel, ownerScope, parseFormSchema, sectionTitleSx, sortByStartTimeDesc, splitQualifiedName, type PortalScope } from './helpers';
-import { ActionCard, DetailDrawer, DetailRow, HeaderCell, HeaderMenu, ListFooter, NotProvided, RefreshingNote, SchemaDisclosure, SectionCard, StatusChip, SubmitError, WorkflowIdLink, type WorkflowScope } from './shared';
+import { ActionCard, DetailDrawer, DetailRow, HeaderCell, HeaderMenu, IdText, ListFooter, NotProvided, RefreshingNote, SchemaDisclosure, SectionCard, StatusChip, SubmitError, WorkflowIdLink, type WorkflowScope } from './shared';
 import Authorized from '../Authorized';
 import { Permissions } from '../../constants/permissions';
 import {
@@ -332,14 +332,10 @@ function WorkflowsAdmin({
               {items.map((wf) => (
                 <ListingTable.Row key={`${wf.workflowId}:${wf.runId ?? ''}`} onClick={() => setDetail({ workflowId: wf.workflowId, taskQueue: wf.taskQueue })} sx={{ cursor: 'pointer', '&:hover': { bgcolor: 'action.hover' } }}>
                   <ListingTable.Cell>
-                    <Typography title={wf.workflowId} sx={{ fontFamily: 'monospace', fontSize: 12 }}>
-                      {displayWorkflowId(wf.workflowId)}
-                    </Typography>
+                    <IdText id={displayWorkflowId(wf.workflowId)} />
                   </ListingTable.Cell>
                   <ListingTable.Cell>
-                    <Typography title={wf.runId} sx={{ fontFamily: 'monospace', fontSize: 12, color: 'text.secondary' }}>
-                      {wf.runId ? `${wf.runId.slice(0, 8)}…` : '—'}
-                    </Typography>
+                    <IdText id={wf.runId} muted />
                   </ListingTable.Cell>
                   <ListingTable.Cell>{wf.workflowType ?? '—'}</ListingTable.Cell>
                   {multi && (

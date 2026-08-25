@@ -23,7 +23,7 @@ import { useEffect, useState, type ReactNode } from 'react';
 import SchemaFormFields from './SchemaFormFields';
 import StructuredValue from './StructuredValue';
 import { buildFormResult, displayWorkflowId, formatTime, gatewayScope, jsonPretty, ownerLabel, ownerScope, parseFormSchema, sortByStartTimeDesc, splitQualifiedName, unescapeRoleName, type PortalScope } from './helpers';
-import { ActionCard, DetailDrawer, DetailRow, HeaderCell, HeaderMenu, ListFooter, NotProvided, RefreshingNote, SectionCard, StatusChip, SubmitError, WorkflowIdLink, type WorkflowScope } from './shared';
+import { ActionCard, DetailDrawer, DetailRow, HeaderCell, HeaderMenu, IdText, ListFooter, NotProvided, RefreshingNote, SectionCard, StatusChip, SubmitError, WorkflowIdLink, type WorkflowScope } from './shared';
 import { IntegrationFilter, ReviewActivityDetailDialog, StatusFilter, useTimeRangeFilter, WorkflowNameFilter } from './AdminPortal';
 import Authorized from '../Authorized';
 import { Permissions } from '../../constants/permissions';
@@ -141,6 +141,7 @@ function WorkItemTable({ items, onOpen, environmentId, integrationLabel }: { ite
           <HeaderCell label="Task" help="The work waiting for a person: a human task (generated form), or a review activity — a fixed decision the workflow feature provides, marked with a wrench." />
           <HeaderCell label="Workflow Name" help="The workflow definition the parent instance executes." />
           {integrationLabel && <HeaderCell label="Integration" help="The integration whose runtime owns this item, resolved from its task queue." />}
+          <HeaderCell label="Task ID" help="The work item's own identifier — what the management API and audit records name it by." />
           <HeaderCell label="Workflow ID" help="The parent workflow instance waiting on this item — click to open it." />
           <HeaderCell label="Status" help="The item's current state. A rejected review completes — its failure travels to the workflow." />
           <HeaderCell label="Started" help="When the item was created." />
@@ -176,7 +177,10 @@ function WorkItemTable({ items, onOpen, environmentId, integrationLabel }: { ite
                 </ListingTable.Cell>
               )}
               <ListingTable.Cell>
-                <WorkflowIdLink workflowId={w.parentWorkflowId} environmentId={environmentId} />
+                <IdText id={w.id} muted />
+              </ListingTable.Cell>
+              <ListingTable.Cell>
+                <WorkflowIdLink workflowId={w.parentWorkflowId} environmentId={environmentId} truncate copy />
               </ListingTable.Cell>
               <ListingTable.Cell>
                 <StatusChip status={w.status} />
