@@ -1014,7 +1014,7 @@ const int WF_COMPLETED_RETENTION_SECONDS = 300;
 // used to reach the runtime through the callback-URL proxy. That proxy is gone, so those
 // paths now answer 404 instead.
 
-final string[] & readonly WF_INSTANCE_SUBRESOURCES = ["history", "activity-tree", "execution-graph"];
+final string[] & readonly WF_INSTANCE_SUBRESOURCES = ["history", "activity-tree", "execution-graph", "reset-points"];
 final string[] & readonly WF_INSTANCE_ACTIONS = ["suspend", "resume", "terminate", "cancel"];
 
 isolated function mapWorkflowRequestToOperation(string method, string[] wfPath,
@@ -1111,6 +1111,19 @@ isolated function mapWorkflowRequestToOperation(string method, string[] wfPath,
                 }
                 return ["instances." + wfPath[3], params];
             }
+            // Reset replays the run to a chosen workflow task and re-executes everything after
+            // it — the recovery tool for a run wedged by a bad deploy or a poisoned decision.
+            // Not folded into WF_INSTANCE_ACTIONS: its body carries structure the bare actions
+            // never have, and the module rejects a reset whose resetType it does not know.
+            if segments == 3 && wfPath[2] == "reset" {
+                map<json> params = {workflowId: wfPath[1]};
+                foreach string key in ["resetType", "eventId", "reason", "reapply", "runId"] {
+                    if body[key] !is () {
+                        params[key] = body[key];
+                    }
+                }
+                return ["instances.reset", params];
+            }
         }
         "human-tasks" if segments == 3 => {
             string taskId = wfPath[1];
@@ -1124,6 +1137,18 @@ isolated function mapWorkflowRequestToOperation(string method, string[] wfPath,
                 }
                 return ["humanTasks.fail", params];
             }
+        }
+        "review-activities" if segments == 2 && wfPath[1] == "bulk-retry" => {
+            // One decision over many reviews: retry or fail them together, addressed by
+            // explicit ids or by the parent instance. The module enforces the exactly-one-of
+            // rule and reports per-item outcomes, so a partial success is visible as itself.
+            map<json> params = {};
+            foreach string key in ["action", "taskIds", "parentWorkflowId", "activityName", "feedback"] {
+                if body[key] !is () {
+                    params[key] = body[key];
+                }
+            }
+            return ["reviewActivities.bulkRetry", params];
         }
         "review-activities" if segments == 3 => {
             string action = wfPath[2];
@@ -1149,6 +1174,11 @@ isolated function instanceSubresourceOperation(string sub) returns string {
         }
         "activity-tree" => {
             return "instances.activityTree";
+        }
+        "reset-points" => {
+            // The workflow tasks a run can be reset to, from its history — a read, so the
+            // console can offer the choice before anything irreversible is submitted.
+            return "instances.resetPoints";
         }
         _ => {
             return "instances.executionGraph";

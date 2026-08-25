@@ -555,6 +555,63 @@ export function useStartWorkflow(s: Scope) {
   });
 }
 
+// ── Reset and bulk retry ──
+
+/** One point a run can be reset to: a workflow-task event, named by the steps around it. */
+export interface ResetPoint {
+  eventId: number;
+  eventType: string;
+  timestamp: string;
+  nodeIds: string[];
+  nodeNames: string[];
+  /** The point just before the run's first failure — usually the one a recovery wants. */
+  isFirstFailure: boolean;
+}
+
+/** The reset points of a run, loaded only while the reset dialog is open — a history read has
+ *  a cost, and most drawer visits never reset anything. */
+export function useResetPoints(s: Scope, workflowId: string | null, enabled: boolean) {
+  return useQuery({
+    queryKey: ['wf', 'reset-points', s.componentId, s.environmentId, workflowId],
+    queryFn: () => wfFetchable<ResetPoint[]>(s.componentId, s.environmentId, `workflows/${encodeURIComponent(workflowId!)}/reset-points`),
+    refetchInterval: ({ state }) => fetchableRefetch(state.data),
+    enabled: enabledFor(s) && !!workflowId && enabled,
+  });
+}
+
+export type ResetType = 'first-workflow-task' | 'last-workflow-task' | 'workflow-task-id';
+
+/** Resets a run to a chosen workflow task: everything after the point re-executes as a new run
+ *  of the same workflow ID — including activities whose side effects already happened. */
+export function useResetWorkflow(s: Scope) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ workflowId, resetType, eventId, reason }: { workflowId: string; resetType: ResetType; eventId?: number; reason?: string }) =>
+      wfRequest<{ workflowId?: string; runId?: string }>(s.componentId, s.environmentId, `workflows/${encodeURIComponent(workflowId)}/reset`, jsonBody({ method: 'POST' }, { resetType, eventId, reason })),
+    onSuccess: () => invalidateForEnvironment(qc, s.environmentId),
+  });
+}
+
+/** What one bulk decision did, item by item — a partial success is visible as itself. */
+export interface BulkRetryResult {
+  action: string;
+  requested: number;
+  applied: number;
+  skipped: number;
+  failed: number;
+  items?: Array<{ taskId?: string; outcome?: string; detail?: string }>;
+}
+
+/** Retries or fails every pending review of one parent instance in a single decision. */
+export function useBulkRetryReviews(s: Scope) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ parentWorkflowId, action, feedback }: { parentWorkflowId: string; action: 'retry' | 'fail'; feedback?: string }) =>
+      wfRequest<BulkRetryResult>(s.componentId, s.environmentId, 'review-activities/bulk-retry', jsonBody({ method: 'POST' }, { parentWorkflowId, action, feedback })),
+    onSuccess: () => invalidateForEnvironment(qc, s.environmentId),
+  });
+}
+
 export type WorkflowLifecycleAction = 'suspend' | 'resume' | 'cancel' | 'terminate';
 
 export function useWorkflowLifecycle(s: Scope) {
