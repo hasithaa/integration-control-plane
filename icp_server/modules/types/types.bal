@@ -2260,6 +2260,10 @@ public type SSOConfig record {|
     string usernameClaim; // "email" or "preferred_username"
     string[] scopes;
     boolean allowInsecureTLS;
+    boolean passwordLoginDisabled;
+    string adminClaim;
+    string[] adminValues;
+    boolean federatedAccessControlEnabled;
 |};
 
 // OIDC Authorization URL response
@@ -2293,6 +2297,7 @@ public type OIDCIdTokenClaims record {|
     string? email?; // Email address
     string? name?; // Full name
     string? preferred_username?; // Preferred username
+    map<json> rawClaims; // Full validated ID token payload for provider-specific claim extraction
 |};
 
 // Type to hold extracted user information
