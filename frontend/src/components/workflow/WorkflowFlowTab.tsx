@@ -261,7 +261,24 @@ export default function WorkflowFlowTab({
         {/* The details ride over the whole split, not over the timeline alone: a short timeline
             would otherwise crop them. Rows never reflow either way. */}
         {spanDetail && (
-          <Box sx={{ position: 'absolute', top: 0, right: 0, width: { xs: '100%', sm: 'min(440px, 85%)' }, maxHeight: '62vh', minHeight: 220, overflow: 'auto', boxShadow: 8, zIndex: 2, display: 'flex', borderRadius: 1 }}>
+          <Box
+            sx={{
+              position: 'absolute',
+              top: 0,
+              right: 0,
+              width: { xs: '100%', sm: 'min(440px, 85%)' },
+              maxHeight: '62vh',
+              minHeight: 220,
+              overflow: 'auto',
+              boxShadow: 8,
+              zIndex: 2,
+              display: 'flex',
+              borderRadius: 1,
+              // The theme's paper is translucent (#ffffffe1) — invisible on the page ground, but
+              // floating over the timeline it let the tick rows bleed through the panel. Ground
+              // the overlay the way normal flow would, so the panel's paper reads opaque.
+              bgcolor: 'background.default',
+            }}>
             <NodeDetailPanel node={spanDetail.node} detail={spanDetail.detail} hasHistory={events.length > 0} onClose={() => selectSpan(null)} fullWidth environmentId={environmentId} />
           </Box>
         )}
