@@ -500,7 +500,8 @@ function WorkQueue({
  * task *operation* with consequences, so it is quieter and warns. Both submit in two steps.
  */
 function TaskDetailDialog({ scope, taskId, actionable, onClose, onToast }: { scope: WorkflowScope; taskId: string; actionable?: boolean; onClose: () => void; onToast: (t: Toast) => void }) {
-  const { data: taskResult, isLoading, error: taskError } = useHumanTask(scope, taskId);
+  const [pausePolling, setPausePolling] = useState(false);
+  const { data: taskResult, isLoading, error: taskError } = useHumanTask(scope, taskId, pausePolling);
   const task = valueOf(taskResult);
   // A dialog whose detail is still being prepared shows its spinner rather than a form with
   // every field blank.
@@ -513,6 +514,11 @@ function TaskDetailDialog({ scope, taskId, actionable, onClose, onToast }: { sco
   // task, not on a screen the context has scrolled away from.
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [failOpen, setFailOpen] = useState(false);
+  // Editing pauses the detail's own polling; the confirm and fail overlays pause it too, so the
+  // world does not shift behind a decision mid-flight. Mirrored into state because the hook call
+  // sits above these declarations.
+  const editing = mode === 'complete' || confirmOpen || failOpen;
+  if (editing !== pausePolling) setPausePolling(editing);
   // The escape hatch: a generated form cannot express every value (and a schema bug should not
   // block a completion), so the result is always editable as raw JSON too.
   const [rawMode, setRawMode] = useState(false);
@@ -668,6 +674,20 @@ function TaskDetailDialog({ scope, taskId, actionable, onClose, onToast }: { sco
 
           {/* What the workflow handed this task — context to decide with, never something to edit. */}
           {payloadJson && <StructuredValue title="Task payload (read-only)" raw={payloadJson} environmentId={scope.environmentId} collapsible />}
+
+          {/* The decision, once there is one: who completed or rejected the task, when, and the
+              result the workflow resumed with. Present on the execution but previously shown
+              nowhere here — a completed task read as if nothing had been decided. Blank for
+              tasks decided before the runtime recorded the completer. */}
+          {(task.completedBy || task.completedAt || (task.result !== undefined && task.result !== null)) && (
+            <SectionCard title="Decision">
+              <Stack gap={1.25}>
+                <DetailRow label="Completed By">{task.completedBy ? <IdText id={task.completedBy} /> : <NotProvided />}</DetailRow>
+                <DetailRow label="Completed At">{task.completedAt ? formatTime(task.completedAt) : <NotProvided />}</DetailRow>
+              </Stack>
+            </SectionCard>
+          )}
+          {task.result !== undefined && task.result !== null && <StructuredValue title="Result submitted" raw={jsonPretty(task.result) || 'null'} environmentId={scope.environmentId} collapsible />}
 
           {actionable && (
             <Authorized permissions={[Permissions.WORKFLOW_MANAGE_HUMAN_TASKS]}>

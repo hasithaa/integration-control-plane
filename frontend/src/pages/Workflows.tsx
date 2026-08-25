@@ -112,7 +112,7 @@ export default function Workflows(scope: ComponentScope | ProjectScope): JSX.Ele
           <>
             {dashboard ? (
               <>
-                Workflow executions in <strong>{project?.name ?? scope.project}</strong> are managed per integration. Pick one to start, inspect and manage its executions.
+                Workflow executions in <strong>{project?.name ?? scope.project}</strong> are managed per integration — each runs against its own Temporal task queue.
               </>
             ) : (
               <>

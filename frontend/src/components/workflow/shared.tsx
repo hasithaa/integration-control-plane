@@ -16,12 +16,14 @@
  * under the License.
  */
 
-import { Alert, Box, Button, Card, CardActionArea, Chip, CircularProgress, Collapse, Divider, Drawer, IconButton, Link, ListingTable, Menu, MenuItem, Stack, Tooltip, Typography } from '@wso2/oxygen-ui';
+import { Alert, Box, Button, Card, CardActionArea, Chip, CircularProgress, Collapse, Divider, Drawer, FormControlLabel, IconButton, Link, ListingTable, Menu, MenuItem, Stack, Switch, Tooltip, Typography } from '@wso2/oxygen-ui';
 import { ChevronDown, ChevronRight, Copy, EllipsisVertical, Info } from '@wso2/oxygen-ui-icons-react';
+import { useQueryClient } from '@tanstack/react-query';
 import { useState, type JSX, type ReactNode } from 'react';
 import { useNavigate } from 'react-router';
 import { resourceUrl, useScope } from '../../nav';
 import CodeViewer from '../CodeViewer';
+import { autoRefreshEnabled, setAutoRefreshEnabled } from '../../api/workflows';
 import { displayWorkflowId, sectionTitleSx, STATUS_COLORS } from './helpers';
 import { useLayout } from '../../contexts/LayoutContext';
 import { X } from '@wso2/oxygen-ui-icons-react';
@@ -91,20 +93,43 @@ export function WorkflowIdLink({ workflowId, environmentId, onNavigate, truncate
 }
 
 /**
- * The freshness line under a cached view: when the data was produced, that the page refreshes
- * itself — stated, so the periodic update is never a surprise — and, while an answer is being
- * replaced after a mutation, that fresher data is on its way. The data stays visible throughout;
- * blanking a list because it is seconds old would punish every reader for one writer.
+ * The freshness line under a cached view: when the data was produced, a switch for the automatic
+ * refresh (per viewer, persisted in the browser — useful on a wall screen, distracting
+ * mid-thought), and, while an answer is being replaced after a mutation, that fresher data is on
+ * its way. The data stays visible throughout; blanking a list because it is seconds old would
+ * punish every reader for one writer.
  */
 export function RefreshingNote({ show, fetchedAt, label = 'refreshing — fetching the latest from the integration…' }: { show: boolean; fetchedAt?: number; label?: string }): JSX.Element | null {
+  const qc = useQueryClient();
+  const [auto, setAuto] = useState(autoRefreshEnabled());
   if (!show && !fetchedAt) return null;
   return (
     <Stack direction="row" alignItems="center" gap={1} sx={{ color: 'text.secondary' }}>
-      {show && <CircularProgress size={12} thickness={5} />}
+      {show && auto && <CircularProgress size={12} thickness={5} />}
       <Typography variant="caption">
-        {fetchedAt ? `Updated ${new Date(fetchedAt * 1000).toLocaleTimeString()} · auto-refreshes` : ''}
-        {show ? `${fetchedAt ? ' · ' : ''}${label}` : ''}
+        {fetchedAt ? `Updated ${new Date(fetchedAt * 1000).toLocaleTimeString()}` : ''}
+        {show && auto ? `${fetchedAt ? ' · ' : ''}${label}` : ''}
       </Typography>
+      <Tooltip title={auto ? 'Auto-refresh is on: this view checks for fresher data every 30 seconds. The refresh button always works.' : 'Auto-refresh is off: this view updates only when you refresh it.'}>
+        <FormControlLabel
+          sx={{ m: 0, '& .MuiFormControlLabel-label': { fontSize: 12, color: 'text.secondary' } }}
+          control={
+            <Switch
+              size="small"
+              checked={auto}
+              onChange={(e) => {
+                const on = e.target.checked;
+                setAutoRefreshEnabled(on);
+                setAuto(on);
+                // Turning it back on refetches immediately: the point of flipping the switch is
+                // wanting fresh data now, not at the next 30s boundary.
+                if (on) qc.invalidateQueries({ predicate: (q) => q.queryKey[0] === 'wf' });
+              }}
+            />
+          }
+          label="auto-refresh"
+        />
+      </Tooltip>
     </Stack>
   );
 }

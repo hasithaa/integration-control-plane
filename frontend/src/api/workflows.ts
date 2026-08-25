@@ -67,6 +67,10 @@ export interface HumanTask {
   eligibleRoles?: string[];
   canComplete?: boolean;
   result?: unknown;
+  /** Who decided the task and when — () while it is pending, and for tasks decided before the
+   *  runtime recorded the completer in the task's memo. */
+  completedBy?: string;
+  completedAt?: string;
   namespace?: string;
   taskQueue?: string;
   [key: string]: unknown;
@@ -321,7 +325,7 @@ async function wfFetchable<T>(componentId: string, environmentId: string, subpat
  *  themselves land on the ICP, and a thousand open consoles at 2s would be 500 requests a
  *  second for freshness nobody can perceive. The page says when it last updated, and the
  *  refresh button covers impatience. */
-const WF_STALE_POLL_MS = 10000;
+const WF_STALE_POLL_MS = 30000;
 
 /**
  * Comes back at the interval the server asked for while a read is still being prepared, and
@@ -332,11 +336,37 @@ const WF_STALE_POLL_MS = 10000;
 /** A fresh answer younger than this keeps a gentle settle-poll: an answer produced right
  *  after a mutation can predate that mutation's effects, and a client parked on it would
  *  show the pre-mutation world until the page was reloaded. */
-const WF_SETTLE_WINDOW_S = 30;
-const WF_SETTLE_POLL_MS = 10000;
+const WF_SETTLE_WINDOW_S = 65;
+const WF_SETTLE_POLL_MS = 30000;
+
+// ── Auto-refresh, as a choice ─────────────────────────────────────────────────
+// Per viewer, persisted in the browser: the periodic "refreshing…" line is useful on a wall
+// screen and distracting mid-thought, and only the person looking knows which mode they are in.
+// Off means off — even a stale answer waits for the refresh button.
+const AUTO_REFRESH_KEY = 'wf.autoRefresh';
+
+export function autoRefreshEnabled(): boolean {
+  try {
+    return localStorage.getItem(AUTO_REFRESH_KEY) !== 'off';
+  } catch {
+    return true;
+  }
+}
+
+export function setAutoRefreshEnabled(on: boolean): void {
+  try {
+    localStorage.setItem(AUTO_REFRESH_KEY, on ? 'on' : 'off');
+  } catch {
+    // Storage unavailable: the toggle still works for this render, it just does not persist.
+  }
+}
 
 const fetchableRefetch = <T>(data: Fetchable<T> | undefined): number | false => {
+  // A read still being PREPARED always polls — there is nothing on screen to preserve, and
+  // stopping would strand the view on "fetching…" forever. The toggle governs refreshing data
+  // that is already shown.
   if (data?.state === 'fetching') return data.retryAfterMs;
+  if (!autoRefreshEnabled()) return false;
   if (data?.state !== 'ready') return false;
   if (data.stale) return WF_STALE_POLL_MS;
   // Young answers keep being checked until they age out of the settle window; old ones rest.
@@ -701,9 +731,14 @@ export function humanTaskQueryOptions(s: Scope, taskId: string) {
   };
 }
 
-export function useHumanTask(s: Scope, taskId: string | null) {
+export function useHumanTask(s: Scope, taskId: string | null, paused = false) {
+  const options = humanTaskQueryOptions(s, taskId ?? '');
   return useQuery({
-    ...humanTaskQueryOptions(s, taskId ?? ''),
+    ...options,
+    // Paused while the person is filling the completion form: a background refetch swaps the
+    // task object under their typing and flashes the refreshing line — churn they can feel,
+    // about a task whose only interesting change is the one THEY are about to make.
+    refetchInterval: paused ? false : options.refetchInterval,
     enabled: enabledFor(s) && !!taskId,
   });
 }
@@ -867,9 +902,12 @@ export function reviewActivityQueryOptions(s: Scope, taskId: string) {
   };
 }
 
-export function useReviewActivity(s: Scope, taskId: string | null) {
+export function useReviewActivity(s: Scope, taskId: string | null, paused = false) {
+  const options = reviewActivityQueryOptions(s, taskId ?? '');
   return useQuery({
-    ...reviewActivityQueryOptions(s, taskId ?? ''),
+    ...options,
+    // Same pause as useHumanTask: no background refetch under someone editing arguments.
+    refetchInterval: paused ? false : options.refetchInterval,
     enabled: enabledFor(s) && !!taskId,
   });
 }

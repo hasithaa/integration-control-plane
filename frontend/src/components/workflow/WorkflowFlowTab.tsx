@@ -149,12 +149,14 @@ export default function WorkflowFlowTab({
     setRailHighlight(span?.eventId ? (stepOfEvent.get(span.eventId) ?? null) : null);
   };
 
-  // A rail click filters the timeline — and when the detail overlay is already open, it follows:
-  // the details switch to the clicked step's first execution rather than staying on whatever was
-  // open before, which read as the overlay ignoring the click.
+  // A rail click filters the timeline AND opens the clicked step's details — always, not only
+  // when the overlay happened to be open. The FIRST matching span is selected deliberately: one
+  // step can execute several times (retries, resets, loops), and the timeline is chronological,
+  // so the first span is the step's first run — a stable answer to an ambiguous click, with the
+  // rest one row away in the already-filtered lane.
   const selectStep = (stepId: string | null) => {
     setSelectedStepId(stepId);
-    if (stepId && selectedSpan) {
+    if (stepId) {
       const ids = stepEventIds(stepId);
       setSelectedSpan(timeline.spans.find((sp) => ids.has(sp.eventId ?? sp.key)) ?? null);
     }

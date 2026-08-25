@@ -550,7 +550,8 @@ function reviewActivityDisplayName(taskName?: string, activityName?: string, fal
  * activity is recorded as failed and the workflow is told. Every path confirms in a second step.
  */
 export function ReviewActivityDetailDialog({ scope, taskId, onClose, onToast }: { scope: WorkflowScope; taskId: string; onClose: () => void; onToast: (t: Toast) => void }) {
-  const { data: activityResult, isLoading, error: loadError } = useReviewActivity(scope, taskId);
+  const [pausePolling, setPausePolling] = useState(false);
+  const { data: activityResult, isLoading, error: loadError } = useReviewActivity(scope, taskId, pausePolling);
   const activity = valueOf(activityResult);
   // A decision form whose fields are still being prepared shows a spinner, not blank inputs.
   const waiting = isLoading || isPreparing(activityResult);
@@ -562,6 +563,9 @@ export function ReviewActivityDetailDialog({ scope, taskId, onClose, onToast }: 
   const [confirmProceedOpen, setConfirmProceedOpen] = useState(false);
   const [reviewChangesOpen, setReviewChangesOpen] = useState(false);
   const [rejectOpen, setRejectOpen] = useState(false);
+  // Editing or confirming pauses the detail's polling — no world-shift under a decision.
+  const editing = mode === 'edit' || confirmProceedOpen || reviewChangesOpen || rejectOpen;
+  if (editing !== pausePolling) setPausePolling(editing);
   const [formValues, setFormValues] = useState<Record<string, string | boolean>>({});
   // What the workflow recorded — the baseline every edit is compared against.
   const [originalValues, setOriginalValues] = useState<Record<string, string | boolean>>({});

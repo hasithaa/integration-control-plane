@@ -56,8 +56,10 @@ export default function ProjectWorkflowDashboard({
   }
   return (
     <Stack gap={2}>
+      {/* The page description above already says work is per integration; this line only adds
+          what the cards do. Repeating the rationale here read as the page stuttering. */}
       <Typography variant="body2" color="text.secondary">
-        Workflow work is listed per integration — each runs against its own Temporal task queue. Pick an integration to see its {resource === 'tasks' ? 'tasks' : 'executions'}. Counts show work applicable to you; pending tasks and reviews open in Human Tasks.
+        {resource === 'tasks' ? 'Pick an integration to see its tasks and review activities.' : 'Pick an integration to start, inspect and manage its executions. Pending tasks and reviews open in Human Tasks.'}
       </Typography>
       <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 2 }}>
         {integrations.map((integration) => (
