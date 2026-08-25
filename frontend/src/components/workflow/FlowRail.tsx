@@ -16,11 +16,11 @@
  * under the License.
  */
 
-import { alpha, Box, Stack, Tooltip, Typography, useTheme } from '@wso2/oxygen-ui';
+import { Box, Stack, Tooltip, Typography, useTheme } from '@wso2/oxygen-ui';
 import { ChevronDown, ChevronRight, Diamond, GitBranch, Info, RefreshCw, Repeat, Shield } from '@wso2/oxygen-ui-icons-react';
 import { useEffect, useMemo, useRef, useState, type ComponentType, type ReactElement, type ReactNode } from 'react';
 import type { InstanceGraph, ModelGraphNode, StepExecution } from '../../api/workflows';
-import { iconForType, paletteColor, statusColorName } from './graphVisuals';
+import { diagramColors, iconForType, paletteColor, softPrimary, statusColorName } from './graphVisuals';
 import { isContainer, layoutFloorPlan, type PlacedArm, type PlacedNode } from './floorPlan';
 
 /**
@@ -126,7 +126,7 @@ function KeywordRow({
         cursor: toggle ? 'pointer' : 'default',
         borderRadius: 1,
         ...(chart && { border: '1px dashed', borderColor: 'divider', ml: 0.5 + depth * 1.5, pl: 0.75, my: 0.25, width: 'fit-content', maxWidth: '100%' }),
-        '&:hover': toggle ? { bgcolor: (t) => alpha(t.palette.primary.main, 0.05) } : undefined,
+        '&:hover': toggle ? { bgcolor: (t) => softPrimary(t, 0.05) } : undefined,
       }}>
       {toggle && <Box sx={{ display: 'flex', flexShrink: 0 }}>{collapsed ? <ChevronRight size={12} /> : <ChevronDown size={12} />}</Box>}
       {Icon && (
@@ -166,9 +166,10 @@ function StepRow({
   chart?: boolean;
 }): ReactElement {
   const theme = useTheme();
+  const c = diagramColors(theme);
   const ran = exec !== undefined;
   // The execution graph's own status→colour mapping, so both panes speak one vocabulary.
-  const statusColor = ran ? paletteColor(theme, statusColorName(exec.status)) : theme.palette.text.disabled;
+  const statusColor = ran ? paletteColor(theme, statusColorName(exec.status)) : c.textDisabled;
   const Icon = iconForType(node.kind);
   const title = node.target ?? node.stepId;
   // Failed at some point, but the latest execution succeeded — a retry or a review decision. Worth
@@ -206,10 +207,10 @@ function StepRow({
           maxWidth: '100%',
           minWidth: 140,
         }),
-        bgcolor: selected ? (t) => alpha(t.palette.primary.main, 0.12) : 'transparent',
+        bgcolor: selected ? (t) => softPrimary(t, 0.12) : 'transparent',
         outline: selected ? '1px solid' : 'none',
         outlineColor: 'primary.main',
-        '&:hover': { bgcolor: (t) => alpha(t.palette.primary.main, 0.06) },
+        '&:hover': { bgcolor: (t) => softPrimary(t, 0.06) },
         color: ran ? 'text.primary' : 'text.disabled',
       }}>
       <Box sx={{ color: statusColor, display: 'flex', flexShrink: 0 }}>
@@ -471,11 +472,12 @@ function UmlActivityDiagram({
   onSelect: (stepId: string | null) => void;
 }): ReactElement | null {
   const theme = useTheme();
+  const c = diagramColors(theme);
   const graph = data.graph;
   const plan = useMemo(() => (graph && graph.nodes && graph.nodes.length > 0 ? layoutFloorPlan(graph) : null), [graph]);
   if (!plan) return null;
 
-  const line = theme.palette.text.disabled;
+  const line = c.textDisabled;
   const armHasExecution = (arm: PlacedArm): boolean => arm.children.some((child) => steps[child.node.stepId] !== undefined || child.arms.some(armHasExecution));
   const shapes: ReactNode[] = [];
   const wires: ReactNode[] = [];
@@ -487,7 +489,7 @@ function UmlActivityDiagram({
       <g key={`w${wireKey++}`}>
         <path d={x1 === x2 ? `M ${x1} ${y1} L ${x2} ${y2}` : `M ${x1} ${y1} L ${x1} ${midY} L ${x2} ${midY} L ${x2} ${y2}`} fill="none" stroke={line} strokeWidth={1} strokeDasharray={dashed ? '3 3' : undefined} markerEnd="url(#uml2-arrow)" />
         {guard && (
-          <text x={x2 + 5} y={y2 - 3} fill={theme.palette.text.secondary} fontSize={8.5} fontFamily="monospace">
+          <text x={x2 + 5} y={y2 - 3} fill={c.textSecondary} fontSize={8.5} fontFamily="monospace">
             {guard}
           </text>
         )}
@@ -504,13 +506,13 @@ function UmlActivityDiagram({
     if (!isContainer(kind)) {
       const exec = steps[node.stepId];
       const ran = exec !== undefined;
-      const statusColor = ran ? paletteColor(theme, statusColorName(exec.status)) : theme.palette.divider;
+      const statusColor = ran ? paletteColor(theme, statusColorName(exec.status)) : c.divider;
       if (kind === 'EXIT') {
         shapes.push(
           <g key={node.stepId}>
             <circle cx={cx} cy={box.y + box.h / 2} r={6} fill="none" stroke={line} strokeWidth={1.25} />
             <circle cx={cx} cy={box.y + box.h / 2} r={3} fill={line} />
-            <text x={cx + 10} y={box.y + box.h / 2 + 3.5} fill={theme.palette.text.disabled} fontSize={9.5} fontStyle="italic">
+            <text x={cx + 10} y={box.y + box.h / 2 + 3.5} fill={c.textDisabled} fontSize={9.5} fontStyle="italic">
               {(node as { mode?: string }).mode ?? 'exit'}
             </text>
           </g>,
@@ -537,13 +539,13 @@ function UmlActivityDiagram({
             width={box.w - 8}
             height={box.h - 12}
             rx={(box.h - 12) / 2}
-            fill={selected ? alpha(theme.palette.primary.main, 0.12) : theme.palette.background.paper}
-            stroke={selected ? theme.palette.primary.main : statusColor}
+            fill={selected ? softPrimary(theme, 0.12) : c.paper}
+            stroke={selected ? c.primary : statusColor}
             strokeWidth={selected ? 1.75 : ran ? 1.5 : 1}
             strokeDasharray={dashed ? '3 3' : ran ? undefined : '4 3'}
           />
           {isCurrent && <circle cx={box.x + box.w - 14} cy={box.y + box.h / 2} r={3} fill={statusColor} />}
-          <text x={cx} y={box.y + box.h / 2 + 3.5} fill={ran ? theme.palette.text.primary : theme.palette.text.disabled} fontSize={10.5} fontWeight={ran ? 600 : 400} fontStyle={dashed ? 'italic' : undefined} textAnchor="middle">
+          <text x={cx} y={box.y + box.h / 2 + 3.5} fill={ran ? c.textPrimary : c.textDisabled} fontSize={10.5} fontWeight={ran ? 600 : 400} fontStyle={dashed ? 'italic' : undefined} textAnchor="middle">
             {text.length > Math.floor((box.w - 20) / 6) ? `${text.slice(0, Math.floor((box.w - 20) / 6) - 1)}…` : text}
           </text>
           {exec && exec.count > 1 && (
@@ -566,15 +568,15 @@ function UmlActivityDiagram({
     const dy = box.y + 12;
     if (isTry) {
       shapes.push(
-        <text key={node.stepId} x={cx} y={dy + 3.5} fill={ranInside ? theme.palette.text.secondary : theme.palette.text.disabled} fontSize={9.5} fontWeight={ranInside ? 700 : 400} fontFamily="monospace" textAnchor="middle">
+        <text key={node.stepId} x={cx} y={dy + 3.5} fill={ranInside ? c.textSecondary : c.textDisabled} fontSize={9.5} fontWeight={ranInside ? 700 : 400} fontFamily="monospace" textAnchor="middle">
           do
         </text>,
       );
     } else {
       shapes.push(
         <g key={node.stepId}>
-          <path d={`M ${cx} ${dy - 8} L ${cx + 8} ${dy} L ${cx} ${dy + 8} L ${cx - 8} ${dy} Z`} fill={theme.palette.background.paper} stroke={line} strokeWidth={1.25} />
-          <text x={cx + 12} y={dy + 3.5} fill={ranInside ? theme.palette.text.secondary : theme.palette.text.disabled} fontSize={9.5} fontWeight={ranInside ? 700 : 400} fontFamily="monospace">
+          <path d={`M ${cx} ${dy - 8} L ${cx + 8} ${dy} L ${cx} ${dy + 8} L ${cx - 8} ${dy} Z`} fill={c.paper} stroke={line} strokeWidth={1.25} />
+          <text x={cx + 12} y={dy + 3.5} fill={ranInside ? c.textSecondary : c.textDisabled} fontSize={9.5} fontWeight={ranInside ? 700 : 400} fontFamily="monospace">
             {(() => {
               const t = `${construct}${node.label ? ` ${node.label}` : ''}`;
               return t.length > 24 ? `${t.slice(0, 23)}…` : t;
@@ -637,7 +639,7 @@ function UmlActivityDiagram({
   // The top-level sequence, bracketed by the UML start and end dots on the centre line.
   let prevX = plan.axis;
   let prevBottom = plan.start.y + 14;
-  shapes.push(<circle key="start" cx={plan.axis} cy={plan.start.y + 7} r={6} fill={theme.palette.text.primary} />);
+  shapes.push(<circle key="start" cx={plan.axis} cy={plan.start.y + 7} r={6} fill={c.textPrimary} />);
   let flowing = true;
   for (const box of plan.nodes) {
     const drawn = draw(box);
@@ -653,8 +655,8 @@ function UmlActivityDiagram({
   }
   shapes.push(
     <g key="end">
-      <circle cx={plan.axis} cy={plan.end.y + 7} r={7} fill="none" stroke={theme.palette.text.primary} strokeWidth={1.25} />
-      <circle cx={plan.axis} cy={plan.end.y + 7} r={4} fill={theme.palette.text.primary} />
+      <circle cx={plan.axis} cy={plan.end.y + 7} r={7} fill="none" stroke={c.textPrimary} strokeWidth={1.25} />
+      <circle cx={plan.axis} cy={plan.end.y + 7} r={4} fill={c.textPrimary} />
     </g>,
   );
 

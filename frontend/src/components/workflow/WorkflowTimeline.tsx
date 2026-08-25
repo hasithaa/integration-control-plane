@@ -20,7 +20,7 @@ import { alpha, Box, colors, Stack, Tooltip, Typography } from '@wso2/oxygen-ui'
 import { useEffect, useState } from 'react';
 import type { ExecutionGraph } from '../../api/workflows';
 import { buildTimeline, formatDuration, formatStopwatch, splitQualifiedName, type ChipColor, type SpanCategory, type TimelineSpan } from './helpers';
-import { iconForType, statusColorName, typeLabel } from './graphVisuals';
+import { iconForType, softPrimary, statusColorName, typeLabel } from './graphVisuals';
 
 const LABEL_W = 190; // px, fixed left column of span names
 const ROW_H = 36; // px per span row
@@ -203,8 +203,8 @@ export default function WorkflowTimeline({
                     alignItems: 'stretch',
                     opacity: dimmed ? 0.35 : 1,
                     cursor: onSelectSpan ? 'pointer' : 'default',
-                    bgcolor: selected ? (t) => alpha(t.palette.primary.main, 0.08) : 'transparent',
-                    '&:hover': onSelectSpan ? { bgcolor: (t) => alpha(t.palette.primary.main, 0.05) } : undefined,
+                    bgcolor: selected ? (t) => softPrimary(t, 0.08) : 'transparent',
+                    '&:hover': onSelectSpan ? { bgcolor: (t) => softPrimary(t, 0.05) } : undefined,
                   }}>
                   {/* Lane label: name, then the execution's own facts — status colour and duration. */}
                   <Stack direction="row" alignItems="center" gap={0.75} sx={{ width: LABEL_W, flexShrink: 0, px: 1, borderRight: '1px solid', borderColor: 'divider', minWidth: 0 }}>

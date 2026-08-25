@@ -20,7 +20,7 @@
 // an icon per node/span kind and status→palette-colour resolution. Kept in its own module
 // (no component exports) so both views reuse them without tripping React Fast Refresh.
 
-import { type Theme } from '@wso2/oxygen-ui';
+import { alpha, type Theme } from '@wso2/oxygen-ui';
 import { CircleDot, Database, GitBranch, SquareCheck, Timer, UserCheck, Workflow } from '@wso2/oxygen-ui-icons-react';
 import type { ComponentType } from 'react';
 import { humanizeKey, STATUS_COLORS, type ChipColor } from './helpers';
@@ -43,9 +43,55 @@ export const typeLabel = (type: string): string => humanizeKey(type.toLowerCase(
 /** Maps a status to its Oxygen chip colour name (e.g. COMPLETED → success). */
 export const statusColorName = (status?: string): ChipColor => STATUS_COLORS[(status ?? '').toUpperCase()] ?? 'default';
 
+// Oxygen themes through CSS variables: `data-color-scheme` on <html> selects a set of
+// `--oxygen-palette-*` values. Anything styled with `sx` therefore follows the scheme, because
+// emotion emits the variable — but `theme.palette.x` read in JS returns ONE scheme's literal,
+// and an SVG `fill="#fff"` cannot change afterwards. That is how the diagrams stayed light-
+// coloured on a dark page: the shapes were painted with light hex values baked in at render.
+//
+// Reading through `theme.vars` yields `var(--oxygen-palette-...)` instead, which resolves per
+// scheme in the browser. The fallback keeps this working if the provider is ever configured
+// without CSS variables, where `theme.palette` is the live palette again.
+type VarsTheme = Theme & { vars?: { palette?: Record<string, Record<string, string>> } };
+
+const paletteVars = (theme: Theme): Record<string, Record<string, string>> | undefined => (theme as VarsTheme).vars?.palette;
+
+/** The colours the diagrams paint with, as CSS variables wherever the theme provides them. */
+export function diagramColors(theme: Theme): {
+  paper: string;
+  textPrimary: string;
+  textSecondary: string;
+  textDisabled: string;
+  divider: string;
+  primary: string;
+} {
+  const v = paletteVars(theme);
+  return {
+    paper: v?.background?.paper ?? theme.palette.background.paper,
+    textPrimary: v?.text?.primary ?? theme.palette.text.primary,
+    textSecondary: v?.text?.secondary ?? theme.palette.text.secondary,
+    textDisabled: v?.text?.disabled ?? theme.palette.text.disabled,
+    divider: v?.divider?.toString() ?? theme.palette.divider,
+    primary: v?.primary?.main ?? theme.palette.primary.main,
+  };
+}
+
+/**
+ * A translucent primary, safe under CSS variables.
+ *
+ * `alpha()` parses a colour, so it cannot be handed `var(--oxygen-palette-primary-main)`. MUI
+ * publishes channel variables for exactly this — `primary-mainChannel` is `255 115 0` — which
+ * compose with a slash alpha and still follow the scheme.
+ */
+export function softPrimary(theme: Theme, opacity: number): string {
+  const channel = paletteVars(theme)?.primary?.mainChannel;
+  return channel ? `rgba(${channel} / ${opacity})` : alpha(theme.palette.primary.main, opacity);
+}
+
 /** Resolves a chip colour name to a concrete palette colour usable in SVG strokes, borders, and bars. */
 export function paletteColor(theme: Theme, c: ChipColor): string {
-  if (c === 'default') return theme.palette.text.disabled;
-  if (c === 'primary') return theme.palette.primary.main;
-  return theme.palette[c].main;
+  const v = paletteVars(theme);
+  if (c === 'default') return v?.text?.disabled ?? theme.palette.text.disabled;
+  if (c === 'primary') return v?.primary?.main ?? theme.palette.primary.main;
+  return v?.[c]?.main ?? theme.palette[c].main;
 }

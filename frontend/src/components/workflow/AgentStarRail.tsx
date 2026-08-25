@@ -19,7 +19,7 @@
 import { alpha, Box, useTheme } from '@wso2/oxygen-ui';
 import { useMemo, type ReactElement } from 'react';
 import type { InstanceGraph, ModelGraphNode } from '../../api/workflows';
-import { paletteColor, statusColorName } from './graphVisuals';
+import { diagramColors, paletteColor, statusColorName } from './graphVisuals';
 
 /**
  * The agent's star, drawn compactly: channels in on the left (events, human tasks), the agent in
@@ -45,6 +45,7 @@ interface Placed {
 
 export default function AgentStarRail({ data, selectedStepId, onSelect }: { data: InstanceGraph; selectedStepId: string | null; onSelect: (stepId: string | null) => void }): ReactElement | null {
   const theme = useTheme();
+  const c = diagramColors(theme);
   const graph = data.graph;
 
   const layout = useMemo(() => {
@@ -69,7 +70,7 @@ export default function AgentStarRail({ data, selectedStepId, onSelect }: { data
   }, [graph]);
 
   if (!layout) return null;
-  const accent = theme.palette.primary.main;
+  const accent = c.primary;
   const agentBox = layout.placed[0];
 
   return (
@@ -86,7 +87,7 @@ export default function AgentStarRail({ data, selectedStepId, onSelect }: { data
               key={`e-${p.node.stepId}`}
               d={`M ${inbound ? x1 : agentBox.x + NODE_W} ${inbound ? y1 : y2} C ${(x1 + x2) / 2} ${inbound ? y1 : y2}, ${(x1 + x2) / 2} ${inbound ? y2 : y1}, ${inbound ? x2 : x2} ${inbound ? y2 : y1}`}
               fill="none"
-              stroke={theme.palette.divider}
+              stroke={c.divider}
               strokeWidth={1.25}
             />
           );
@@ -114,18 +115,18 @@ export default function AgentStarRail({ data, selectedStepId, onSelect }: { data
                 width={NODE_W}
                 height={NODE_H}
                 rx={isAgent ? NODE_H / 2 : 6}
-                fill={selected ? alpha(accent, 0.12) : isAgent ? alpha(accent, 0.08) : theme.palette.background.paper}
-                stroke={selected ? accent : isAgent ? accent : (statusColor ?? theme.palette.divider)}
+                fill={selected ? alpha(accent, 0.12) : isAgent ? alpha(accent, 0.08) : c.paper}
+                stroke={selected ? accent : isAgent ? accent : (statusColor ?? c.divider)}
                 strokeWidth={selected ? 1.75 : statusColor ? 1.5 : 1}
               />
-              <text x={p.x + NODE_W / 2} y={p.y + 15} fill={exec || isAgent ? theme.palette.text.primary : theme.palette.text.disabled} fontSize={10.5} fontWeight={600} textAnchor="middle">
+              <text x={p.x + NODE_W / 2} y={p.y + 15} fill={exec || isAgent ? c.textPrimary : c.textDisabled} fontSize={10.5} fontWeight={600} textAnchor="middle">
                 {clip(title, 20)}
               </text>
-              <text x={p.x + NODE_W / 2} y={p.y + 27} fill={theme.palette.text.disabled} fontSize={8.5} textAnchor="middle" style={{ letterSpacing: 0.4, textTransform: 'uppercase' }}>
+              <text x={p.x + NODE_W / 2} y={p.y + 27} fill={c.textDisabled} fontSize={8.5} textAnchor="middle" style={{ letterSpacing: 0.4, textTransform: 'uppercase' }}>
                 {kind.toLowerCase()}
               </text>
               {exec && exec.count > 1 && (
-                <text x={p.x + NODE_W - 4} y={p.y + 11} fill={statusColor ?? theme.palette.text.secondary} fontSize={8.5} fontWeight={700} textAnchor="end">
+                <text x={p.x + NODE_W - 4} y={p.y + 11} fill={statusColor ?? c.textSecondary} fontSize={8.5} fontWeight={700} textAnchor="end">
                   ×{exec.count}
                 </text>
               )}
