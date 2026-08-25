@@ -16,8 +16,8 @@
  * under the License.
  */
 
-import { Box, IconButton, Stack, Tooltip, Typography } from '@wso2/oxygen-ui';
-import { Braces, Copy } from '@wso2/oxygen-ui-icons-react';
+import { Box, Collapse, IconButton, Stack, Tooltip, Typography } from '@wso2/oxygen-ui';
+import { Braces, ChevronDown, Copy } from '@wso2/oxygen-ui-icons-react';
 import { useState, type ReactElement } from 'react';
 import CodeViewer from '../CodeViewer';
 import { humanizeKey } from './helpers';
@@ -37,8 +37,11 @@ const ENDS_WITH_UUID = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]
 const ID_KEY = /(workflowid|taskid|reviewid|instanceid)$/i;
 const isWorkflowId = (key: string, value: unknown): value is string => typeof value === 'string' && (/^(workflow|humantask|reviewactivity|childwf|childagent)-/.test(value) || (ID_KEY.test(key) && ENDS_WITH_UUID.test(value)));
 
-export default function StructuredValue({ title, raw, environmentId }: { title: string; raw: string; environmentId?: string }): ReactElement {
+export default function StructuredValue({ title, raw, environmentId, collapsible }: { title: string; raw: string; environmentId?: string; collapsible?: boolean }): ReactElement {
   const [showRaw, setShowRaw] = useState(false);
+  // Context panels start open — the payload is why the reader is here — and collapse once read,
+  // so the actions below stop competing with a screenful of JSON.
+  const [open, setOpen] = useState(true);
 
   let parsed: unknown;
   let parseFailed = false;
@@ -52,10 +55,20 @@ export default function StructuredValue({ title, raw, environmentId }: { title: 
   const isBare = !parseFailed && !isFormable && (parsed === null || typeof parsed !== 'object');
 
   const header = (
-    <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ px: 1.5, py: 0.75, borderBottom: '1px solid', borderColor: 'divider' }}>
-      <Typography variant="caption" sx={{ fontWeight: 700 }}>
-        {title}
-      </Typography>
+    <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ px: 1.5, py: 0.75, borderBottom: open ? '1px solid' : 'none', borderColor: 'divider' }}>
+      <Stack
+        direction="row"
+        alignItems="center"
+        gap={0.5}
+        onClick={collapsible ? () => setOpen((v) => !v) : undefined}
+        sx={collapsible ? { cursor: 'pointer', flex: 1, minWidth: 0 } : { flex: 1, minWidth: 0 }}
+        role={collapsible ? 'button' : undefined}
+        aria-expanded={collapsible ? open : undefined}>
+        <Typography variant="caption" sx={{ fontWeight: 700 }}>
+          {title}
+        </Typography>
+        {collapsible && <ChevronDown size={12} style={{ transform: open ? 'none' : 'rotate(-90deg)', transition: 'transform 0.15s', opacity: 0.6 }} />}
+      </Stack>
       <Stack direction="row" alignItems="center" gap={0.25}>
         <Tooltip title={showRaw ? 'Show as a form' : 'Show the raw JSON'}>
           <IconButton size="small" aria-label={`toggle raw ${title.toLowerCase()}`} onClick={() => setShowRaw((v) => !v)} sx={{ p: 0.25, color: showRaw ? 'primary.main' : 'inherit' }}>
@@ -76,11 +89,13 @@ export default function StructuredValue({ title, raw, environmentId }: { title: 
     return (
       <Box sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 1, minWidth: 0 }}>
         {header}
-        <Box sx={{ p: 1, minWidth: 0, overflow: 'auto', maxHeight: '32vh' }}>
-          <Box component="pre" sx={{ m: 0, fontFamily: 'monospace', fontSize: 12, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
-            {raw}
+        <Collapse in={open}>
+          <Box sx={{ p: 1, minWidth: 0, overflow: 'auto', maxHeight: '32vh' }}>
+            <Box component="pre" sx={{ m: 0, fontFamily: 'monospace', fontSize: 12, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+              {raw}
+            </Box>
           </Box>
-        </Box>
+        </Collapse>
       </Box>
     );
   }
@@ -89,7 +104,9 @@ export default function StructuredValue({ title, raw, environmentId }: { title: 
     return (
       <Box sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 1, minWidth: 0 }}>
         {header}
-        <Typography sx={{ px: 1.5, py: 1, fontFamily: 'monospace', fontSize: 12.5, wordBreak: 'break-word' }}>{parsed === null ? '—' : String(parsed)}</Typography>
+        <Collapse in={open}>
+          <Typography sx={{ px: 1.5, py: 1, fontFamily: 'monospace', fontSize: 12.5, wordBreak: 'break-word' }}>{parsed === null ? '—' : String(parsed)}</Typography>
+        </Collapse>
       </Box>
     );
   }
@@ -97,9 +114,11 @@ export default function StructuredValue({ title, raw, environmentId }: { title: 
   return (
     <Box sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 1, minWidth: 0 }}>
       {header}
-      <Box sx={{ px: 1.5, py: 1, minWidth: 0 }}>
-        <ObjectRows value={parsed as Record<string, unknown>} depth={0} environmentId={environmentId} />
-      </Box>
+      <Collapse in={open}>
+        <Box sx={{ px: 1.5, py: 1, minWidth: 0 }}>
+          <ObjectRows value={parsed as Record<string, unknown>} depth={0} environmentId={environmentId} />
+        </Box>
+      </Collapse>
     </Box>
   );
 }

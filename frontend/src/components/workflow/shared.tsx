@@ -16,8 +16,8 @@
  * under the License.
  */
 
-import { Alert, Box, Button, Card, Chip, Collapse, Divider, Drawer, Link, ListingTable, Stack, Tooltip, Typography } from '@wso2/oxygen-ui';
-import { ChevronRight } from '@wso2/oxygen-ui-icons-react';
+import { Alert, Box, Button, Card, CardActionArea, Chip, Collapse, Divider, Drawer, IconButton, Link, ListingTable, Menu, MenuItem, Stack, Tooltip, Typography } from '@wso2/oxygen-ui';
+import { ChevronDown, ChevronRight, Copy, EllipsisVertical, Info } from '@wso2/oxygen-ui-icons-react';
 import { useState, type JSX, type ReactNode } from 'react';
 import { useNavigate } from 'react-router';
 import { resourceUrl, useScope } from '../../nav';
@@ -43,23 +43,89 @@ function useViewWorkflowById(environmentId: string): (workflowId: string) => voi
   };
 }
 
-/** Renders a workflow ID as a monospace link that opens the Workflows admin view filtered by that ID. */
-export function WorkflowIdLink({ workflowId, environmentId, onNavigate }: { workflowId?: string; environmentId: string; onNavigate?: () => void }): JSX.Element {
+/** Middle-ellipsizes a long identifier: `8ee1613c-5795-…-abf552fae5bb` reads as well as the
+ *  whole thing and stops a 36-character UUID from dominating a label column. */
+export function truncateId(id: string, head = 8, tail = 6): string {
+  return id.length <= head + tail + 1 ? id : `${id.slice(0, head)}…${id.slice(-tail)}`;
+}
+
+/**
+ * Renders a workflow ID as a monospace link that opens the Workflows admin view filtered by that
+ * ID. `truncate` middle-ellipsizes it (full value in the title and in the copy), and `copy` adds a
+ * clipboard button — detail views ask for both, so a long UUID neither dominates the row nor loses
+ * the one thing anyone does with it.
+ */
+export function WorkflowIdLink({ workflowId, environmentId, onNavigate, truncate, copy }: { workflowId?: string; environmentId: string; onNavigate?: () => void; truncate?: boolean; copy?: boolean }): JSX.Element {
   const viewWorkflow = useViewWorkflowById(environmentId);
-  if (!workflowId) return <Typography sx={{ fontFamily: 'monospace', fontSize: 12 }}>—</Typography>;
+  if (!workflowId) return <NotProvided />;
+  const shown = displayWorkflowId(workflowId);
   return (
-    <Link
-      component="button"
-      type="button"
-      title={workflowId}
-      onClick={(e) => {
-        e.stopPropagation();
-        onNavigate?.();
-        viewWorkflow(workflowId);
-      }}
-      sx={{ fontFamily: 'monospace', fontSize: 12, textAlign: 'left', wordBreak: 'break-all', cursor: 'pointer', color: 'text.primary', textDecorationColor: 'inherit' }}>
-      {displayWorkflowId(workflowId)}
-    </Link>
+    <Stack direction="row" alignItems="center" gap={0.25} sx={{ minWidth: 0 }}>
+      <Link
+        component="button"
+        type="button"
+        title={workflowId}
+        onClick={(e) => {
+          e.stopPropagation();
+          onNavigate?.();
+          viewWorkflow(workflowId);
+        }}
+        sx={{ fontFamily: 'monospace', fontSize: 12, textAlign: 'left', wordBreak: 'break-all', cursor: 'pointer', color: 'text.primary', textDecorationColor: 'inherit' }}>
+        {truncate ? truncateId(shown) : shown}
+      </Link>
+      {copy && (
+        <Tooltip title="Copy ID">
+          <IconButton
+            size="small"
+            aria-label="copy workflow id"
+            onClick={(e) => {
+              e.stopPropagation();
+              void navigator.clipboard.writeText(workflowId);
+            }}>
+            <Copy size={12} />
+          </IconButton>
+        </Tooltip>
+      )}
+    </Stack>
+  );
+}
+
+/** A missing value stated as such — an em-dash reads as a rendering bug, "Not provided" as a fact. */
+export function NotProvided({ label = 'Not provided' }: { label?: string }): JSX.Element {
+  return (
+    <Typography component="span" variant="body2" sx={{ color: 'text.disabled', fontStyle: 'italic' }}>
+      {label}
+    </Typography>
+  );
+}
+
+/**
+ * The drawer header's overflow menu: fallback and destructive operations live here rather than in
+ * their own section, so the page's visual weight stays on the task's purpose. Each item states its
+ * consequences in the flow it opens, not in the menu.
+ */
+export function HeaderMenu({ items }: { items: { label: string; color?: 'warning' | 'error'; disabled?: boolean; onClick: () => void }[] }): JSX.Element {
+  const [anchor, setAnchor] = useState<HTMLElement | null>(null);
+  return (
+    <>
+      <IconButton size="small" aria-label="more operations" onClick={(e) => setAnchor(e.currentTarget)}>
+        <EllipsisVertical size={16} />
+      </IconButton>
+      <Menu anchorEl={anchor} open={!!anchor} onClose={() => setAnchor(null)}>
+        {items.map((item) => (
+          <MenuItem
+            key={item.label}
+            disabled={item.disabled}
+            onClick={() => {
+              setAnchor(null);
+              item.onClick();
+            }}
+            sx={item.color ? { color: `${item.color}.main` } : undefined}>
+            {item.label}
+          </MenuItem>
+        ))}
+      </Menu>
+    </>
   );
 }
 
@@ -69,7 +135,7 @@ export function WorkflowIdLink({ workflowId, environmentId, onNavigate }: { work
  * action bar. Human tasks and reviews used to open in a small modal while workflow instances got
  * this; the information density is the same, so the surface now is too.
  */
-export function DetailDrawer({ title, status, onClose, actions, children }: { title: ReactNode; status?: string; onClose: () => void; actions?: ReactNode; children: ReactNode }): JSX.Element {
+export function DetailDrawer({ title, status, onClose, actions, menu, children }: { title: ReactNode; status?: string; onClose: () => void; actions?: ReactNode; menu?: ReactNode; children: ReactNode }): JSX.Element {
   const { sidebarWidth } = useLayout();
   return (
     <Drawer
@@ -85,9 +151,12 @@ export function DetailDrawer({ title, status, onClose, actions, children }: { ti
           </Typography>
           {status && <StatusChip status={status} />}
         </Stack>
-        <Button size="small" onClick={onClose} sx={{ minWidth: 0, px: 1 }} aria-label="close">
-          <X size={16} />
-        </Button>
+        <Stack direction="row" alignItems="center" gap={0.5}>
+          {menu}
+          <Button size="small" onClick={onClose} sx={{ minWidth: 0, px: 1 }} aria-label="close">
+            <X size={16} />
+          </Button>
+        </Stack>
       </Stack>
       <Box sx={{ flex: 1, overflow: 'auto', px: 3, py: 2.5 }}>
         <Box sx={{ maxWidth: 860 }}>{children}</Box>
@@ -102,27 +171,86 @@ export function DetailDrawer({ title, status, onClose, actions, children }: { ti
 }
 
 /** A titled section card used through the task and review drawers. */
-export function SectionCard({ title, children }: { title: string; children: ReactNode }): JSX.Element {
-  return (
-    <Card variant="outlined" sx={{ bgcolor: 'action.hover' }}>
-      <Typography variant="subtitle2" sx={{ px: 2, py: 1.5, ...sectionTitleSx }}>
+export function SectionCard({ title, collapsible, children }: { title: string; collapsible?: boolean; children: ReactNode }): JSX.Element {
+  // Open by default: the context is why the reader is here. Collapsing is for the second visit,
+  // once the facts are absorbed and the actions are what is left.
+  const [open, setOpen] = useState(true);
+  const header = (
+    <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ px: 2, py: 1.5 }}>
+      <Typography variant="subtitle2" sx={sectionTitleSx}>
         {title}
       </Typography>
-      <Divider />
-      <Box sx={{ px: 2, py: 2 }}>{children}</Box>
+      {collapsible && <ChevronDown size={14} style={{ transform: open ? 'none' : 'rotate(-90deg)', transition: 'transform 0.15s', opacity: 0.6 }} />}
+    </Stack>
+  );
+  return (
+    <Card variant="outlined" sx={{ bgcolor: 'action.hover' }}>
+      {collapsible ? (
+        <CardActionArea onClick={() => setOpen((v) => !v)} aria-expanded={open}>
+          {header}
+        </CardActionArea>
+      ) : (
+        header
+      )}
+      {collapsible ? (
+        <Collapse in={open}>
+          <Divider />
+          <Box sx={{ px: 2, py: 2 }}>{children}</Box>
+        </Collapse>
+      ) : (
+        <>
+          <Divider />
+          <Box sx={{ px: 2, py: 2 }}>{children}</Box>
+        </>
+      )}
     </Card>
   );
 }
 
-/** One offered action: what it does in a sentence, then the button that starts it. */
-export function ActionRow({ caption, button }: { caption: string; button: ReactNode }): JSX.Element {
-  return (
-    <Stack direction="row" alignItems="center" justifyContent="space-between" gap={2}>
-      <Typography variant="body2" color="text.secondary" sx={{ flex: 1 }}>
-        {caption}
-      </Typography>
-      <Box sx={{ flexShrink: 0 }}>{button}</Box>
-    </Stack>
+/**
+ * One action as a card: a bold name, a one-line subtitle, and — when a sentence cannot carry the
+ * whole consequence — the full explanation behind an info icon. Cards sit side by side in a grid,
+ * so the options are scannable before any is chosen; clicking selects the card and its inputs
+ * appear beneath the grid, which keeps the first screen clean without hiding what acting entails.
+ */
+export function ActionCard({ title, subtitle, info, selected, disabled, disabledReason, onClick }: { title: string; subtitle: string; info?: string; selected?: boolean; disabled?: boolean; disabledReason?: string; onClick: () => void }): JSX.Element {
+  const card = (
+    <Card
+      variant="outlined"
+      sx={{
+        flex: '1 1 240px',
+        maxWidth: 360,
+        borderColor: selected ? 'primary.main' : 'divider',
+        bgcolor: selected ? 'action.selected' : 'background.paper',
+        opacity: disabled ? 0.55 : 1,
+      }}>
+      <CardActionArea onClick={onClick} disabled={disabled} sx={{ px: 2, py: 1.5, height: '100%' }} aria-pressed={selected}>
+        <Stack direction="row" alignItems="flex-start" justifyContent="space-between" gap={1}>
+          <Box>
+            <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
+              {title}
+            </Typography>
+            <Typography variant="caption" color="text.secondary" component="div" sx={{ mt: 0.25 }}>
+              {subtitle}
+            </Typography>
+          </Box>
+          {info && (
+            <Tooltip title={info}>
+              <Box component="span" onClick={(e) => e.stopPropagation()} sx={{ display: 'inline-flex', color: 'text.disabled', mt: 0.25 }}>
+                <Info size={14} />
+              </Box>
+            </Tooltip>
+          )}
+        </Stack>
+      </CardActionArea>
+    </Card>
+  );
+  return disabled && disabledReason ? (
+    <Tooltip title={disabledReason}>
+      <span style={{ display: 'flex', flex: '1 1 240px', maxWidth: 360 }}>{card}</span>
+    </Tooltip>
+  ) : (
+    card
   );
 }
 

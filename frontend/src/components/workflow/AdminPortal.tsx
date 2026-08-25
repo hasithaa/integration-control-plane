@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import { Alert, Autocomplete, Box, Button, CircularProgress, Dialog, DialogActions, DialogContent, DialogTitle, Divider, IconButton, ListingTable, MenuItem, Select, Snackbar, Stack, TextField, Tooltip, Typography } from '@wso2/oxygen-ui';
+import { Alert, Autocomplete, Box, Button, CircularProgress, Dialog, DialogActions, DialogContent, DialogTitle, IconButton, ListingTable, MenuItem, Select, Snackbar, Stack, TextField, Tooltip, Typography } from '@wso2/oxygen-ui';
 import { Copy, Eye, Play, RefreshCw } from '@wso2/oxygen-ui-icons-react';
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router';
@@ -26,7 +26,7 @@ import SchemaFormFields from './SchemaFormFields';
 import WorkflowDetailDrawer from './WorkflowDetailDrawer';
 import StructuredValue from './StructuredValue';
 import { buildFormResult, diffFormValues, displayWorkflowId, formatTime, formValuesFromObject, gatewayScope, jsonPretty, ownerLabel, ownerScope, parseFormSchema, sectionTitleSx, sortByStartTimeDesc, splitQualifiedName, type PortalScope } from './helpers';
-import { ActionRow, DetailDrawer, DetailRow, HeaderCell, ListFooter, SchemaDisclosure, SectionCard, StatusChip, SubmitError, WorkflowIdLink, type WorkflowScope } from './shared';
+import { ActionCard, DetailDrawer, DetailRow, HeaderCell, HeaderMenu, ListFooter, NotProvided, SchemaDisclosure, SectionCard, StatusChip, SubmitError, WorkflowIdLink, type WorkflowScope } from './shared';
 import Authorized from '../Authorized';
 import { Permissions } from '../../constants/permissions';
 import {
@@ -552,7 +552,12 @@ export function ReviewActivityDetailDialog({ scope, taskId, onClose, onToast }: 
   // A decision form whose fields are still being prepared shows a spinner, not blank inputs.
   const waiting = isLoading || isPreparing(activityResult);
   const decide = useReviewDecision(scope);
-  const [mode, setMode] = useState<'view' | 'confirm-proceed' | 'edit' | 'review-changes' | 'reject'>('view');
+  const [mode, setMode] = useState<'view' | 'edit'>('view');
+  // Confirmations and the reject operation are modal overlays: the decision happens in front of
+  // the activity's arguments, not on a screen the context has scrolled away from.
+  const [confirmProceedOpen, setConfirmProceedOpen] = useState(false);
+  const [reviewChangesOpen, setReviewChangesOpen] = useState(false);
+  const [rejectOpen, setRejectOpen] = useState(false);
   const [formValues, setFormValues] = useState<Record<string, string | boolean>>({});
   // What the workflow recorded — the baseline every edit is compared against.
   const [originalValues, setOriginalValues] = useState<Record<string, string | boolean>>({});
@@ -603,7 +608,13 @@ export function ReviewActivityDetailDialog({ scope, taskId, onClose, onToast }: 
           onToast({ severity: 'success', message: decision === 'reject' ? 'Activity rejected.' : 'Activity proceeded.' });
           onClose();
         },
-        onError: (e) => setDecideError(e instanceof Error && e.message ? e.message : 'Action failed.'),
+        onError: (e) => {
+          // The error banner lives in the drawer; an overlay left open would hide it.
+          setConfirmProceedOpen(false);
+          setReviewChangesOpen(false);
+          setRejectOpen(false);
+          setDecideError(e instanceof Error && e.message ? e.message : 'Action failed.');
+        },
       },
     );
   };
@@ -617,19 +628,20 @@ export function ReviewActivityDetailDialog({ scope, taskId, onClose, onToast }: 
         return;
       }
       setPendingInput(result);
-      setMode('review-changes');
+      setReviewChangesOpen(true);
       return;
     }
     try {
       setPendingInput(rawText.trim() ? JSON.parse(rawText) : {});
-      setMode('review-changes');
+      setReviewChangesOpen(true);
     } catch {
       setRawErr('Arguments must be valid JSON.');
     }
   };
 
-  const backTo = (m: 'view' | 'edit') => {
-    setMode(m);
+  // Deselecting the edit path keeps entered values but clears validation state.
+  const closeEdit = () => {
+    setMode('view');
     setFieldErrors({});
     setRawErr('');
     setDecideError(null);
@@ -646,7 +658,17 @@ export function ReviewActivityDetailDialog({ scope, taskId, onClose, onToast }: 
   );
 
   return (
-    <DetailDrawer title={heading} status={activity?.status} onClose={onClose}>
+    <DetailDrawer
+      title={heading}
+      status={activity?.status}
+      onClose={onClose}
+      menu={
+        canDecide ? (
+          <Authorized permissions={[Permissions.WORKFLOW_MANAGE_WORKFLOWS]}>
+            <HeaderMenu items={[{ label: 'Reject…', color: 'error', disabled: busy, onClick: () => setRejectOpen(true) }]} />
+          </Authorized>
+        ) : undefined
+      }>
       {waiting ? (
         <CircularProgress size={24} sx={{ display: 'block', mx: 'auto', py: 4 }} />
       ) : loadError || !activity ? (
@@ -662,12 +684,12 @@ export function ReviewActivityDetailDialog({ scope, taskId, onClose, onToast }: 
             </SectionCard>
           )}
 
-          <SectionCard title="Activity">
+          <SectionCard title="Activity" collapsible>
             <Stack gap={1.25}>
-              <DetailRow label="Activity Name">{reviewActivityDisplayName(activity.taskName, activity.activityName, '—')}</DetailRow>
-              <DetailRow label="Workflow Name">{workflow ?? '—'}</DetailRow>
+              <DetailRow label="Activity Name">{reviewActivityDisplayName(activity.taskName, activity.activityName, '') || <NotProvided />}</DetailRow>
+              <DetailRow label="Workflow Name">{workflow ?? <NotProvided />}</DetailRow>
               <DetailRow label="Parent Workflow">
-                <WorkflowIdLink workflowId={activity.parentWorkflowId} environmentId={scope.environmentId} onNavigate={onClose} />
+                <WorkflowIdLink workflowId={activity.parentWorkflowId} environmentId={scope.environmentId} onNavigate={onClose} truncate copy />
               </DetailRow>
               <DetailRow label="Trigger">{reviewTriggerLabel(activity.trigger)}</DetailRow>
               <DetailRow label="Created">{formatTime(activity.startTime)}</DetailRow>
@@ -677,99 +699,100 @@ export function ReviewActivityDetailDialog({ scope, taskId, onClose, onToast }: 
 
           {/* The arguments as the workflow recorded them: context to decide with. Editing happens
               only on the explicit "Proceed with changes" path, never here. */}
-          {mode !== 'edit' && argsJson && <StructuredValue title="Activity arguments (read-only)" raw={argsJson} environmentId={scope.environmentId} />}
+          {mode !== 'edit' && argsJson && <StructuredValue title="Activity arguments (read-only)" raw={argsJson} environmentId={scope.environmentId} collapsible />}
 
-          {canDecide && mode === 'view' && (
+          {canDecide && (
             <Authorized permissions={[Permissions.WORKFLOW_MANAGE_WORKFLOWS]}>
               <SectionCard title="Decisions">
                 <Stack gap={2}>
-                  <ActionRow
-                    caption={activity.trigger === 'ON_FAILURE' ? 'Proceed: rerun the failed activity with the original arguments, exactly as shown above.' : 'Proceed: run the activity with the original arguments, exactly as shown above.'}
-                    button={
-                      <Button variant="contained" disabled={busy} onClick={() => setMode('confirm-proceed')}>
-                        Proceed…
-                      </Button>
-                    }
-                  />
-                  <Divider />
-                  <ActionRow
-                    caption="Proceed with changes: edit the arguments first — what changed is shown before the rerun."
-                    button={
-                      <Button variant="outlined" disabled={busy} onClick={() => setMode('edit')}>
-                        Proceed with changes…
-                      </Button>
-                    }
-                  />
+                  {/* The two ways forward, side by side — scannable before either is chosen. The
+                      fail path is deliberately absent: rejecting lives in the header's overflow
+                      menu, so the page's weight stays on the decision the review exists for. */}
+                  <Stack direction="row" flexWrap="wrap" gap={1.5}>
+                    <ActionCard
+                      title="Proceed"
+                      subtitle={activity.trigger === 'ON_FAILURE' ? 'Rerun with the original arguments.' : 'Run with the original arguments.'}
+                      info={
+                        activity.trigger === 'ON_FAILURE'
+                          ? 'Reruns the failed activity with the arguments exactly as recorded above. Confirmed before anything runs.'
+                          : 'Runs the activity with the arguments exactly as recorded above. Confirmed before anything runs.'
+                      }
+                      disabled={busy}
+                      onClick={() => setConfirmProceedOpen(true)}
+                    />
+                    <ActionCard
+                      title="Proceed with changes"
+                      subtitle="Edit the arguments first."
+                      info="Opens the arguments for editing; what changed is shown side by side before the rerun is confirmed."
+                      selected={mode === 'edit'}
+                      disabled={busy}
+                      onClick={() => (mode === 'edit' ? closeEdit() : setMode('edit'))}
+                    />
+                  </Stack>
+
+                  {/* The edit path's inputs, revealed in place beneath the cards. */}
+                  {mode === 'edit' && (
+                    <Stack gap={2} sx={{ borderTop: '1px solid', borderColor: 'divider', pt: 2 }}>
+                      <Typography variant="body2" color="text.secondary">
+                        {formFields ? (changes.length === 0 ? 'No changes yet — edit the values the rerun should use.' : `Changed: ${changes.map((c) => c.label).join(', ')}`) : 'This activity declares no schema; edit the raw JSON the rerun should use.'}
+                      </Typography>
+                      {formFields ? (
+                        <SchemaFormFields fields={formFields} values={formValues} errors={fieldErrors} onChange={setFormValue} />
+                      ) : (
+                        <TextField
+                          label="Arguments (JSON)"
+                          fullWidth
+                          multiline
+                          minRows={5}
+                          value={rawText}
+                          onChange={(e) => {
+                            setRawText(e.target.value);
+                            setRawErr('');
+                          }}
+                          error={!!rawErr}
+                          helperText={rawErr}
+                          slotProps={{ input: { sx: { fontFamily: 'monospace', fontSize: 13 } } }}
+                        />
+                      )}
+                      {stepButtons(
+                        <Button key="b" disabled={busy} onClick={closeEdit}>
+                          Cancel
+                        </Button>,
+                        <Button key="r" variant="contained" disabled={busy} onClick={stageEdited}>
+                          Review Changes
+                        </Button>,
+                      )}
+                    </Stack>
+                  )}
                 </Stack>
-              </SectionCard>
-              <SectionCard title="Review operations">
-                <ActionRow
-                  caption="Reject — a fail operation: the review completes, and the failure is propagated to the workflow, which decides what happens next."
-                  button={
-                    <Button variant="text" color="error" size="small" disabled={busy} onClick={() => setMode('reject')}>
-                      Reject…
-                    </Button>
-                  }
-                />
               </SectionCard>
             </Authorized>
           )}
 
-          {mode === 'confirm-proceed' && (
-            <SectionCard title="Confirm proceed">
-              <Stack gap={2}>
-                <Alert severity="info">The activity {activity.trigger === 'ON_FAILURE' ? 'reruns' : 'runs'} with the original arguments, exactly as shown above. This cannot be undone.</Alert>
-                {stepButtons(
-                  <Button key="b" disabled={busy} onClick={() => backTo('view')}>
-                    Back
-                  </Button>,
-                  <Button key="p" variant="contained" disabled={busy} onClick={() => runDecision('proceed-with-input', activity?.activityArgs ?? {})}>
-                    {busy ? 'Submitting…' : 'Proceed'}
-                  </Button>,
-                )}
+          {/* Confirmations overlay the review instead of replacing it: the arguments and the
+              error that triggered it stay on screen behind the decision. */}
+          <Dialog open={confirmProceedOpen} onClose={() => !busy && setConfirmProceedOpen(false)} maxWidth="sm" fullWidth>
+            <DialogTitle>Confirm proceed</DialogTitle>
+            <DialogContent>
+              <Stack gap={2} sx={{ pt: 0.5 }}>
+                <Alert severity="info">The activity {activity.trigger === 'ON_FAILURE' ? 'reruns' : 'runs'} with the original arguments below. This cannot be undone.</Alert>
+                <StructuredValue title="Arguments" raw={argsJson || '{}'} environmentId={scope.environmentId} />
               </Stack>
-            </SectionCard>
-          )}
+            </DialogContent>
+            <DialogActions>
+              <Button disabled={busy} onClick={() => setConfirmProceedOpen(false)}>
+                Back
+              </Button>
+              <Button variant="contained" disabled={busy} onClick={() => runDecision('proceed-with-input', activity?.activityArgs ?? {})}>
+                {busy ? 'Submitting…' : 'Proceed'}
+              </Button>
+            </DialogActions>
+          </Dialog>
 
-          {mode === 'edit' && (
-            <SectionCard title="Edit arguments">
-              <Stack gap={2}>
-                <Typography variant="body2" color="text.secondary">
-                  {formFields ? (changes.length === 0 ? 'No changes yet — edit the values the rerun should use.' : `Changed: ${changes.map((c) => c.label).join(', ')}`) : 'This activity declares no schema; edit the raw JSON the rerun should use.'}
-                </Typography>
-                {formFields ? (
-                  <SchemaFormFields fields={formFields} values={formValues} errors={fieldErrors} onChange={setFormValue} />
-                ) : (
-                  <TextField
-                    label="Arguments (JSON)"
-                    fullWidth
-                    multiline
-                    minRows={5}
-                    value={rawText}
-                    onChange={(e) => {
-                      setRawText(e.target.value);
-                      setRawErr('');
-                    }}
-                    error={!!rawErr}
-                    helperText={rawErr}
-                    slotProps={{ input: { sx: { fontFamily: 'monospace', fontSize: 13 } } }}
-                  />
-                )}
-                {stepButtons(
-                  <Button key="b" disabled={busy} onClick={() => backTo('view')}>
-                    Back
-                  </Button>,
-                  <Button key="r" variant="contained" disabled={busy} onClick={stageEdited}>
-                    Review Changes
-                  </Button>,
-                )}
-              </Stack>
-            </SectionCard>
-          )}
-
-          {mode === 'review-changes' && (
-            <SectionCard title="Review changes">
-              <Stack gap={2}>
+          <Dialog open={reviewChangesOpen} onClose={() => !busy && setReviewChangesOpen(false)} maxWidth="sm" fullWidth>
+            <DialogTitle>Review changes</DialogTitle>
+            <DialogContent>
+              <Stack gap={2} sx={{ pt: 0.5 }}>
                 <Alert severity="info">The activity reruns with the edited arguments below. This cannot be undone.</Alert>
                 {formFields ? (
                   changes.length === 0 ? (
@@ -796,34 +819,35 @@ export function ReviewActivityDetailDialog({ scope, taskId, onClose, onToast }: 
                 ) : (
                   <StructuredValue title="Arguments to submit" raw={jsonPretty(pendingInput) || '{}'} environmentId={scope.environmentId} />
                 )}
-                {stepButtons(
-                  <Button key="b" disabled={busy} onClick={() => backTo('edit')}>
-                    Back
-                  </Button>,
-                  <Button key="p" variant="contained" disabled={busy} onClick={() => runDecision('proceed-with-input', pendingInput)}>
-                    {busy ? 'Submitting…' : 'Proceed with Changes'}
-                  </Button>,
-                )}
               </Stack>
-            </SectionCard>
-          )}
+            </DialogContent>
+            <DialogActions>
+              <Button disabled={busy} onClick={() => setReviewChangesOpen(false)}>
+                Back
+              </Button>
+              <Button variant="contained" disabled={busy} onClick={() => runDecision('proceed-with-input', pendingInput)}>
+                {busy ? 'Submitting…' : 'Proceed with Changes'}
+              </Button>
+            </DialogActions>
+          </Dialog>
 
-          {mode === 'reject' && (
-            <SectionCard title="Reject activity">
-              <Stack gap={2}>
+          <Dialog open={rejectOpen} onClose={() => !busy && setRejectOpen(false)} maxWidth="sm" fullWidth>
+            <DialogTitle>Reject activity</DialogTitle>
+            <DialogContent>
+              <Stack gap={2} sx={{ pt: 0.5 }}>
                 <Alert severity="warning">Rejecting is a fail operation: the review completes, and the failure is propagated to the workflow — the workflow decides what happens next. This cannot be undone.</Alert>
                 <TextField label="Feedback (optional)" fullWidth multiline minRows={2} value={feedback} onChange={(e) => setFeedback(e.target.value)} helperText="Relayed to the workflow as the rejection reason." />
-                {stepButtons(
-                  <Button key="b" disabled={busy} onClick={() => backTo('view')}>
-                    Back
-                  </Button>,
-                  <Button key="r" variant="contained" color="error" disabled={busy} onClick={() => runDecision('reject', undefined, feedback.trim() || undefined)}>
-                    {busy ? 'Submitting…' : 'Reject Activity'}
-                  </Button>,
-                )}
               </Stack>
-            </SectionCard>
-          )}
+            </DialogContent>
+            <DialogActions>
+              <Button disabled={busy} onClick={() => setRejectOpen(false)}>
+                Back
+              </Button>
+              <Button variant="contained" color="error" disabled={busy} onClick={() => runDecision('reject', undefined, feedback.trim() || undefined)}>
+                {busy ? 'Submitting…' : 'Reject Activity'}
+              </Button>
+            </DialogActions>
+          </Dialog>
         </Stack>
       )}
     </DetailDrawer>

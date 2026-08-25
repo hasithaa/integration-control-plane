@@ -16,14 +16,14 @@
  * under the License.
  */
 
-import { Alert, Box, Button, Chip, CircularProgress, IconButton, ListingTable, MenuItem, Snackbar, Stack, TextField, Tooltip, Typography } from '@wso2/oxygen-ui';
+import { Alert, Box, Button, Chip, CircularProgress, Dialog, DialogActions, DialogContent, DialogTitle, IconButton, ListingTable, MenuItem, Snackbar, Stack, TextField, Tooltip, Typography } from '@wso2/oxygen-ui';
 import SearchField from '../SearchField';
 import { RefreshCw, UserCheck, Wrench } from '@wso2/oxygen-ui-icons-react';
 import { useEffect, useState, type ReactNode } from 'react';
 import SchemaFormFields from './SchemaFormFields';
 import StructuredValue from './StructuredValue';
 import { buildFormResult, displayWorkflowId, formatTime, gatewayScope, jsonPretty, ownerLabel, ownerScope, parseFormSchema, sortByStartTimeDesc, splitQualifiedName, unescapeRoleName, type PortalScope } from './helpers';
-import { ActionRow, DetailDrawer, DetailRow, HeaderCell, ListFooter, SectionCard, StatusChip, SubmitError, WorkflowIdLink, type WorkflowScope } from './shared';
+import { ActionCard, DetailDrawer, DetailRow, HeaderCell, HeaderMenu, ListFooter, NotProvided, SectionCard, StatusChip, SubmitError, WorkflowIdLink, type WorkflowScope } from './shared';
 import { IntegrationFilter, ReviewActivityDetailDialog, StatusFilter, useTimeRangeFilter, WorkflowNameFilter } from './AdminPortal';
 import Authorized from '../Authorized';
 import { Permissions } from '../../constants/permissions';
@@ -341,7 +341,11 @@ function TaskDetailDialog({ scope, taskId, actionable, onClose, onToast }: { sco
   const waiting = isLoading || isPreparing(taskResult);
   const complete = useCompleteHumanTask(scope);
   const fail = useFailHumanTask(scope);
-  const [mode, setMode] = useState<'view' | 'complete' | 'confirm-complete' | 'fail'>('view');
+  const [mode, setMode] = useState<'view' | 'complete'>('view');
+  // Confirmation and the fail operation are modal overlays: the decision happens in front of the
+  // task, not on a screen the context has scrolled away from.
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [failOpen, setFailOpen] = useState(false);
   // The escape hatch: a generated form cannot express every value (and a schema bug should not
   // block a completion), so the result is always editable as raw JSON too.
   const [rawMode, setRawMode] = useState(false);
@@ -379,12 +383,12 @@ function TaskDetailDialog({ scope, taskId, actionable, onClose, onToast }: { sco
         return;
       }
       setPendingResult(result);
-      setMode('confirm-complete');
+      setConfirmOpen(true);
       return;
     }
     try {
       setPendingResult(resultText.trim() ? JSON.parse(resultText) : {});
-      setMode('confirm-complete');
+      setConfirmOpen(true);
     } catch {
       setErr('Result must be valid JSON.');
     }
@@ -399,7 +403,10 @@ function TaskDetailDialog({ scope, taskId, actionable, onClose, onToast }: { sco
           onToast({ severity: 'success', message: 'Task completed.' });
           onClose();
         },
-        onError: (e) => setSubmitError(e instanceof Error && e.message ? e.message : 'Failed to complete task.'),
+        onError: (e) => {
+          setConfirmOpen(false);
+          setSubmitError(e instanceof Error && e.message ? e.message : 'Failed to complete task.');
+        },
       },
     );
   };
@@ -417,14 +424,18 @@ function TaskDetailDialog({ scope, taskId, actionable, onClose, onToast }: { sco
           onToast({ severity: 'success', message: 'Task marked as failed.' });
           onClose();
         },
-        onError: (e) => setSubmitError(e instanceof Error && e.message ? e.message : 'Failed to fail the task.'),
+        onError: (e) => {
+          setFailOpen(false);
+          setSubmitError(e instanceof Error && e.message ? e.message : 'Failed to fail the task.');
+        },
       },
     );
   };
 
-  // Returns one step back, keeping entered values but clearing validation errors.
-  const backTo = (m: 'view' | 'complete') => {
-    setMode(m);
+  // Deselecting the action keeps entered values but clears validation state, so a second look
+  // at the context does not cost the half-filled form.
+  const closeComplete = () => {
+    setMode('view');
     setErr('');
     setFieldErrors({});
     setSubmitError(null);
@@ -439,7 +450,17 @@ function TaskDetailDialog({ scope, taskId, actionable, onClose, onToast }: { sco
   );
 
   return (
-    <DetailDrawer title={task ? taskDisplayName(task) : displayWorkflowId(taskId)} status={taskDisplayStatus(task?.status)} onClose={onClose}>
+    <DetailDrawer
+      title={task ? taskDisplayName(task) : displayWorkflowId(taskId)}
+      status={taskDisplayStatus(task?.status)}
+      onClose={onClose}
+      menu={
+        actionable && task ? (
+          <Authorized permissions={[Permissions.WORKFLOW_MANAGE_HUMAN_TASKS]}>
+            <HeaderMenu items={[{ label: 'Mark as failed…', color: 'warning', disabled: busy, onClick: () => setFailOpen(true) }]} />
+          </Authorized>
+        ) : undefined
+      }>
       {waiting ? (
         <CircularProgress size={24} sx={{ display: 'block', mx: 'auto', py: 4 }} />
       ) : taskError || !task ? (
@@ -455,12 +476,12 @@ function TaskDetailDialog({ scope, taskId, actionable, onClose, onToast }: { sco
             </SectionCard>
           )}
 
-          <SectionCard title="Task">
+          <SectionCard title="Task" collapsible>
             <Stack gap={1.25}>
               <DetailRow label="Task Name">{taskDisplayName(task)}</DetailRow>
-              <DetailRow label="Workflow Name">{task.parentWorkflowType ?? '—'}</DetailRow>
+              <DetailRow label="Workflow Name">{task.parentWorkflowType ?? <NotProvided />}</DetailRow>
               <DetailRow label="Parent Workflow">
-                <WorkflowIdLink workflowId={task.parentWorkflowId} environmentId={scope.environmentId} onNavigate={onClose} />
+                <WorkflowIdLink workflowId={task.parentWorkflowId} environmentId={scope.environmentId} onNavigate={onClose} truncate copy />
               </DetailRow>
               <DetailRow label="Created">{formatTime(task?.startTime)}</DetailRow>
               <DetailRow label="Eligible Roles">
@@ -471,119 +492,116 @@ function TaskDetailDialog({ scope, taskId, actionable, onClose, onToast }: { sco
                     ))}
                   </Stack>
                 ) : (
-                  '—'
+                  <NotProvided />
                 )}
               </DetailRow>
             </Stack>
           </SectionCard>
 
           {/* What the workflow handed this task — context to decide with, never something to edit. */}
-          {payloadJson && <StructuredValue title="Task payload (read-only)" raw={payloadJson} environmentId={scope.environmentId} />}
+          {payloadJson && <StructuredValue title="Task payload (read-only)" raw={payloadJson} environmentId={scope.environmentId} collapsible />}
 
-          {actionable && mode === 'view' && (
+          {actionable && (
             <Authorized permissions={[Permissions.WORKFLOW_MANAGE_HUMAN_TASKS]}>
               <SectionCard title="Actions">
-                <ActionRow
-                  caption="Complete the task: submit a result, and the waiting workflow resumes with it."
-                  button={
-                    <Tooltip title={canComplete ? '' : 'You do not have a matching role to complete this task'}>
-                      <span>
-                        <Button variant="contained" disabled={busy || !canComplete} onClick={() => setMode('complete')}>
-                          Complete…
-                        </Button>
-                      </span>
-                    </Tooltip>
-                  }
-                />
-              </SectionCard>
-              <SectionCard title="Task operations">
-                <ActionRow
-                  caption="Mark as failed — a fail operation: the task is recorded as FAILED and the failure is propagated to the workflow, which decides what happens next."
-                  button={
-                    <Button variant="text" color="warning" size="small" disabled={busy} onClick={() => setMode('fail')}>
-                      Mark as failed…
-                    </Button>
-                  }
-                />
+                <Stack gap={2}>
+                  {/* Cards, so the options read side by side before any is chosen. A task offers
+                      one primary action today; the grid is what keeps a second one scannable
+                      rather than stacked when it arrives. */}
+                  <Stack direction="row" flexWrap="wrap" gap={1.5}>
+                    <ActionCard
+                      title="Complete task"
+                      subtitle="Submit a result; the waiting workflow resumes with it."
+                      selected={mode === 'complete'}
+                      disabled={busy || !canComplete}
+                      disabledReason={canComplete ? undefined : 'You do not have a matching role to complete this task'}
+                      onClick={() => (mode === 'complete' ? closeComplete() : setMode('complete'))}
+                    />
+                  </Stack>
+
+                  {/* The selected action's inputs, revealed in place — the context above stays
+                      where it was read. */}
+                  {mode === 'complete' && (
+                    <Stack gap={2} sx={{ borderTop: '1px solid', borderColor: 'divider', pt: 2 }}>
+                      <Stack direction="row" alignItems="center" justifyContent="space-between" gap={2}>
+                        <Typography variant="body2" color="text.secondary">
+                          The result the workflow resumes with.
+                        </Typography>
+                        {formFields && (
+                          <Button
+                            size="small"
+                            variant="text"
+                            onClick={() => {
+                              // Entering raw mode carries the form's current state along; a raw edit
+                              // can express what the form cannot, so it never converts back.
+                              if (!rawMode) {
+                                const { result } = buildFormResult(formFields, formValues);
+                                setResultText(jsonPretty(result) || '{}');
+                              }
+                              setRawMode((v) => !v);
+                              setErr('');
+                            }}>
+                            {rawMode ? 'Back to form' : 'Edit as JSON'}
+                          </Button>
+                        )}
+                      </Stack>
+                      {formFields && !rawMode ? (
+                        <SchemaFormFields fields={formFields} values={formValues} errors={fieldErrors} onChange={setFormValue} />
+                      ) : (
+                        <TextField
+                          label="Result (JSON)"
+                          fullWidth
+                          multiline
+                          minRows={5}
+                          value={resultText}
+                          onChange={(e) => {
+                            setResultText(e.target.value);
+                            setErr('');
+                          }}
+                          error={!!err}
+                          helperText={err || (formFields ? 'Raw mode: submitted exactly as typed — the form is bypassed.' : 'This task declares no result schema; the JSON is submitted as the result.')}
+                          slotProps={{ input: { sx: { fontFamily: 'monospace', fontSize: 13 } } }}
+                        />
+                      )}
+                      {stepButtons(
+                        <Button key="b" disabled={busy} onClick={closeComplete}>
+                          Cancel
+                        </Button>,
+                        <Button key="r" variant="contained" disabled={busy} onClick={stageComplete}>
+                          Review before completion
+                        </Button>,
+                      )}
+                    </Stack>
+                  )}
+                </Stack>
               </SectionCard>
             </Authorized>
           )}
 
-          {(mode === 'complete' || mode === 'confirm-complete') && (
-            <SectionCard title={mode === 'complete' ? 'Result' : 'Confirm completion'}>
-              <Stack gap={2}>
-                {mode === 'complete' ? (
-                  <>
-                    <Stack direction="row" alignItems="center" justifyContent="space-between" gap={2}>
-                      <Typography variant="body2" color="text.secondary">
-                        The result the workflow resumes with.
-                      </Typography>
-                      {formFields && (
-                        <Button
-                          size="small"
-                          variant="text"
-                          onClick={() => {
-                            // Entering raw mode carries the form's current state along; a raw edit
-                            // can express what the form cannot, so it never converts back.
-                            if (!rawMode) {
-                              const { result } = buildFormResult(formFields, formValues);
-                              setResultText(jsonPretty(result) || '{}');
-                            }
-                            setRawMode((v) => !v);
-                            setErr('');
-                          }}>
-                          {rawMode ? 'Back to form' : 'Edit as JSON'}
-                        </Button>
-                      )}
-                    </Stack>
-                    {formFields && !rawMode ? (
-                      <SchemaFormFields fields={formFields} values={formValues} errors={fieldErrors} onChange={setFormValue} />
-                    ) : (
-                      <TextField
-                        label="Result (JSON)"
-                        fullWidth
-                        multiline
-                        minRows={5}
-                        value={resultText}
-                        onChange={(e) => {
-                          setResultText(e.target.value);
-                          setErr('');
-                        }}
-                        error={!!err}
-                        helperText={err || (formFields ? 'Raw mode: submitted exactly as typed — the form is bypassed.' : 'This task declares no result schema; the JSON is submitted as the result.')}
-                        slotProps={{ input: { sx: { fontFamily: 'monospace', fontSize: 13 } } }}
-                      />
-                    )}
-                    {stepButtons(
-                      <Button key="b" disabled={busy} onClick={() => backTo('view')}>
-                        Back
-                      </Button>,
-                      <Button key="r" variant="contained" disabled={busy} onClick={stageComplete}>
-                        Review before completion
-                      </Button>,
-                    )}
-                  </>
-                ) : (
-                  <>
-                    <Alert severity="info">The task completes with the result below, and the waiting workflow resumes with it. This cannot be undone.</Alert>
-                    <StructuredValue title="Result to submit" raw={jsonPretty(pendingResult) || '{}'} environmentId={scope.environmentId} />
-                    {stepButtons(
-                      <Button key="b" disabled={busy} onClick={() => backTo('complete')}>
-                        Back
-                      </Button>,
-                      <Button key="c" variant="contained" disabled={busy} onClick={submitComplete}>
-                        {complete.isPending ? 'Completing…' : 'Complete Task'}
-                      </Button>,
-                    )}
-                  </>
-                )}
+          {/* Confirmation overlays the task instead of replacing it: the payload and the metadata
+              stay on screen behind the decision. */}
+          <Dialog open={confirmOpen} onClose={() => !busy && setConfirmOpen(false)} maxWidth="sm" fullWidth>
+            <DialogTitle>Confirm completion</DialogTitle>
+            <DialogContent>
+              <Stack gap={2} sx={{ pt: 0.5 }}>
+                <Alert severity="info">The task completes with the result below, and the waiting workflow resumes with it. This cannot be undone.</Alert>
+                <StructuredValue title="Result to submit" raw={jsonPretty(pendingResult) || '{}'} environmentId={scope.environmentId} />
               </Stack>
-            </SectionCard>
-          )}
+            </DialogContent>
+            <DialogActions>
+              <Button disabled={busy} onClick={() => setConfirmOpen(false)}>
+                Back
+              </Button>
+              <Button variant="contained" disabled={busy} onClick={submitComplete}>
+                {complete.isPending ? 'Completing…' : 'Complete Task'}
+              </Button>
+            </DialogActions>
+          </Dialog>
 
-          {mode === 'fail' && (
-            <SectionCard title="Mark task as failed">
-              <Stack gap={2}>
+          <Dialog open={failOpen} onClose={() => !busy && setFailOpen(false)} maxWidth="sm" fullWidth>
+            <DialogTitle>Mark task as failed</DialogTitle>
+            <DialogContent>
+              <Stack gap={2} sx={{ pt: 0.5 }}>
                 <Alert severity="warning">Failing is a fail operation: the task is recorded as FAILED and the failure is propagated to the workflow — the workflow decides what happens next. This cannot be undone.</Alert>
                 <TextField
                   label="Reason"
@@ -597,17 +615,17 @@ function TaskDetailDialog({ scope, taskId, actionable, onClose, onToast }: { sco
                   error={!!err}
                   helperText={err || 'Relayed to the workflow as the failure reason.'}
                 />
-                {stepButtons(
-                  <Button key="b" disabled={busy} onClick={() => backTo('view')}>
-                    Back
-                  </Button>,
-                  <Button key="f" variant="contained" color="warning" disabled={busy} onClick={submitFail}>
-                    {fail.isPending ? 'Submitting…' : 'Mark as Failed'}
-                  </Button>,
-                )}
               </Stack>
-            </SectionCard>
-          )}
+            </DialogContent>
+            <DialogActions>
+              <Button disabled={busy} onClick={() => setFailOpen(false)}>
+                Back
+              </Button>
+              <Button variant="contained" color="warning" disabled={busy} onClick={submitFail}>
+                {fail.isPending ? 'Submitting…' : 'Mark as Failed'}
+              </Button>
+            </DialogActions>
+          </Dialog>
         </Stack>
       )}
     </DetailDrawer>
