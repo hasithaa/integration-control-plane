@@ -34,7 +34,23 @@ import { hasComponent, type ComponentScope, type ProjectScope } from '../../nav'
  * (its name) is only a last resort for integrations whose runtime predates the published queue —
  * those cannot be narrowed, which is the pre-queue behaviour, not a new failure.
  */
+/** One integration as the project-level dashboard shows it. */
+export interface WorkflowIntegrationEntry {
+  componentId: string;
+  name: string;
+  /** The route handler, for building the integration's own page URL — distinct from the
+   *  Temporal task queue that overwrites `handler` on WorkflowTarget once queues resolve. */
+  routeHandler: string;
+  workflow: boolean;
+}
+
 export interface WorkflowPageScope {
+  /** Every integration in the project (component level: just this one). */
+  integrations: WorkflowIntegrationEntry[];
+  /** The workflow-typed ones — what the project dashboard lists. */
+  workflowIntegrations: WorkflowIntegrationEntry[];
+  /** Set when the project has exactly one workflow integration: the page behaves as it. */
+  soleWorkflowIntegration?: WorkflowIntegrationEntry;
   componentLevel: boolean;
   project: ReturnType<typeof useProjectByHandler>['data'];
   component: ReturnType<typeof useComponentByHandler>['data'];
@@ -47,7 +63,9 @@ export interface WorkflowPageScope {
    * silently never load the queues, unmapping every integration. */
   activeEnvId: string;
   targets: WorkflowTarget[];
-  /** Integration scope: that integration's real task queue (undefined until published). Project scope: undefined. */
+  /** Integration scope (or a sole-workflow-integration project): that integration's real task
+   *  queue, undefined until published. Multi-integration project scope: undefined — those pages
+   *  render the dashboard and never issue an unscoped listing. */
   taskQueue?: string;
   loading: boolean;
   canViewHumanTasks: boolean;
@@ -86,9 +104,28 @@ export function useWorkflowPageScope(scope: ComponentScope | ProjectScope, selec
   const { data: queues = {} } = useWorkflowTaskQueues({ componentId: gatewayComponentId, environmentId: activeEnvId });
   const targets = baseTargets.map((t) => ({ ...t, handler: queues[t.componentId] ?? t.handler }));
 
+  // Every integration in the project, with its workflow-typing — what the project level renders
+  // as a dashboard now that listings are integration-scoped.
+  const integrations = allComponents.map((c) => ({
+    componentId: c.id,
+    name: c.displayName ?? c.name,
+    routeHandler: c.handler,
+    workflow: isWorkflowIntegration(c.displayType),
+  }));
+  const workflowIntegrations = integrations.filter((i) => i.workflow);
+
+  // A project with exactly ONE workflow integration behaves as that integration: a dashboard of
+  // one card would be a detour, and scoping to it is what the user meant anyway.
+  const soleWorkflowIntegration = !componentLevel && workflowIntegrations.length === 1 ? workflowIntegrations[0] : undefined;
+
   // Integration scope narrows every listing to this integration's queue. Undefined until the queue
   // is published: filtering by the fallback name would silently return nothing.
-  const taskQueue = componentLevel ? queues[componentId] : undefined;
+  //
+  // There is deliberately no project-wide unscoped listing any more. It only ever worked when
+  // every integration shared one Temporal namespace, and even then the gateway's runtime scoped
+  // the answer to its own queue — the project page showed whichever integration happened to be
+  // the gateway. Listing is per integration; the project level selects one.
+  const taskQueue = componentLevel ? queues[componentId] : soleWorkflowIntegration ? queues[soleWorkflowIntegration.componentId] : undefined;
 
   const permScope = componentLevel ? componentId : undefined;
   const canViewHumanTasks = hasAnyPermission([Permissions.WORKFLOW_VIEW_HUMAN_TASKS, Permissions.WORKFLOW_MANAGE_HUMAN_TASKS], projectId, permScope);
@@ -97,7 +134,12 @@ export function useWorkflowPageScope(scope: ComponentScope | ProjectScope, selec
   // otherwise be offered a view that 403s on load.
   const canViewWorkflows = hasAnyPermission([Permissions.WORKFLOW_VIEW_WORKFLOWS, Permissions.WORKFLOW_MANAGE_WORKFLOWS], projectId, permScope);
 
+  const effectiveTargets = soleWorkflowIntegration ? targets.filter((t) => t.componentId === soleWorkflowIntegration.componentId) : targets;
+
   return {
+    integrations,
+    workflowIntegrations,
+    soleWorkflowIntegration,
     componentLevel,
     project,
     component,
@@ -105,7 +147,7 @@ export function useWorkflowPageScope(scope: ComponentScope | ProjectScope, selec
     componentId,
     environments,
     activeEnvId,
-    targets,
+    targets: effectiveTargets,
     taskQueue,
     loading: loadingProject || loadingComponent || loadingEnvs || loadingComponents,
     canViewHumanTasks,

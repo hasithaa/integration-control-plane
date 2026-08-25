@@ -19,6 +19,7 @@
 import { useState, type JSX } from 'react';
 import { useSearchParams } from 'react-router';
 import NotFound from '../components/NotFound';
+import ProjectWorkflowDashboard from '../components/workflow/ProjectWorkflowDashboard';
 import UserPortal from '../components/workflow/UserPortal';
 import WorkflowPageFrame from '../components/workflow/WorkflowPageFrame';
 import { useWorkflowPageScope } from '../components/workflow/useWorkflowPageScope';
@@ -36,7 +37,10 @@ export default function WorkflowTasks(scope: ComponentScope | ProjectScope): JSX
   const [selectedEnvId, setSelectedEnvId] = useState(searchParams.get('env') ?? '');
 
   const pageScope = useWorkflowPageScope(scope, selectedEnvId);
-  const { environments, activeEnvId, targets, taskQueue, component, project, canViewHumanTasks, canViewWorkflows } = pageScope;
+  const { environments, activeEnvId, targets, taskQueue, component, project, canViewHumanTasks, canViewWorkflows, workflowIntegrations, soleWorkflowIntegration } = pageScope;
+  // The project level lists per integration: with several workflow integrations this page is a
+  // dashboard that selects one; with exactly one it behaves as that integration.
+  const dashboard = !componentLevel && !soleWorkflowIntegration;
 
   // One queue now holds both kinds of work; an old ?tab=reviews link presets the type filter.
   // Tasks are gated on the human-task permissions, reviews on the workflow ones (the proxy
@@ -69,18 +73,21 @@ export default function WorkflowTasks(scope: ComponentScope | ProjectScope): JSX
       onEnvChange={setSelectedEnvId}
       permitted={permitted}
       noPermissionMessage={componentLevel ? 'You do not have permission to view tasks for this integration.' : 'You do not have permission to view tasks for this project.'}>
-      {permitted && (
-        <UserPortal
-          targets={targets}
-          environmentId={activeEnvId}
-          taskQueue={taskQueue}
-          canViewTasks={canViewHumanTasks}
-          canViewReviews={canViewWorkflows}
-          initialKind={initialKind}
-          initialTaskId={searchParams.get('task') ?? undefined}
-          initialReviewId={searchParams.get('review') ?? undefined}
-        />
-      )}
+      {permitted &&
+        (dashboard ? (
+          <ProjectWorkflowDashboard scope={scope as ProjectScope} environmentId={activeEnvId} integrations={workflowIntegrations} resource="tasks" canViewHumanTasks={canViewHumanTasks} canViewWorkflows={canViewWorkflows} />
+        ) : (
+          <UserPortal
+            targets={targets}
+            environmentId={activeEnvId}
+            taskQueue={taskQueue}
+            canViewTasks={canViewHumanTasks}
+            canViewReviews={canViewWorkflows}
+            initialKind={initialKind}
+            initialTaskId={searchParams.get('task') ?? undefined}
+            initialReviewId={searchParams.get('review') ?? undefined}
+          />
+        ))}
     </WorkflowPageFrame>
   );
 }

@@ -19,6 +19,7 @@
 import { useEffect, useState, type JSX } from 'react';
 import { Navigate, useNavigate, useSearchParams } from 'react-router';
 import NotFound from '../components/NotFound';
+import ProjectWorkflowDashboard from '../components/workflow/ProjectWorkflowDashboard';
 import AdminPortal from '../components/workflow/AdminPortal';
 import WorkflowPageFrame from '../components/workflow/WorkflowPageFrame';
 import { useWorkflowPageScope } from '../components/workflow/useWorkflowPageScope';
@@ -64,7 +65,10 @@ export default function Workflows(scope: ComponentScope | ProjectScope): JSX.Ele
   }, [urlWorkflowType, urlWorkflowId, setSearchParams]);
 
   const pageScope = useWorkflowPageScope(scope, selectedEnvId);
-  const { environments, activeEnvId, targets, taskQueue, component, project } = pageScope;
+  const { environments, activeEnvId, targets, taskQueue, component, project, workflowIntegrations, soleWorkflowIntegration, canViewHumanTasks, canViewWorkflows } = pageScope;
+  // Same rule as the tasks page: several workflow integrations make the project level a
+  // dashboard; exactly one makes the page behave as that integration.
+  const dashboard = !componentLevel && !soleWorkflowIntegration;
 
   // A deep-linked id might not be a workflow at all — a human task and a review are their own
   // instances. Ask the instance what it is (its starter stamped the kind in its memo) and load
@@ -116,7 +120,11 @@ export default function Workflows(scope: ComponentScope | ProjectScope): JSX.Ele
       onEnvChange={setSelectedEnvId}
       permitted={pageScope.canViewWorkflows}
       noPermissionMessage={componentLevel ? 'You do not have permission to view workflow executions for this integration.' : 'You do not have permission to view workflow executions for this project.'}>
-      <AdminPortal key={deepLinkKey} targets={targets} environmentId={activeEnvId} taskQueue={taskQueue} initialWorkflowType={deepLink.workflowType} initialWorkflowId={deepLink.workflowId} />
+      {dashboard ? (
+        <ProjectWorkflowDashboard scope={scope as ProjectScope} environmentId={activeEnvId} integrations={workflowIntegrations} resource="workflows" canViewHumanTasks={canViewHumanTasks} canViewWorkflows={canViewWorkflows} />
+      ) : (
+        <AdminPortal key={deepLinkKey} targets={targets} environmentId={activeEnvId} taskQueue={taskQueue} initialWorkflowType={deepLink.workflowType} initialWorkflowId={deepLink.workflowId} />
+      )}
     </WorkflowPageFrame>
   );
 }
