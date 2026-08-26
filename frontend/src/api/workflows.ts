@@ -1013,7 +1013,10 @@ export function useWorkflowDefinitionsAcross(targets: WorkflowTarget[], environm
     items,
     // Still "loading" while any target's definitions are being prepared server-side: the list
     // is genuinely incomplete until they arrive.
-    isLoading: results.some((r) => r.isLoading || isPreparing(r.data)),
+    // `isPending` (no answer yet — including a query still disabled while the environment
+    // resolves) and not just `isLoading`: without it a not-yet-started fan-out reported
+    // "loaded, zero items", and the dashboard flashed "0 workflow types" before the number.
+    isLoading: results.some((r) => r.isPending || isPreparing(r.data)),
     failed,
   };
 }

@@ -20,6 +20,7 @@ import { Box, Card, CardActionArea, Chip, Stack, Typography } from '@wso2/oxygen
 import { UserCheck, Workflow } from '@wso2/oxygen-ui-icons-react';
 import type { JSX } from 'react';
 import { useNavigate } from 'react-router';
+import { useProjectRuntimes } from '../../api/queries';
 import { usePendingReviewActivityCount, usePendingTaskCount, useWorkflowDefinitionsAcross, valueOf } from '../../api/workflows';
 import { narrow, resourceUrl, type ProjectScope } from '../../nav';
 import type { WorkflowIntegrationEntry } from './useWorkflowPageScope';
@@ -38,6 +39,7 @@ import type { WorkflowIntegrationEntry } from './useWorkflowPageScope';
  */
 export default function ProjectWorkflowDashboard({
   scope,
+  projectId,
   environmentId,
   integrations,
   resource,
@@ -45,12 +47,18 @@ export default function ProjectWorkflowDashboard({
   canViewWorkflows,
 }: {
   scope: ProjectScope;
+  projectId: string;
   environmentId: string;
   integrations: WorkflowIntegrationEntry[];
   resource: 'tasks' | 'workflows';
   canViewHumanTasks: boolean;
   canViewWorkflows: boolean;
 }): JSX.Element {
+  // Which integrations actually run in THIS environment. The card list comes from the project's
+  // components — environment-independent — so without this, switching to an environment with no
+  // deployments kept showing cards whose numbers could never load.
+  const { data: runtimes, isPending: runtimesPending } = useProjectRuntimes(environmentId, projectId);
+  const deployedIds = runtimes === undefined ? undefined : new Set(runtimes.map((r) => r.component?.id).filter(Boolean));
   if (integrations.length === 0) {
     return <Typography sx={{ py: 4, textAlign: 'center', color: 'text.secondary' }}>No workflow integrations in this project yet. An integration that declares workflows appears here after its first heartbeat.</Typography>;
   }
@@ -63,7 +71,16 @@ export default function ProjectWorkflowDashboard({
       </Typography>
       <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 2 }}>
         {integrations.map((integration) => (
-          <IntegrationCard key={integration.componentId} scope={scope} environmentId={environmentId} integration={integration} resource={resource} canViewHumanTasks={canViewHumanTasks} canViewWorkflows={canViewWorkflows} />
+          <IntegrationCard
+            key={integration.componentId}
+            scope={scope}
+            environmentId={environmentId}
+            integration={integration}
+            resource={resource}
+            canViewHumanTasks={canViewHumanTasks}
+            canViewWorkflows={canViewWorkflows}
+            deployed={runtimesPending || deployedIds === undefined ? undefined : deployedIds.has(integration.componentId)}
+          />
         ))}
       </Box>
     </Stack>
@@ -77,6 +94,7 @@ function IntegrationCard({
   resource,
   canViewHumanTasks,
   canViewWorkflows,
+  deployed,
 }: {
   scope: ProjectScope;
   environmentId: string;
@@ -84,18 +102,22 @@ function IntegrationCard({
   resource: 'tasks' | 'workflows';
   canViewHumanTasks: boolean;
   canViewWorkflows: boolean;
+  /** Whether this integration has a runtime in the selected environment; undefined while resolving. */
+  deployed?: boolean;
 }): JSX.Element {
   const navigate = useNavigate();
   // Component-scoped counts: the server narrows each to that integration's own published queue,
   // so these are correct whatever namespace or Temporal server the integration runs against.
   // Each page's dashboard shows its own facts — tasks for the Human Tasks page, workflow types
   // and reviews for Executions — rather than one card pretending to serve both.
+  // An undeployed integration asks for nothing: there is no runtime to answer, and the numbers
+  // would sit on "…" forever pretending data was coming.
   const componentScope = { componentId: integration.componentId, environmentId };
   const forTasks = resource === 'tasks';
-  const { data: tasksResult } = usePendingTaskCount(componentScope, undefined, forTasks && canViewHumanTasks);
-  const { data: reviewsResult } = usePendingReviewActivityCount(componentScope, undefined, canViewWorkflows);
+  const { data: tasksResult } = usePendingTaskCount(componentScope, undefined, forTasks && canViewHumanTasks && deployed === true);
+  const { data: reviewsResult } = usePendingReviewActivityCount(componentScope, undefined, canViewWorkflows && deployed === true);
   // Definitions come from stored heartbeat metadata — no call into the runtime.
-  const definitions = useWorkflowDefinitionsAcross(forTasks ? [] : [{ componentId: integration.componentId, componentName: integration.name, handler: integration.routeHandler }], environmentId);
+  const definitions = useWorkflowDefinitionsAcross(forTasks || deployed !== true ? [] : [{ componentId: integration.componentId, componentName: integration.name, handler: integration.routeHandler }], environmentId);
   const pendingTasks = valueOf(tasksResult);
   const pendingReviews = valueOf(reviewsResult);
   const pending = (forTasks ? (pendingTasks ?? 0) : 0) + (pendingReviews?.count ?? 0);
@@ -113,34 +135,46 @@ function IntegrationCard({
             </Stack>
             {pending > 0 && <Chip size="small" color="primary" label={pending} />}
           </Stack>
-          <Stack direction="row" gap={2}>
-            {forTasks && canViewHumanTasks && (
-              <Stack direction="row" alignItems="center" gap={0.5} sx={{ color: 'text.secondary' }}>
-                <UserCheck size={13} />
-                <Typography variant="caption">
-                  {pendingTasks ?? '…'} pending task{pendingTasks === 1 ? '' : 's'}
+          {deployed === false ? (
+            // The card list is the project's components; deployment is per environment. Saying so
+            // beats numbers that would never arrive.
+            <Typography variant="caption" color="text.disabled">
+              Not deployed in this environment.
+            </Typography>
+          ) : deployed === undefined ? (
+            <Typography variant="caption" color="text.secondary">
+              Loading…
+            </Typography>
+          ) : (
+            <Stack direction="row" gap={2}>
+              {forTasks && canViewHumanTasks && (
+                <Stack direction="row" alignItems="center" gap={0.5} sx={{ color: 'text.secondary' }}>
+                  <UserCheck size={13} />
+                  <Typography variant="caption">
+                    {pendingTasks ?? '…'} pending task{pendingTasks === 1 ? '' : 's'}
+                  </Typography>
+                </Stack>
+              )}
+              {!forTasks && (
+                <Typography variant="caption" color="text.secondary">
+                  {definitions.isLoading ? '…' : definitions.items.length} workflow type{definitions.isLoading || definitions.items.length !== 1 ? 's' : ''}
                 </Typography>
-              </Stack>
-            )}
-            {!forTasks && (
-              <Typography variant="caption" color="text.secondary">
-                {definitions.isLoading ? '…' : definitions.items.length} workflow type{definitions.items.length === 1 ? '' : 's'}
-              </Typography>
-            )}
-            {canViewWorkflows && (
-              // Reviews are decided in Human Tasks, so this number goes THERE — following it to
-              // the executions list left the reader hunting for rows that page does not show.
-              <Typography
-                variant="caption"
-                sx={{ color: 'text.secondary', textDecoration: 'underline', textDecorationStyle: 'dotted', cursor: 'pointer', '&:hover': { color: 'primary.main' } }}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  navigate(`${resourceUrl(narrow(scope, integration.routeHandler), 'tasks')}?tab=reviews&env=${encodeURIComponent(environmentId)}`);
-                }}>
-                {pendingReviews ? `${pendingReviews.count}${pendingReviews.capped ? '+' : ''}` : '…'} pending review{pendingReviews?.count === 1 ? '' : 's'}
-              </Typography>
-            )}
-          </Stack>
+              )}
+              {canViewWorkflows && (
+                // Reviews are decided in Human Tasks, so this number goes THERE — following it to
+                // the executions list left the reader hunting for rows that page does not show.
+                <Typography
+                  variant="caption"
+                  sx={{ color: 'text.secondary', textDecoration: 'underline', textDecorationStyle: 'dotted', cursor: 'pointer', '&:hover': { color: 'primary.main' } }}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    navigate(`${resourceUrl(narrow(scope, integration.routeHandler), 'tasks')}?tab=reviews&env=${encodeURIComponent(environmentId)}`);
+                  }}>
+                  {pendingReviews ? `${pendingReviews.count}${pendingReviews.capped ? '+' : ''}` : '…'} pending review{pendingReviews && pendingReviews.count === 1 ? '' : 's'}
+                </Typography>
+              )}
+            </Stack>
+          )}
         </Stack>
       </CardActionArea>
     </Card>

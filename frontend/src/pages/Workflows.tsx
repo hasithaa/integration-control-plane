@@ -138,7 +138,7 @@ export default function Workflows(scope: ComponentScope | ProjectScope): JSX.Ele
       permitted={pageScope.canViewWorkflows}
       noPermissionMessage={componentLevel ? 'You do not have permission to view workflow executions for this integration.' : 'You do not have permission to view workflow executions for this project.'}>
       {dashboard ? (
-        <ProjectWorkflowDashboard scope={scope as ProjectScope} environmentId={activeEnvId} integrations={workflowIntegrations} resource="workflows" canViewHumanTasks={canViewHumanTasks} canViewWorkflows={canViewWorkflows} />
+        <ProjectWorkflowDashboard scope={scope as ProjectScope} projectId={pageScope.projectId} environmentId={activeEnvId} integrations={workflowIntegrations} resource="workflows" canViewHumanTasks={canViewHumanTasks} canViewWorkflows={canViewWorkflows} />
       ) : (
         <AdminPortal key={deepLinkKey} targets={targets} environmentId={activeEnvId} taskQueue={taskQueue} initialWorkflowType={deepLink.workflowType} initialWorkflowId={deepLink.workflowId} />
       )}

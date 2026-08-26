@@ -84,7 +84,7 @@ export default function WorkflowTasks(scope: ComponentScope | ProjectScope): JSX
       noPermissionMessage={componentLevel ? 'You do not have permission to view tasks for this integration.' : 'You do not have permission to view tasks for this project.'}>
       {permitted &&
         (dashboard ? (
-          <ProjectWorkflowDashboard scope={scope as ProjectScope} environmentId={activeEnvId} integrations={workflowIntegrations} resource="tasks" canViewHumanTasks={canViewHumanTasks} canViewWorkflows={canViewWorkflows} />
+          <ProjectWorkflowDashboard scope={scope as ProjectScope} projectId={pageScope.projectId} environmentId={activeEnvId} integrations={workflowIntegrations} resource="tasks" canViewHumanTasks={canViewHumanTasks} canViewWorkflows={canViewWorkflows} />
         ) : (
           <UserPortal
             targets={targets}

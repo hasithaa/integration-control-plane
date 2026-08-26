@@ -283,7 +283,7 @@ export interface GqlRuntime {
   osVersion: string;
   registrationTime: string;
   lastHeartbeat: string;
-  component?: { displayName: string };
+  component?: { id?: string; displayName: string };
 }
 
 const RUNTIMES_QUERY = `
@@ -328,7 +328,7 @@ const PROJECT_RUNTIMES_QUERY = `
       items { runtimeId, runtimeName, runtimeType, status, version,
               platformName, platformVersion, platformHome,
               osName, osVersion, registrationTime, lastHeartbeat,
-              component { displayName } }
+              component { id, displayName } }
       pageInfo { total, limit, offset }
     }
   }`;
