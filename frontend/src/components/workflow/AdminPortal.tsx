@@ -672,7 +672,7 @@ export function ReviewActivityDetailDialog({ scope, taskId, onClose, onToast }: 
       onClose={onClose}
       menu={
         canDecide ? (
-          <Authorized permissions={[Permissions.WORKFLOW_MANAGE_WORKFLOWS]}>
+          <Authorized permissions={[Permissions.WORKFLOW_MANAGE_WORKFLOWS, Permissions.WORKFLOW_MANAGE_HUMAN_TASKS]}>
             <HeaderMenu items={[{ label: 'Reject…', color: 'error', disabled: busy, onClick: () => setRejectOpen(true) }]} />
           </Authorized>
         ) : undefined
@@ -710,8 +710,10 @@ export function ReviewActivityDetailDialog({ scope, taskId, onClose, onToast }: 
               only on the explicit "Proceed with changes" path, never here. */}
           {mode !== 'edit' && argsJson && <StructuredValue title="Activity arguments (read-only)" raw={argsJson} environmentId={scope.environmentId} collapsible />}
 
+          {/* Deciding a review is human-task work as much as workflow management: either
+              manage permission offers the decision (the proxy accepts both). */}
           {canDecide && (
-            <Authorized permissions={[Permissions.WORKFLOW_MANAGE_WORKFLOWS]}>
+            <Authorized permissions={[Permissions.WORKFLOW_MANAGE_WORKFLOWS, Permissions.WORKFLOW_MANAGE_HUMAN_TASKS]}>
               <SectionCard title="Decisions">
                 <Stack gap={2}>
                   {/* The two ways forward, side by side — scannable before either is chosen. The

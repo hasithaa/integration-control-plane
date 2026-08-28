@@ -115,7 +115,7 @@ function IntegrationCard({
   const componentScope = { componentId: integration.componentId, environmentId };
   const forTasks = resource === 'tasks';
   const { data: tasksResult } = usePendingTaskCount(componentScope, undefined, forTasks && canViewHumanTasks && deployed === true);
-  const { data: reviewsResult } = usePendingReviewActivityCount(componentScope, undefined, canViewWorkflows && deployed === true);
+  const { data: reviewsResult } = usePendingReviewActivityCount(componentScope, undefined, (canViewHumanTasks || canViewWorkflows) && deployed === true);
   // Definitions come from stored heartbeat metadata — no call into the runtime.
   const definitions = useWorkflowDefinitionsAcross(forTasks || deployed !== true ? [] : [{ componentId: integration.componentId, componentName: integration.name, handler: integration.routeHandler }], environmentId);
   const pendingTasks = valueOf(tasksResult);
@@ -160,7 +160,7 @@ function IntegrationCard({
                   {definitions.isLoading ? '…' : definitions.items.length} workflow type{definitions.isLoading || definitions.items.length !== 1 ? 's' : ''}
                 </Typography>
               )}
-              {canViewWorkflows && (
+              {(canViewHumanTasks || canViewWorkflows) && (
                 // Reviews are decided in Human Tasks, so this number goes THERE — following it to
                 // the executions list left the reader hunting for rows that page does not show.
                 <Typography

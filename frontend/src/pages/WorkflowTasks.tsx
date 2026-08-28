@@ -44,8 +44,9 @@ export default function WorkflowTasks(scope: ComponentScope | ProjectScope): JSX
   const dashboard = !componentLevel && !soleWorkflowIntegration;
 
   // One queue now holds both kinds of work; an old ?tab=reviews link presets the type filter.
-  // Tasks are gated on the human-task permissions, reviews on the workflow ones (the proxy
-  // authorizes /review-activities on that branch) — each source shows only to those allowed.
+  // Tasks are gated on the human-task permissions; reviews are human decisions too, so either
+  // domain shows them (the proxy authorizes /review-activities for both) — each source shows
+  // only to those allowed.
   const initialKind = searchParams.get('tab') === 'reviews' ? ('reviews' as const) : undefined;
   void setSearchParams;
   const permitted = canViewHumanTasks || canViewWorkflows;
@@ -91,7 +92,7 @@ export default function WorkflowTasks(scope: ComponentScope | ProjectScope): JSX
             environmentId={activeEnvId}
             taskQueue={taskQueue}
             canViewTasks={canViewHumanTasks}
-            canViewReviews={canViewWorkflows}
+            canViewReviews={canViewHumanTasks || canViewWorkflows}
             initialKind={initialKind}
             initialTaskId={searchParams.get('task') ?? undefined}
             initialReviewId={searchParams.get('review') ?? undefined}

@@ -129,9 +129,9 @@ export function useWorkflowPageScope(scope: ComponentScope | ProjectScope, selec
 
   const permScope = componentLevel ? componentId : undefined;
   const canViewHumanTasks = hasAnyPermission([Permissions.WORKFLOW_VIEW_HUMAN_TASKS, Permissions.WORKFLOW_MANAGE_HUMAN_TASKS], projectId, permScope);
-  // Review Activities is gated on the workflow permissions, not the human-task ones: the proxy
-  // authorizes /review-activities on that branch, so a Viewer holding only view_human_tasks would
-  // otherwise be offered a view that 403s on load.
+  // Workflow executions are gated on the workflow permissions. Review Activities accepts the
+  // human-task permissions as well — a review is a human decision, so the proxy authorizes
+  // /review-activities for either domain; pages combine the two flags for review visibility.
   const canViewWorkflows = hasAnyPermission([Permissions.WORKFLOW_VIEW_WORKFLOWS, Permissions.WORKFLOW_MANAGE_WORKFLOWS], projectId, permScope);
 
   const effectiveTargets = soleWorkflowIntegration ? targets.filter((t) => t.componentId === soleWorkflowIntegration.componentId) : targets;

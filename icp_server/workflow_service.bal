@@ -357,7 +357,11 @@ function handleWorkflowRequest(string componentId, string environmentId, string[
 
     // 2. Authorize with the dedicated workflow permissions (scoped to the integration).
     //    - human-tasks: browsing needs view_human_tasks; acting needs manage_human_tasks.
-    //    - everything else (workflows lifecycle, definitions, review-activities):
+    //    - review-activities: a review is a human decision about a gated or failed activity,
+    //      so the human-task permissions cover it alongside the workflow ones — a task worker
+    //      must be able to see and decide an approval gate without holding manage_workflows,
+    //      which would also hand them suspend/terminate/reset over every execution.
+    //    - everything else (workflows lifecycle, definitions):
     //      browsing needs view_workflows; any mutation needs manage_workflows.
     string|error projectId = storage:getProjectIdByComponentId(componentId);
     if projectId is error {
@@ -383,6 +387,13 @@ function handleWorkflowRequest(string componentId, string environmentId, string[
             auth:PERMISSION_WORKFLOW_VIEW_HUMAN_TASKS, auth:PERMISSION_WORKFLOW_MANAGE_HUMAN_TASKS,
             auth:PERMISSION_WORKFLOW_VIEW_WORKFLOWS, auth:PERMISSION_WORKFLOW_MANAGE_WORKFLOWS
         ];
+    } else if firstSeg == "review-activities" {
+        allowedPermissions = method == http:GET
+            ? [
+                auth:PERMISSION_WORKFLOW_VIEW_HUMAN_TASKS, auth:PERMISSION_WORKFLOW_MANAGE_HUMAN_TASKS,
+                auth:PERMISSION_WORKFLOW_VIEW_WORKFLOWS, auth:PERMISSION_WORKFLOW_MANAGE_WORKFLOWS
+            ]
+            : [auth:PERMISSION_WORKFLOW_MANAGE_HUMAN_TASKS, auth:PERMISSION_WORKFLOW_MANAGE_WORKFLOWS];
     } else {
         allowedPermissions = method == http:GET
             ? [auth:PERMISSION_WORKFLOW_VIEW_WORKFLOWS, auth:PERMISSION_WORKFLOW_MANAGE_WORKFLOWS]
@@ -509,8 +520,9 @@ function handleWorkflowRequest(string componentId, string environmentId, string[
 }
 
 # The kinds of work a caller may list, as the operation's `kinds` parameter: the intersection
-# of their permissions (human-task perms → HUMAN_TASK, workflow perms → REVIEW_ACTIVITY) and the
-# `kind` they requested. A request for a kind outside their permissions is answered 403.
+# of their permissions (human-task perms → HUMAN_TASK and REVIEW_ACTIVITY, workflow perms →
+# REVIEW_ACTIVITY) and the `kind` they requested. A request for a kind outside their
+# permissions is answered 403.
 #
 # + userId - the caller
 # + scope - the integration/environment scope the permissions are checked in
@@ -529,7 +541,9 @@ isolated function resolveWorkItemKinds(string userId, types:AccessScope scope, j
     if canTasks {
         allowed.push("HUMAN_TASK");
     }
-    if canReviews {
+    // Reviews belong to both domains: they are human decisions (see the authorization
+    // branches above), so holding either side of either domain lists them.
+    if canTasks || canReviews {
         allowed.push("REVIEW_ACTIVITY");
     }
     if requestedKind is string && requestedKind != "" {
