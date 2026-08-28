@@ -17,7 +17,7 @@
  */
 
 import { Alert, Box, Button, CircularProgress, Dialog, DialogActions, DialogContent, DialogContentText, DialogTitle, Drawer, FormControlLabel, IconButton, ListingTable, Radio, RadioGroup, Snackbar, Stack, TextField, Typography } from '@wso2/oxygen-ui';
-import { Ban, OctagonX, PauseCircle, PlayCircle, RotateCcw, X } from '@wso2/oxygen-ui-icons-react';
+import { Ban, BellRing, OctagonX, PauseCircle, PlayCircle, RotateCcw, X } from '@wso2/oxygen-ui-icons-react';
 import { useState } from 'react';
 import WorkflowFlowTab from './WorkflowFlowTab';
 import {
@@ -153,6 +153,13 @@ export default function WorkflowDetailDrawer({ scope, workflowId, onClose }: { s
             <Button size="small" variant="outlined" startIcon={<RotateCcw size={14} />} disabled={resetMutation.isPending} onClick={() => setResetOpen(true)}>
               Reset…
             </Button>
+            {isRunning && instanceGraph?.graphKind === 'agent' && (
+              // The durable agent's built-in wake signal: ends an in-progress sleep tool
+              // call early. Harmless when the agent is not sleeping.
+              <Button size="small" variant="outlined" startIcon={<BellRing size={14} />} disabled={lifecycle.isPending} onClick={() => runAction('wake')}>
+                Wake
+              </Button>
+            )}
             {isRunning && (
               <Button size="small" variant="outlined" startIcon={<PauseCircle size={14} />} disabled={lifecycle.isPending} onClick={() => runAction('suspend')}>
                 Suspend

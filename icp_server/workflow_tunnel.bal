@@ -1015,7 +1015,9 @@ const int WF_COMPLETED_RETENTION_SECONDS = 300;
 // paths now answer 404 instead.
 
 final string[] & readonly WF_INSTANCE_SUBRESOURCES = ["history", "activity-tree", "execution-graph", "reset-points"];
-final string[] & readonly WF_INSTANCE_ACTIONS = ["suspend", "resume", "terminate", "cancel"];
+// "wake" is the durable agent's built-in wake signal: it ends an agent's in-progress
+// `sleep` tool call early. Harmless on a workflow that is not a sleeping agent.
+final string[] & readonly WF_INSTANCE_ACTIONS = ["suspend", "resume", "terminate", "cancel", "wake"];
 
 isolated function mapWorkflowRequestToOperation(string method, string[] wfPath,
         map<json> queryParams, map<json> body) returns [string, map<json>]? {

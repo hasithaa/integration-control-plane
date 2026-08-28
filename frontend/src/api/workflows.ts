@@ -649,7 +649,7 @@ export function invalidateWorkflowQueries(qc: ReturnType<typeof useQueryClient>,
   invalidateForEnvironment(qc, environmentId);
 }
 
-export type WorkflowLifecycleAction = 'suspend' | 'resume' | 'cancel' | 'terminate';
+export type WorkflowLifecycleAction = 'suspend' | 'resume' | 'cancel' | 'terminate' | 'wake';
 
 export function useWorkflowLifecycle(s: Scope) {
   const qc = useQueryClient();
