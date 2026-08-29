@@ -16,10 +16,10 @@
  * under the License.
  */
 
-import { alpha, Box, useTheme } from '@wso2/oxygen-ui';
+import { Box, useTheme } from '@wso2/oxygen-ui';
 import { useMemo, type ReactElement } from 'react';
 import type { InstanceGraph, ModelGraphNode } from '../../api/workflows';
-import { diagramColors, paletteColor, statusColorName } from './graphVisuals';
+import { diagramColors, paletteColor, softPrimary, statusColorName } from './graphVisuals';
 
 /**
  * The agent's star, drawn compactly: channels in on the left (events, human tasks), the agent in
@@ -115,7 +115,10 @@ export default function AgentStarRail({ data, selectedStepId, onSelect }: { data
                 width={NODE_W}
                 height={NODE_H}
                 rx={isAgent ? NODE_H / 2 : 6}
-                fill={selected ? alpha(accent, 0.12) : isAgent ? alpha(accent, 0.08) : c.paper}
+                // softPrimary, not alpha(): under CSS-variables theming the accent is the
+                // string `var(--oxygen-palette-primary-main)`, which alpha() cannot parse —
+                // toggling to the agent map crashed the whole page on it (MUI error #9).
+                fill={selected ? softPrimary(theme, 0.12) : isAgent ? softPrimary(theme, 0.08) : c.paper}
                 stroke={selected ? accent : isAgent ? accent : (statusColor ?? c.divider)}
                 strokeWidth={selected ? 1.75 : statusColor ? 1.5 : 1}
               />
