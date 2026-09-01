@@ -91,7 +91,17 @@ class WorkflowTunnelSweepJob {
 
     *task:Job;
 
+    // Trapped for the same reason as the offline sweep: a panic escaping execute()
+    // unschedules the job — observed in the incident, where this sweep stopped for good
+    // at the four-and-a-half-hour mark and never came back until restart.
     public function execute() {
+        error? result = trap self.tick();
+        if result is error {
+            log:printError("The workflow tunnel sweep tick failed", result);
+        }
+    }
+
+    function tick() returns error? {
         sweepWorkflowTunnelState();
     }
 
