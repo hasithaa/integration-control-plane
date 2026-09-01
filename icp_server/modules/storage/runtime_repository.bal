@@ -192,6 +192,24 @@ type StaleRuntimeRow record {|string runtime_id; string environment_id; string e
 
 // Mark runtimes as offline if they haven't sent heartbeat within timeout
 // For K8S deployments, delete OFFLINE runtimes instead of marking them
+// Runs a claiming UPDATE/DELETE that ends with `RETURNING runtime_id` and collects the
+// claimed ids. The statement runs through `query` because `execute` cannot read RETURNING
+// rows; a failed consumption closes the stream so no pooled connection is abandoned.
+isolated function claimReturningIds(sql:ParameterizedQuery claimQuery) returns string[]|error {
+    stream<record {|string runtime_id;|}, sql:Error?> claimed = dbClient->query(claimQuery);
+    record {|string runtime_id;|}[]|error rows = from record {|string runtime_id;|} r in claimed
+        select r;
+    if rows is error {
+        error? closeResult = claimed.close();
+        if closeResult is error {
+            log:printDebug("Closing the claim stream also failed", closeResult);
+        }
+        return rows;
+    }
+    return from record {|string runtime_id;|} r in rows
+        select r.runtime_id;
+}
+
 public isolated function markOfflineRuntimes() returns error? {
 
     // Use database native timestamp functions for reliable comparison
@@ -232,11 +250,16 @@ public isolated function markOfflineRuntimes() returns error? {
     // heartbeat queues behind the sweep. A locked row belongs to a live transaction,
     // which means that runtime just heartbeat anyway; skipping it is correct, and the
     // next tick picks up anything that still qualifies.
+    // On PostgreSQL the claiming statement also says WHAT it claimed (RETURNING):
+    // SKIP LOCKED can leave a selected row alone — a row whose heartbeat transaction
+    // holds the lock stays RUNNING — and publishing OFFLINE for an unclaimed row would
+    // announce a lie. `()` means "everything the pre-select saw was claimed", which is
+    // what the blocking non-postgres statements guarantee.
+    string[]? claimedIds = ();
     if deploymentType == "K8S" {
         // For K8S deployments, delete runtimes that should be marked offline
-        sql:ParameterizedQuery deleteQuery;
         if dbType == POSTGRESQL {
-            deleteQuery = sql:queryConcat(
+            sql:ParameterizedQuery deleteQuery = sql:queryConcat(
                     `DELETE FROM runtimes
                 WHERE runtime_id IN (
                     SELECT runtime_id FROM runtimes
@@ -245,10 +268,16 @@ public isolated function markOfflineRuntimes() returns error? {
                     AND `,
                     sqlQueryFromString(getTimestampDiffSeconds("last_heartbeat", "CURRENT_TIMESTAMP")),
                     ` > ${heartbeatTimeoutSeconds}
-                    FOR UPDATE SKIP LOCKED)`
+                    FOR UPDATE SKIP LOCKED)
+                RETURNING runtime_id`
             );
+            string[] claimed = check claimReturningIds(deleteQuery);
+            claimedIds = claimed;
+            if claimed.length() > 0 {
+                log:printInfo(string `Successfully deleted ${claimed.length()} offline runtime(s) in K8S deployment`);
+            }
         } else {
-            deleteQuery = sql:queryConcat(
+            sql:ParameterizedQuery deleteQuery = sql:queryConcat(
                     `DELETE FROM runtimes
                 WHERE status != 'OFFLINE'
                 AND last_heartbeat IS NOT NULL
@@ -256,18 +285,16 @@ public isolated function markOfflineRuntimes() returns error? {
                     sqlQueryFromString(getTimestampDiffSeconds("last_heartbeat", "CURRENT_TIMESTAMP")),
                     ` > ${heartbeatTimeoutSeconds}`
             );
-        }
-        sql:ExecutionResult result = check dbClient->execute(deleteQuery);
-
-        int? affectedCount = result.affectedRowCount;
-        if affectedCount is int && affectedCount > 0 {
-            log:printInfo(string `Successfully deleted ${affectedCount} offline runtime(s) in K8S deployment`);
+            sql:ExecutionResult result = check dbClient->execute(deleteQuery);
+            int? affectedCount = result.affectedRowCount;
+            if affectedCount is int && affectedCount > 0 {
+                log:printInfo(string `Successfully deleted ${affectedCount} offline runtime(s) in K8S deployment`);
+            }
         }
     } else {
         // For VM deployments, mark runtimes as offline
-        sql:ParameterizedQuery updateQuery;
         if dbType == POSTGRESQL {
-            updateQuery = sql:queryConcat(
+            sql:ParameterizedQuery updateQuery = sql:queryConcat(
                     `UPDATE runtimes
                 SET status = 'OFFLINE'
                 WHERE runtime_id IN (
@@ -277,10 +304,16 @@ public isolated function markOfflineRuntimes() returns error? {
                     AND `,
                     sqlQueryFromString(getTimestampDiffSeconds("last_heartbeat", "CURRENT_TIMESTAMP")),
                     ` > ${heartbeatTimeoutSeconds}
-                    FOR UPDATE SKIP LOCKED)`
+                    FOR UPDATE SKIP LOCKED)
+                RETURNING runtime_id`
             );
+            string[] claimed = check claimReturningIds(updateQuery);
+            claimedIds = claimed;
+            if claimed.length() > 0 {
+                log:printInfo(string `Successfully marked ${claimed.length()} runtime(s) as OFFLINE`);
+            }
         } else {
-            updateQuery = sql:queryConcat(
+            sql:ParameterizedQuery updateQuery = sql:queryConcat(
                     `UPDATE runtimes
                 SET status = 'OFFLINE'
                 WHERE status != 'OFFLINE'
@@ -289,17 +322,20 @@ public isolated function markOfflineRuntimes() returns error? {
                     sqlQueryFromString(getTimestampDiffSeconds("last_heartbeat", "CURRENT_TIMESTAMP")),
                     ` > ${heartbeatTimeoutSeconds}`
             );
-        }
-        sql:ExecutionResult result = check dbClient->execute(updateQuery);
-
-        int? affectedCount = result.affectedRowCount;
-        if affectedCount is int && affectedCount > 0 {
-            log:printInfo(string `Successfully marked ${affectedCount} runtime(s) as OFFLINE`);
+            sql:ExecutionResult result = check dbClient->execute(updateQuery);
+            int? affectedCount = result.affectedRowCount;
+            if affectedCount is int && affectedCount > 0 {
+                log:printInfo(string `Successfully marked ${affectedCount} runtime(s) as OFFLINE`);
+            }
         }
     }
 
-    // Notify WebSocket subscribers for each runtime that just went offline
+    // Notify WebSocket subscribers for each runtime that ACTUALLY went offline: on
+    // PostgreSQL that is the claimed set, which can be smaller than the pre-select saw.
     foreach StaleRuntimeRow r in staleRows {
+        if claimedIds is string[] && claimedIds.indexOf(r.runtime_id) is () {
+            continue;
+        }
         runtimeBroadcaster.publish(r.environment_id, r.environment_name, r.runtime_id, "OFFLINE");
     }
 }
