@@ -61,28 +61,40 @@ public isolated function processHeartbeat(types:Heartbeat heartbeat, boolean pre
             }
         }
 
-        // Create audit log entry
-        string action = isNewRegistration ? "REGISTER" : "HEARTBEAT";
-        int totalArtifacts = countTotalArtifacts(heartbeat.artifacts);
-        if (totalArtifacts == 0) {
+        int artifactCount = countTotalArtifacts(heartbeat.artifacts);
+        if (artifactCount == 0) {
             fullHeartbeatRequired = true;
             log:printWarn(string `No artifacts reported in heartbeat for runtime ${runtimeId}`);
         }
-        _ = check dbClient->execute(`
-            INSERT INTO audit_logs (
-                runtime_id, action, details
-            ) VALUES (
-                ${runtimeId}, ${action},
-                ${string `Runtime ${action.toLowerAscii()} processed with ${totalArtifacts} total artifacts (${heartbeat.artifacts.services.length()} services,
-                 ${heartbeat.artifacts.listeners.length()} listeners)`}
-            )
-        `);
         check commit;
-        log:printDebug(string `Successfully processed ${action.toLowerAscii()} for runtime ${runtimeId} with ${totalArtifacts} total artifacts`);
 
     } on fail error e {
         log:printError(string `Failed to process heartbeat for runtime ${runtimeId}`, e);
         return error(string `Failed to process heartbeat for runtime ${runtimeId}`, e);
+    }
+
+    // The audit line is written AFTER the commit, outside any transaction, on purpose.
+    // Its insert takes a FOR KEY SHARE lock on the parent runtimes row; inside the
+    // heartbeat transaction that lock was held for the whole artifact bulk-insert, and a
+    // single session stalling there queued the table-wide offline sweep — and, behind the
+    // sweep, every other runtime's heartbeat. Auto-committed here the lock lives for the
+    // insert alone. An audit line is a record of something that already happened, so its
+    // failure is reported but never fails the processed heartbeat.
+    string action = isNewRegistration ? "REGISTER" : "HEARTBEAT";
+    int totalArtifacts = countTotalArtifacts(heartbeat.artifacts);
+    sql:ExecutionResult|sql:Error auditResult = dbClient->execute(`
+        INSERT INTO audit_logs (
+            runtime_id, action, details
+        ) VALUES (
+            ${runtimeId}, ${action},
+            ${string `Runtime ${action.toLowerAscii()} processed with ${totalArtifacts} total artifacts (${heartbeat.artifacts.services.length()} services,
+             ${heartbeat.artifacts.listeners.length()} listeners)`}
+        )
+    `);
+    if auditResult is sql:Error {
+        log:printWarn(string `Failed to write the audit line for runtime ${runtimeId}`, auditResult);
+    } else {
+        log:printDebug(string `Successfully processed ${action.toLowerAscii()} for runtime ${runtimeId} with ${totalArtifacts} total artifacts`);
     }
 
     // Notify WebSocket subscribers only when status actually changes (or on first registration).
@@ -542,23 +554,30 @@ isolated function upsertRuntime(types:Heartbeat heartbeat) returns string?|error
     // Check if a stale OFFLINE runtime with the same component/env/name but different ID exists.
     // Restricting to OFFLINE prevents live sibling replicas in multi-replica deployments from
     // being mistakenly treated as "old restarted instances" and deleted.
-    stream<record {|string runtime_id;|}, sql:Error?> existingByName;
+    //
+    // queryRow, deliberately: this lookup expects at most one row, and a `query` stream that
+    // errors mid-consumption is abandoned without being closed — its pooled connection is
+    // leased forever. Under concurrent heartbeats that is exactly what happened: a burst of
+    // failed consumptions drained the pool permanently, and every periodic job then died with
+    // "Connection is not available". queryRow has no stream lifecycle to leak.
+    record {|string runtime_id;|}|sql:Error existingByName;
     if runtimeName is string {
-        existingByName = dbClient->query(`
+        existingByName = dbClient->queryRow(`
             SELECT runtime_id FROM runtimes
             WHERE component_id = ${heartbeat.component} AND environment_id = ${heartbeat.environment} AND name = ${runtimeName} AND status = 'OFFLINE'
         `);
     } else {
-        existingByName = dbClient->query(`
+        existingByName = dbClient->queryRow(`
             SELECT runtime_id FROM runtimes
             WHERE component_id = ${heartbeat.component} AND environment_id = ${heartbeat.environment} AND name IS NULL AND status = 'OFFLINE'
         `);
     }
-    record {|string runtime_id;|}[] existingByNameRows = check from record {|string runtime_id;|} r in existingByName
-        select r;
+    if existingByName is sql:Error && !(existingByName is sql:NoRowsError) {
+        return existingByName;
+    }
 
-    if existingByNameRows.length() > 0 {
-        string oldId = existingByNameRows[0].runtime_id;
+    if existingByName is record {|string runtime_id;|} {
+        string oldId = existingByName.runtime_id;
         if oldId != runtimeId {
             log:printInfo(string `Runtime ID changed from ${oldId} to ${runtimeId} for ${runtimeName ?: "null"}`);
             log:printDebug(string `Deleting old runtime ${oldId} via reconcile cleanup flow`);
@@ -568,14 +587,17 @@ isolated function upsertRuntime(types:Heartbeat heartbeat) returns string?|error
         }
     }
 
-    // Determine new-vs-existing and capture previous status before the upsert
-    stream<record {|string runtime_id; string status;|}, sql:Error?> existingById = dbClient->query(`
+    // Determine new-vs-existing and capture previous status before the upsert.
+    // queryRow for the same reason as above: no stream to leak when it fails.
+    record {|string runtime_id; string status;|}|sql:Error existingById = dbClient->queryRow(`
         SELECT runtime_id, status FROM runtimes WHERE runtime_id = ${runtimeId}
     `);
-    record {|string runtime_id; string status;|}[] existingByIdRows = check from var r in existingById
-        select r;
-    boolean isNewRegistration = existingByIdRows.length() == 0;
-    string? previousStatus = isNewRegistration ? () : existingByIdRows[0].status;
+    if existingById is sql:Error && !(existingById is sql:NoRowsError) {
+        return existingById;
+    }
+    boolean isNewRegistration = existingById is sql:NoRowsError;
+    string? previousStatus = existingById is record {|string runtime_id; string status;|}
+            ? existingById.status : ();
 
     // Atomic upsert for PostgreSQL, fallback to INSERT/UPDATE for others
     if dbType == POSTGRESQL {

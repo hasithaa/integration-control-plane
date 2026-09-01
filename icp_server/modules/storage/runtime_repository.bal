@@ -209,27 +209,54 @@ public isolated function markOfflineRuntimes() returns error? {
             ` > ${heartbeatTimeoutSeconds}`
     );
 
-    StaleRuntimeRow[] staleRows = [];
-    do {
-        stream<StaleRuntimeRow, sql:Error?> staleStream = dbClient->query(staleSelectQuery);
-        _ = check from StaleRuntimeRow r in staleStream
-            do {
-                staleRows.push(r);
-            };
-    } on fail error e {
-        log:printWarn("Failed to query stale runtimes for event notifications", e);
+    stream<StaleRuntimeRow, sql:Error?> staleStream = dbClient->query(staleSelectQuery);
+    StaleRuntimeRow[]|error collected = from StaleRuntimeRow r in staleStream
+        select r;
+    StaleRuntimeRow[] staleRows;
+    if collected is error {
+        // Close the stream the failed consumption abandoned, or its pooled connection
+        // stays leased — the leak that turns one bad tick into a dead pool.
+        log:printWarn("Failed to query stale runtimes for event notifications", collected);
+        error? closeResult = staleStream.close();
+        if closeResult is error {
+            log:printDebug("Closing the stale-runtimes stream also failed", closeResult);
+        }
+        staleRows = [];
+    } else {
+        staleRows = collected;
     }
 
+    // On PostgreSQL the sweep claims its rows with SKIP LOCKED: the table-wide
+    // UPDATE/DELETE otherwise queues behind any row lock a stalled heartbeat
+    // transaction still holds — and once the sweep is queued, every other runtime's
+    // heartbeat queues behind the sweep. A locked row belongs to a live transaction,
+    // which means that runtime just heartbeat anyway; skipping it is correct, and the
+    // next tick picks up anything that still qualifies.
     if deploymentType == "K8S" {
         // For K8S deployments, delete runtimes that should be marked offline
-        sql:ParameterizedQuery deleteQuery = sql:queryConcat(
-                `DELETE FROM runtimes
-            WHERE status != 'OFFLINE'
-            AND last_heartbeat IS NOT NULL
-            AND `,
-                sqlQueryFromString(getTimestampDiffSeconds("last_heartbeat", "CURRENT_TIMESTAMP")),
-                ` > ${heartbeatTimeoutSeconds}`
-        );
+        sql:ParameterizedQuery deleteQuery;
+        if dbType == POSTGRESQL {
+            deleteQuery = sql:queryConcat(
+                    `DELETE FROM runtimes
+                WHERE runtime_id IN (
+                    SELECT runtime_id FROM runtimes
+                    WHERE status != 'OFFLINE'
+                    AND last_heartbeat IS NOT NULL
+                    AND `,
+                    sqlQueryFromString(getTimestampDiffSeconds("last_heartbeat", "CURRENT_TIMESTAMP")),
+                    ` > ${heartbeatTimeoutSeconds}
+                    FOR UPDATE SKIP LOCKED)`
+            );
+        } else {
+            deleteQuery = sql:queryConcat(
+                    `DELETE FROM runtimes
+                WHERE status != 'OFFLINE'
+                AND last_heartbeat IS NOT NULL
+                AND `,
+                    sqlQueryFromString(getTimestampDiffSeconds("last_heartbeat", "CURRENT_TIMESTAMP")),
+                    ` > ${heartbeatTimeoutSeconds}`
+            );
+        }
         sql:ExecutionResult result = check dbClient->execute(deleteQuery);
 
         int? affectedCount = result.affectedRowCount;
@@ -238,15 +265,31 @@ public isolated function markOfflineRuntimes() returns error? {
         }
     } else {
         // For VM deployments, mark runtimes as offline
-        sql:ParameterizedQuery updateQuery = sql:queryConcat(
-                `UPDATE runtimes
-            SET status = 'OFFLINE'
-            WHERE status != 'OFFLINE'
-            AND last_heartbeat IS NOT NULL
-            AND `,
-                sqlQueryFromString(getTimestampDiffSeconds("last_heartbeat", "CURRENT_TIMESTAMP")),
-                ` > ${heartbeatTimeoutSeconds}`
-        );
+        sql:ParameterizedQuery updateQuery;
+        if dbType == POSTGRESQL {
+            updateQuery = sql:queryConcat(
+                    `UPDATE runtimes
+                SET status = 'OFFLINE'
+                WHERE runtime_id IN (
+                    SELECT runtime_id FROM runtimes
+                    WHERE status != 'OFFLINE'
+                    AND last_heartbeat IS NOT NULL
+                    AND `,
+                    sqlQueryFromString(getTimestampDiffSeconds("last_heartbeat", "CURRENT_TIMESTAMP")),
+                    ` > ${heartbeatTimeoutSeconds}
+                    FOR UPDATE SKIP LOCKED)`
+            );
+        } else {
+            updateQuery = sql:queryConcat(
+                    `UPDATE runtimes
+                SET status = 'OFFLINE'
+                WHERE status != 'OFFLINE'
+                AND last_heartbeat IS NOT NULL
+                AND `,
+                    sqlQueryFromString(getTimestampDiffSeconds("last_heartbeat", "CURRENT_TIMESTAMP")),
+                    ` > ${heartbeatTimeoutSeconds}`
+            );
+        }
         sql:ExecutionResult result = check dbClient->execute(updateQuery);
 
         int? affectedCount = result.affectedRowCount;
