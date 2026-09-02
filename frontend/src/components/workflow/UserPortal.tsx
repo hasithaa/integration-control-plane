@@ -538,7 +538,7 @@ function TaskDetailDialog({ scope, taskId, actionable, onClose, onToast, onDecid
   const canComplete = task?.canComplete !== false;
   const eligibleRoles = task?.eligibleRoles ?? (Array.isArray(task?.roles) ? (task.roles as string[]) : undefined) ?? task?.userRoles;
   const formFields = parseFormSchema(task?.formSchema);
-  const payloadJson = task?.payload !== undefined && task?.payload !== null ? jsonPretty(task.payload) : null;
+  const taskInputJson = task?.taskInput !== undefined && task?.taskInput !== null ? jsonPretty(task.taskInput) : null;
 
   const setFormValue = (name: string, value: string | boolean) => {
     setFormValues((prev) => ({ ...prev, [name]: value }));
@@ -681,7 +681,7 @@ function TaskDetailDialog({ scope, taskId, actionable, onClose, onToast, onDecid
           </SectionCard>
 
           {/* What the workflow handed this task — context to decide with, never something to edit. */}
-          {payloadJson && <StructuredValue title="Task payload (read-only)" raw={payloadJson} environmentId={scope.environmentId} collapsible />}
+          {taskInputJson && <StructuredValue title="Task input (read-only)" raw={taskInputJson} environmentId={scope.environmentId} collapsible />}
 
           {/* The decision, once there is one: who completed or rejected the task, when, and the
               result the workflow resumed with. Present on the execution but previously shown

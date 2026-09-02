@@ -17,7 +17,7 @@
  */
 
 import { Alert, Box, Button, Card, CardActionArea, Chip, CircularProgress, Collapse, Divider, Drawer, FormControlLabel, IconButton, Link, ListingTable, Menu, MenuItem, Stack, Switch, Tooltip, Typography } from '@wso2/oxygen-ui';
-import { ChevronDown, ChevronRight, Copy, EllipsisVertical, Info } from '@wso2/oxygen-ui-icons-react';
+import { Bug, ChevronDown, ChevronRight, Copy, EllipsisVertical, Info } from '@wso2/oxygen-ui-icons-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useState, type JSX, type ReactNode } from 'react';
 import { useNavigate } from 'react-router';
@@ -167,6 +167,36 @@ export function NotProvided({ label = 'Not provided' }: { label?: string }): JSX
     <Typography component="span" variant="body2" sx={{ color: 'text.disabled', fontStyle: 'italic' }}>
       {label}
     </Typography>
+  );
+}
+
+/**
+ * A bug badged with an information mark. What it opens is not a debugger — it is the debug
+ * *information* the run left behind, and the two glyphs together say that where the bug alone
+ * read as "start debugging".
+ */
+export function DebugInfoIcon({ size = 14 }: { size?: number }): JSX.Element {
+  // Large enough to read as an "i" rather than a smudge, and stroked heavier because the
+  // glyph is drawn at roughly half the size it was designed for.
+  const badge = Math.round(size * 0.7);
+  return (
+    <Box component="span" sx={{ position: 'relative', display: 'inline-flex', lineHeight: 0 }}>
+      <Bug size={size} />
+      <Box
+        component="span"
+        sx={{
+          position: 'absolute',
+          right: -2,
+          bottom: -2,
+          display: 'inline-flex',
+          borderRadius: '50%',
+          // Sat on the page behind it, so the badge reads as a badge and not as part of the bug.
+          bgcolor: 'background.paper',
+          lineHeight: 0,
+        }}>
+        <Info size={badge} strokeWidth={2.75} />
+      </Box>
+    </Box>
   );
 }
 

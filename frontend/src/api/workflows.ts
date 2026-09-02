@@ -56,7 +56,8 @@ export interface HumanTask {
   taskName?: string;
   title?: string;
   description?: string;
-  payload?: Record<string, unknown>;
+  /** The read-only context the workflow handed the task — `taskInput` in the module's read model. */
+  taskInput?: Record<string, unknown>;
   formSchema?: Record<string, unknown> | string;
   parentWorkflowId?: string;
   parentWorkflowType?: string;

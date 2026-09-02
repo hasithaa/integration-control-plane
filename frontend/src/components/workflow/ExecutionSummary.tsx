@@ -17,12 +17,12 @@
  */
 
 import { alpha, Box, IconButton, Stack, Tooltip, Typography } from '@wso2/oxygen-ui';
-import { Bug, Copy } from '@wso2/oxygen-ui-icons-react';
+import { Copy } from '@wso2/oxygen-ui-icons-react';
 import type { ReactElement, ReactNode } from 'react';
 import type { WorkflowInstance } from '../../api/workflows';
 
 import { displayWorkflowId, formatDuration, formatTime, jsonPretty } from './helpers';
-import { StatusChip } from './shared';
+import { DebugInfoIcon, StatusChip } from './shared';
 
 /**
  * What happened to this run, extracted: the raw instances.get payload is a debugging document —
@@ -79,9 +79,9 @@ export default function ExecutionSummary({
         </Stack>
         <Stack direction="row" alignItems="center" gap={0.25}>
           {onOpenHistory && (
-            <Tooltip title="Event history (debug)">
-              <IconButton size="small" aria-label="open event history" onClick={onOpenHistory}>
-                <Bug size={14} />
+            <Tooltip title="Debug information: the raw event history">
+              <IconButton size="small" aria-label="open debug information" onClick={onOpenHistory}>
+                <DebugInfoIcon size={14} />
               </IconButton>
             </Tooltip>
           )}

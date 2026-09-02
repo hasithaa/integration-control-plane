@@ -44,8 +44,10 @@ import { useLayout } from '../../contexts/LayoutContext';
 // The drawer fills the main content area only — right-anchored, its left edge lands at the sidebar
 // width so the left navigation stays visible. `sidebarWidth` is supplied live so the panel tracks
 // the sidebar's collapsed/expanded state.
-const drawerPaperSx = (sidebarWidth: number) => ({ '& .MuiDrawer-paper': { width: `calc(100% - ${sidebarWidth}px)`, position: 'fixed', top: 64, height: 'calc(100% - 64px)', borderLeft: '1px solid', borderColor: 'divider' } });
-const headerSx = { px: 2, py: 1.5, borderBottom: '1px solid', borderColor: 'divider' };
+// A flex column, so only the body scrolls: the header (and its close button) and the lifecycle
+// bar stay put however far down the execution the reader is.
+const drawerPaperSx = (sidebarWidth: number) => ({ '& .MuiDrawer-paper': { width: `calc(100% - ${sidebarWidth}px)`, position: 'fixed', top: 64, height: 'calc(100% - 64px)', borderLeft: '1px solid', borderColor: 'divider', display: 'flex', flexDirection: 'column', overflow: 'hidden' } });
+const headerSx = { px: 2, py: 1.5, borderBottom: '1px solid', borderColor: 'divider', flexShrink: 0 };
 const emptySx = { py: 4, textAlign: 'center', color: 'text.secondary' };
 
 /**
@@ -149,7 +151,7 @@ export default function WorkflowDetailDrawer({ scope, workflowId, onClose }: { s
           bulk retry for reviews its failures left behind. */}
       {info && (
         <Authorized permissions={[Permissions.WORKFLOW_MANAGE_WORKFLOWS]}>
-          <Stack direction="row" gap={1} sx={{ px: 2, py: 1.5, borderBottom: '1px solid', borderColor: 'divider', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+          <Stack direction="row" gap={1} sx={{ px: 2, py: 1.5, borderBottom: '1px solid', borderColor: 'divider', flexWrap: 'wrap', justifyContent: 'flex-end', flexShrink: 0 }}>
             <Button size="small" variant="outlined" startIcon={<RotateCcw size={14} />} disabled={resetMutation.isPending} onClick={() => setResetOpen(true)}>
               Reset…
             </Button>
@@ -184,7 +186,7 @@ export default function WorkflowDetailDrawer({ scope, workflowId, onClose }: { s
         </Authorized>
       )}
 
-      <Box sx={{ px: 2, pt: 1 }}>
+      <Box sx={{ flex: 1, minHeight: 0, overflow: 'auto', px: 2, pt: 1, pb: 2 }}>
         <RefreshingNote show={refreshing} />
         {loadingInfo || loadingHistory || loadingGraph || loadingInstanceGraph || preparing ? (
           <CircularProgress size={24} sx={{ display: 'block', mx: 'auto', py: 4 }} />
