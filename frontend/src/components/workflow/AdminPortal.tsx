@@ -25,7 +25,7 @@ import SearchField from '../SearchField';
 import SchemaFormFields from './SchemaFormFields';
 import WorkflowDetailDrawer from './WorkflowDetailDrawer';
 import StructuredValue from './StructuredValue';
-import { buildFormResult, diffFormValues, displayWorkflowId, formatTime, formValuesFromObject, gatewayScope, jsonPretty, ownerLabel, ownerScope, parseFormSchema, sectionTitleSx, sortByStartTimeDesc, splitQualifiedName, type PortalScope } from './helpers';
+import { buildFormResult, diffFormValues, displayWorkflowId, extractNodeExecutionDetail, formatTime, formValuesFromObject, gatewayScope, jsonPretty, ownerLabel, ownerScope, parseFormSchema, sectionTitleSx, sortByStartTimeDesc, splitQualifiedName, type PortalScope } from './helpers';
 import { ActionCard, DetailDrawer, DetailRow, HeaderCell, IdText, ListFooter, NotProvided, RefreshingNote, SchemaDisclosure, SectionCard, StatusChip, SubmitError, WorkflowIdLink, type WorkflowScope } from './shared';
 import Authorized from '../Authorized';
 import { Permissions } from '../../constants/permissions';
@@ -38,6 +38,7 @@ import {
   useReviewDecision,
   useStartWorkflow,
   useWorkflowDefinitionsAcross,
+  useWorkflowHistory,
   useWorkflowInstancesInfinite,
   valueOf,
   type Owned,
@@ -542,6 +543,20 @@ function reviewActivityDisplayName(taskName?: string, activityName?: string, fal
   return task ?? fallback;
 }
 
+/** The reviewer's decision, in words — the three ways a review can end. */
+function reviewDecisionLabel(action: unknown): string | undefined {
+  switch (action) {
+    case 'proceed':
+      return 'Proceeded — reran the activity with the original input';
+    case 'proceed-with-input':
+      return 'Proceeded with changes';
+    case 'reject':
+      return 'Rejected — the failure was surfaced to the workflow';
+    default:
+      return typeof action === 'string' && action ? action : undefined;
+  }
+}
+
 /**
  * The review-activity drawer. A review is a decision about an activity the workflow gated or that
  * failed, so the three decisions get three visibly different paths: Proceed runs (or, for a
@@ -585,6 +600,26 @@ export function ReviewActivityDetailDialog({ scope, taskId, onClose, onToast }: 
   const { workflow } = splitQualifiedName(activity?.taskName ?? activity?.activityName);
   const heading = activity?.title || reviewActivityDisplayName(activity?.taskName, activity?.activityName, taskId);
   const argsJson = activity?.activityArgs ? jsonPretty(activity.activityArgs) : null;
+
+  // A review's decision — the action taken and any input the reviewer submitted — is not part of
+  // the review-activity detail; it lives in the review's own workflow result (a review IS a
+  // workflow, and its taskId is that workflow's id). Fetch its history only once the review is
+  // decided: a pending review has no decision to show, and a history read has a cost. The
+  // terminal result is the decision object: { action, input, feedback?, decidedBy, decidedAt }.
+  const isCompleted = (activity?.status ?? '').toUpperCase() === 'COMPLETED';
+  const { data: decisionHistory } = useWorkflowHistory(scope, isCompleted ? taskId : null);
+  const decision = useMemo<Record<string, unknown> | null>(() => {
+    const events = valueOf(decisionHistory) ?? [];
+    if (!Array.isArray(events) || events.length === 0) return null;
+    const raw = extractNodeExecutionDetail({ id: '', type: 'WORKFLOW' }, events as Array<Record<string, unknown>>).result;
+    if (raw == null) return null;
+    try {
+      const parsed: unknown = JSON.parse(raw);
+      return parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed) ? (parsed as Record<string, unknown>) : null;
+    } catch {
+      return null;
+    }
+  }, [decisionHistory]);
 
   // Seed both copies from the activity's arguments once the detail loads.
   useEffect(() => {
@@ -703,6 +738,23 @@ export function ReviewActivityDetailDialog({ scope, taskId, onClose, onToast }: 
           {/* The arguments as the workflow recorded them: context to decide with. Editing happens
               only on the explicit "Proceed with changes" path, never here. */}
           {mode !== 'edit' && argsJson && <StructuredValue title="Activity arguments (read-only)" raw={argsJson} environmentId={scope.environmentId} collapsible />}
+
+          {/* The decision, once one has been made: what the reviewer decided, who decided, when,
+              and — for a "proceed with changes" — the input they supplied. Read from the review's
+              own workflow result, so a completed review no longer reads as if nothing was decided. */}
+          {isCompleted && (activity.decidedBy || activity.decidedAt || decision) && (
+            <SectionCard title="Decision">
+              <Stack gap={1.25}>
+                <DetailRow label="Decision">{reviewDecisionLabel(decision?.['action']) ?? <NotProvided />}</DetailRow>
+                <DetailRow label="Decided By">{activity.decidedBy ? <IdText id={activity.decidedBy} /> : <NotProvided />}</DetailRow>
+                <DetailRow label="Decided At">{activity.decidedAt ? formatTime(activity.decidedAt) : <NotProvided />}</DetailRow>
+                {typeof decision?.['feedback'] === 'string' && decision['feedback'] ? <DetailRow label="Feedback">{decision['feedback'] as string}</DetailRow> : null}
+              </Stack>
+            </SectionCard>
+          )}
+          {isCompleted && decision?.['input'] != null && (
+            <StructuredValue title="Input the reviewer submitted" raw={jsonPretty(decision['input']) || ''} environmentId={scope.environmentId} collapsible />
+          )}
 
           {/* Deciding a review is human-task work as much as workflow management: either
               manage permission offers the decision (the proxy accepts both). */}

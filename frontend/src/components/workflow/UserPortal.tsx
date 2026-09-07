@@ -24,7 +24,7 @@ import { useEffect, useState, type ReactNode } from 'react';
 import SchemaFormFields from './SchemaFormFields';
 import StructuredValue from './StructuredValue';
 import { buildFormResult, displayWorkflowId, formatTime, gatewayScope, jsonPretty, ownerLabel, ownerScope, parseFormSchema, sortByStartTimeDesc, splitQualifiedName, unescapeRoleName, type PortalScope } from './helpers';
-import { ActionCard, DetailDrawer, DetailRow, HeaderCell, HeaderMenu, IdText, ListFooter, NotProvided, RefreshingNote, SectionCard, StatusChip, SubmitError, WorkflowIdLink, type WorkflowScope } from './shared';
+import { ActionCard, DetailDrawer, DetailRow, HeaderCell, IdText, ListFooter, NotProvided, RefreshingNote, SectionCard, StatusChip, SubmitError, WorkflowIdLink, type WorkflowScope } from './shared';
 import { IntegrationFilter, ReviewActivityDetailDialog, StatusFilter, useTimeRangeFilter, WorkflowNameFilter } from './AdminPortal';
 import Authorized from '../Authorized';
 import { Permissions } from '../../constants/permissions';
@@ -634,14 +634,7 @@ function TaskDetailDialog({ scope, taskId, actionable, onClose, onToast, onDecid
     <DetailDrawer
       title={task ? taskDisplayName(task) : displayWorkflowId(taskId)}
       status={taskDisplayStatus(task?.status)}
-      onClose={onClose}
-      menu={
-        actionable && task ? (
-          <Authorized permissions={[Permissions.WORKFLOW_MANAGE_HUMAN_TASKS]}>
-            <HeaderMenu items={[{ label: 'Mark as failed…', color: 'warning', disabled: busy, onClick: () => setFailOpen(true) }]} />
-          </Authorized>
-        ) : undefined
-      }>
+      onClose={onClose}>
       {waiting ? (
         <CircularProgress size={24} sx={{ display: 'block', mx: 'auto', py: 4 }} />
       ) : taskError || !task ? (
@@ -701,9 +694,9 @@ function TaskDetailDialog({ scope, taskId, actionable, onClose, onToast, onDecid
             <Authorized permissions={[Permissions.WORKFLOW_MANAGE_HUMAN_TASKS]}>
               <SectionCard title="Actions">
                 <Stack gap={2}>
-                  {/* Cards, so the options read side by side before any is chosen. A task offers
-                      one primary action today; the grid is what keeps a second one scannable
-                      rather than stacked when it arrives. */}
+                  {/* Cards, so the two decisions read side by side before either is chosen —
+                      complete the task with a result, or fail it. Failing is a decision the
+                      reviewer makes here, next to Complete, not an action hidden in a menu. */}
                   <Stack direction="row" flexWrap="wrap" gap={1.5}>
                     <ActionCard
                       title="Complete task"
@@ -712,6 +705,19 @@ function TaskDetailDialog({ scope, taskId, actionable, onClose, onToast, onDecid
                       disabled={busy || !canComplete}
                       disabledReason={canComplete ? undefined : 'You do not have a matching role to complete this task'}
                       onClick={() => (mode === 'complete' ? closeComplete() : setMode('complete'))}
+                    />
+                    <ActionCard
+                      title="Mark as failed"
+                      subtitle="Fail the task instead."
+                      info="Records the task as FAILED and propagates the failure to the workflow, which decides what happens next. This cannot be undone."
+                      selected={failOpen}
+                      disabled={busy}
+                      onClick={() => {
+                        // Same single-decision discipline as Complete: close the completion
+                        // editor so the fail dialog is the only decision on screen.
+                        closeComplete();
+                        setFailOpen(true);
+                      }}
                     />
                   </Stack>
 
