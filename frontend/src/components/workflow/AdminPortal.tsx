@@ -722,10 +722,10 @@ export function ReviewActivityDetailDialog({ scope, taskId, onClose, onToast }: 
                   <Stack direction="row" flexWrap="wrap" gap={1.5}>
                     <ActionCard
                       title="Proceed"
-                      subtitle={activity.trigger === 'ON_FAILURE' ? 'Rerun with the original arguments.' : 'Run with the original arguments.'}
+                      subtitle={activity.trigger === 'ON_FAILURE' ? 'Retry with the original arguments.' : 'Run with the original arguments.'}
                       info={
                         activity.trigger === 'ON_FAILURE'
-                          ? 'Reruns the failed activity with the arguments exactly as recorded above. Confirmed before anything runs.'
+                          ? 'Retries the failed activity with the arguments exactly as recorded above. Confirmed before anything runs.'
                           : 'Runs the activity with the arguments exactly as recorded above. Confirmed before anything runs.'
                       }
                       disabled={busy}
@@ -792,7 +792,7 @@ export function ReviewActivityDetailDialog({ scope, taskId, onClose, onToast }: 
             <DialogTitle>Confirm proceed</DialogTitle>
             <DialogContent>
               <Stack gap={2} sx={{ pt: 0.5 }}>
-                <Alert severity="info">The activity {activity.trigger === 'ON_FAILURE' ? 'reruns' : 'runs'} with the original arguments below. This cannot be undone.</Alert>
+                <Alert severity="info">The activity {activity.trigger === 'ON_FAILURE' ? 'retries' : 'runs'} with the original arguments below. This cannot be undone.</Alert>
                 <StructuredValue title="Arguments" raw={argsJson || '{}'} environmentId={scope.environmentId} />
               </Stack>
             </DialogContent>
