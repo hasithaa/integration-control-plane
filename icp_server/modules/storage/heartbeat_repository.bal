@@ -25,10 +25,34 @@ import ballerina/uuid;
 // Runtime hash cache for delta heartbeat optimization
 final cache:Cache hashCache = new (capacity = 1000, evictionFactor = 0.2);
 
+// Serializes the heartbeat transactions. Concurrent heartbeats (four integrations beat
+// within the same fraction of a second) race inside the sql driver: queryRow throws
+// java.util.ConcurrentModificationException from the Java layer, and when that happens
+// inside the transaction below, the transaction's pooled connection is abandoned — it
+// never reaches Postgres (its last statement there is still the previous borrower's), and
+// Hikari never sees it again. Ten such races retire the pool and every request that needs
+// the database times out at 30s. Heartbeats arrive a handful per ten seconds and the
+// transaction takes milliseconds, so serializing them costs nothing and removes the race's
+// trigger on the one path where the failure eats a connection.
+isolated int heartbeatTxGate = 0;
+
 // Process full heartbeat.
 // When preResolved=true, heartbeat.environment/.project/.component are already UUIDs
 // (set by the kid-based heartbeat endpoint) — skip name-to-ID resolution.
 public isolated function processHeartbeat(types:Heartbeat heartbeat, boolean preResolved = false) returns types:HeartbeatResponse|error {
+    lock {
+        heartbeatTxGate += 1;
+        // The lock's isolation rules require cloned transfers; a heartbeat is a small record
+        // and there are a handful of them per ten seconds, so the copies are free.
+        types:HeartbeatResponse|error response = processHeartbeatSerialized(heartbeat.clone(), preResolved);
+        if response is error {
+            return response;
+        }
+        return response.clone();
+    }
+}
+
+isolated function processHeartbeatSerialized(types:Heartbeat heartbeat, boolean preResolved) returns types:HeartbeatResponse|error {
     check validateHeartbeatProtocolAndRuntime(heartbeat);
     if !preResolved {
         check validateHeartbeatResolution(heartbeat);
