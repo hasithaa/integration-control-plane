@@ -26,7 +26,7 @@ import SchemaFormFields from './SchemaFormFields';
 import WorkflowDetailDrawer from './WorkflowDetailDrawer';
 import StructuredValue from './StructuredValue';
 import { buildFormResult, diffFormValues, displayWorkflowId, formatTime, formValuesFromObject, gatewayScope, jsonPretty, ownerLabel, ownerScope, parseFormSchema, sectionTitleSx, sortByStartTimeDesc, splitQualifiedName, type PortalScope } from './helpers';
-import { ActionCard, DetailDrawer, DetailRow, HeaderCell, HeaderMenu, IdText, ListFooter, NotProvided, RefreshingNote, SchemaDisclosure, SectionCard, StatusChip, SubmitError, WorkflowIdLink, type WorkflowScope } from './shared';
+import { ActionCard, DetailDrawer, DetailRow, HeaderCell, IdText, ListFooter, NotProvided, RefreshingNote, SchemaDisclosure, SectionCard, StatusChip, SubmitError, WorkflowIdLink, type WorkflowScope } from './shared';
 import Authorized from '../Authorized';
 import { Permissions } from '../../constants/permissions';
 import {
@@ -529,7 +529,7 @@ export function StartWorkflowDialog({ scope, initialWorkflowType, onClose, onToa
 /** Why a review exists, in words: an approval gate before the run, or a decision after a failure. */
 export function reviewTriggerLabel(trigger?: string): string {
   if (trigger === 'PRE_RUN') return 'Approval gate — review before the activity runs';
-  if (trigger === 'ON_FAILURE') return 'Review failure — decide the failed activity\u2019s rerun';
+  if (trigger === 'ON_FAILURE') return 'Review failure — decide the failed activity\u2019s retry';
   return trigger || '—';
 }
 
@@ -544,10 +544,11 @@ function reviewActivityDisplayName(taskName?: string, activityName?: string, fal
 
 /**
  * The review-activity drawer. A review is a decision about an activity the workflow gated or that
- * failed, so the three decisions get three visibly different paths: Proceed reruns with the
- * original arguments, which therefore stay read-only; Proceed with changes opens an editable copy
- * and states exactly which fields were changed before anything runs; Reject warns that the
- * activity is recorded as failed and the workflow is told. Every path confirms in a second step.
+ * failed, so the three decisions get three visibly different paths: Proceed runs (or, for a
+ * failed activity, retries) with the original arguments, which therefore stay read-only; Proceed
+ * with changes opens an editable copy and states exactly which fields were changed before anything
+ * runs; Reject warns that the activity is recorded as failed and the workflow is told. Every path
+ * confirms in a second step.
  */
 export function ReviewActivityDetailDialog({ scope, taskId, onClose, onToast }: { scope: WorkflowScope; taskId: string; onClose: () => void; onToast: (t: Toast) => void }) {
   const [pausePolling, setPausePolling] = useState(false);
@@ -669,14 +670,7 @@ export function ReviewActivityDetailDialog({ scope, taskId, onClose, onToast }: 
     <DetailDrawer
       title={heading}
       status={activity?.status}
-      onClose={onClose}
-      menu={
-        canDecide ? (
-          <Authorized permissions={[Permissions.WORKFLOW_MANAGE_WORKFLOWS, Permissions.WORKFLOW_MANAGE_HUMAN_TASKS]}>
-            <HeaderMenu items={[{ label: 'Reject…', color: 'error', disabled: busy, onClick: () => setRejectOpen(true) }]} />
-          </Authorized>
-        ) : undefined
-      }>
+      onClose={onClose}>
       {waiting ? (
         <CircularProgress size={24} sx={{ display: 'block', mx: 'auto', py: 4 }} />
       ) : loadError || !activity ? (
@@ -716,9 +710,9 @@ export function ReviewActivityDetailDialog({ scope, taskId, onClose, onToast }: 
             <Authorized permissions={[Permissions.WORKFLOW_MANAGE_WORKFLOWS, Permissions.WORKFLOW_MANAGE_HUMAN_TASKS]}>
               <SectionCard title="Decisions">
                 <Stack gap={2}>
-                  {/* The two ways forward, side by side — scannable before either is chosen. The
-                      fail path is deliberately absent: rejecting lives in the header's overflow
-                      menu, so the page's weight stays on the decision the review exists for. */}
+                  {/* Every way the review can end, side by side and scannable: proceed as-is,
+                      proceed with edits, or reject. Reject is a decision the reviewer makes here,
+                      so it belongs beside the others — not tucked in an overflow menu. */}
                   <Stack direction="row" flexWrap="wrap" gap={1.5}>
                     <ActionCard
                       title="Proceed"
@@ -740,10 +734,23 @@ export function ReviewActivityDetailDialog({ scope, taskId, onClose, onToast }: 
                     <ActionCard
                       title="Proceed with changes"
                       subtitle="Edit the arguments first."
-                      info="Opens the arguments for editing; what changed is shown side by side before the rerun is confirmed."
+                      info="Opens the arguments for editing; what changed is shown side by side before the retry is confirmed."
                       selected={mode === 'edit'}
                       disabled={busy}
                       onClick={() => (mode === 'edit' ? closeEdit() : setMode('edit'))}
+                    />
+                    <ActionCard
+                      title="Reject"
+                      subtitle="Fail the activity instead."
+                      info="Completes the review as a failure and propagates it to the workflow, which decides what happens next. This cannot be undone."
+                      selected={rejectOpen}
+                      disabled={busy}
+                      onClick={() => {
+                        // Same single-decision discipline as Proceed: close any open editor
+                        // so the reject dialog is the only decision on screen.
+                        closeEdit();
+                        setRejectOpen(true);
+                      }}
                     />
                   </Stack>
 
@@ -751,7 +758,7 @@ export function ReviewActivityDetailDialog({ scope, taskId, onClose, onToast }: 
                   {mode === 'edit' && (
                     <Stack gap={2} sx={{ borderTop: '1px solid', borderColor: 'divider', pt: 2 }}>
                       <Typography variant="body2" color="text.secondary">
-                        {formFields ? (changes.length === 0 ? 'No changes yet — edit the values the rerun should use.' : `Changed: ${changes.map((c) => c.label).join(', ')}`) : 'This activity declares no schema; edit the raw JSON the rerun should use.'}
+                        {formFields ? (changes.length === 0 ? 'No changes yet — edit the values to use.' : `Changed: ${changes.map((c) => c.label).join(', ')}`) : 'This activity declares no schema; edit the raw JSON to use.'}
                       </Typography>
                       {formFields ? (
                         <SchemaFormFields fields={formFields} values={formValues} errors={fieldErrors} onChange={setFormValue} />
@@ -810,7 +817,7 @@ export function ReviewActivityDetailDialog({ scope, taskId, onClose, onToast }: 
             <DialogTitle>Review changes</DialogTitle>
             <DialogContent>
               <Stack gap={2} sx={{ pt: 0.5 }}>
-                <Alert severity="info">The activity reruns with the edited arguments below. This cannot be undone.</Alert>
+                <Alert severity="info">The activity {activity.trigger === 'ON_FAILURE' ? 'retries' : 'runs'} with the edited arguments below. This cannot be undone.</Alert>
                 {formFields ? (
                   changes.length === 0 ? (
                     <Typography variant="body2" color="text.secondary">
