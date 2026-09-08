@@ -19,9 +19,10 @@
 /**
  * The `main.bal` imports a BI runtime needs. The ICP bridge import is all of it: when the
  * integration uses ballerina/workflow, the bridge's compiler plugin generates the wiring that
- * publishes workflow metadata and executes ICP-tunneled management commands, and the bridge
- * advertises that capability by itself — no workflow.management import, management REST API,
- * API key, or opt-in flag is involved. Shared by the Add Runtime dialogs.
+ * publishes workflow metadata and executes ICP-tunneled management commands, and — with
+ * `enableWorkflowManagement = true` in the bridge config, the snippet's default; a deployment
+ * sets it false to run headless — advertises that capability. No workflow.management import,
+ * management REST API, or API key is involved. Shared by the Add Runtime dialogs.
  */
 export function runtimeImports(): string {
   return 'import wso2/icp.runtime.bridge as _;';
