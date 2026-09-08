@@ -15,6 +15,7 @@
 // under the License.
 
 import icp_server.types;
+import icp_server.utils;
 
 import ballerina/log;
 import ballerina/sql;
@@ -23,7 +24,7 @@ import ballerina/uuid;
 isolated function generateKeyId() returns string|error {
     // Try up to 5 times to produce a collision-free 8-char key ID.
     foreach int attempt in 0 ..< 5 {
-        string candidate = uuid:createRandomUuid().substring(0, 8);
+        string candidate = utils:secureRandomHex(4);
         log:printDebug(string `generateKeyId: attempt ${attempt}, candidate=${candidate}`);
 
         stream<record {|int cnt;|}, sql:Error?> s =
@@ -41,7 +42,10 @@ isolated function generateKeyId() returns string|error {
 }
 
 isolated function generateKeyMaterial() returns string {
-    return uuid:createRandomUuid() + uuid:createRandomUuid();
+    // 256 bits of java.security.SecureRandom randomness, base64-encoded.
+    // (Previously two ballerina/uuid values - backed by the non-cryptographic
+    // java.util.Random - concatenated together; see WSO2 security review.)
+    return utils:secureRandomBytes(32).toBase64();
 }
 
 // Create a new org-level secret for the given environment.

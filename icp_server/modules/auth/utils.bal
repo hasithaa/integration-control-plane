@@ -17,8 +17,8 @@
 import ballerina/crypto;
 import ballerina/jwt;
 import ballerina/log;
-import ballerina/uuid;
 import icp_server.types as types;
+import icp_server.utils;
 
 // ============================================================================
 // PERMISSION CONSTANTS
@@ -175,25 +175,21 @@ public isolated function extractUserContextV2(string authorizationHeader) return
 // ============================================================================
 
 // Generate a cryptographically secure refresh token
-// Returns a base64-encoded string derived from two UUIDv4 values (~244 bits of randomness).
+// Returns a base64-encoded string of 256 bits of java.security.SecureRandom randomness.
+// (Previously built from two ballerina/uuid v4 values, which are backed by the
+// non-cryptographic java.util.Random - see WSO2 security review.)
 public isolated function generateRefreshToken() returns string {
     log:printDebug("Generating refresh token");
 
-    // Generate a UUID v4 as the base for the refresh token
-    // This provides 128 bits of randomness
-    string uuid1 = uuid:createType4AsString();
-    string uuid2 = uuid:createType4AsString();
-
-    // Combine two UUIDs and encode as base64
-    string refreshToken = (uuid1 + uuid2).toBytes().toBase64();
+    string refreshToken = utils:secureRandomBytes(32).toBase64();
 
     log:printDebug("Refresh token generated successfully");
     return refreshToken;
 }
 
-// Generate a unique token ID (UUID v4)
+// Generate a unique token ID (UUID v4 shape, cryptographically secure randomness)
 public isolated function generateTokenId() returns string {
-    return uuid:createType4AsString();
+    return utils:secureRandomUuidV4();
 }
 
 // Hash a refresh token using SHA-256

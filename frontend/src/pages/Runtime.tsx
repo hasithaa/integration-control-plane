@@ -98,7 +98,7 @@ secret = "${secret}"
 # Set to false to run headless: heartbeats only, no workflow management from the ICP.
 enableWorkflowManagement = true
 # serverUrl = "https://<hostname>:9445"
-# runtimeBaseUrl = "http://<hostname>"`;
+# runtimeHostUrl = "http://<hostname>"`;
 }
 
 function AddRuntimeModal({
