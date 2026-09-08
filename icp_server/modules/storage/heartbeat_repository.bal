@@ -62,6 +62,9 @@ isolated function processHeartbeatSerialized(types:Heartbeat heartbeat, boolean 
     boolean isNewRegistration = false;
     boolean fullHeartbeatRequired = false;
     string runtimeId = heartbeat.runtimeId;
+    // Counted once inside the transaction and read again by the audit line below: walking a
+    // large artifact payload twice for the same unmutated data is pure waste.
+    int artifactCount = 0;
 
     transaction {
         previousStatus = check upsertRuntime(heartbeat);
@@ -85,7 +88,7 @@ isolated function processHeartbeatSerialized(types:Heartbeat heartbeat, boolean 
             }
         }
 
-        int artifactCount = countTotalArtifacts(heartbeat.artifacts);
+        artifactCount = countTotalArtifacts(heartbeat.artifacts);
         if (artifactCount == 0) {
             fullHeartbeatRequired = true;
             log:printWarn(string `No artifacts reported in heartbeat for runtime ${runtimeId}`);
@@ -105,20 +108,19 @@ isolated function processHeartbeatSerialized(types:Heartbeat heartbeat, boolean 
     // insert alone. An audit line is a record of something that already happened, so its
     // failure is reported but never fails the processed heartbeat.
     string action = isNewRegistration ? "REGISTER" : "HEARTBEAT";
-    int totalArtifacts = countTotalArtifacts(heartbeat.artifacts);
     sql:ExecutionResult|sql:Error auditResult = dbClient->execute(`
         INSERT INTO audit_logs (
             runtime_id, action, details
         ) VALUES (
             ${runtimeId}, ${action},
-            ${string `Runtime ${action.toLowerAscii()} processed with ${totalArtifacts} total artifacts (${heartbeat.artifacts.services.length()} services,
+            ${string `Runtime ${action.toLowerAscii()} processed with ${artifactCount} total artifacts (${heartbeat.artifacts.services.length()} services,
              ${heartbeat.artifacts.listeners.length()} listeners)`}
         )
     `);
     if auditResult is sql:Error {
         log:printWarn(string `Failed to write the audit line for runtime ${runtimeId}`, auditResult);
     } else {
-        log:printDebug(string `Successfully processed ${action.toLowerAscii()} for runtime ${runtimeId} with ${totalArtifacts} total artifacts`);
+        log:printDebug(string `Successfully processed ${action.toLowerAscii()} for runtime ${runtimeId} with ${artifactCount} total artifacts`);
     }
 
     // Notify WebSocket subscribers only when status actually changes (or on first registration).
@@ -586,6 +588,13 @@ isolated function upsertRuntime(types:Heartbeat heartbeat) returns string?|error
     // leased forever. Under concurrent heartbeats that is exactly what happened: a burst of
     // failed consumptions drained the pool permanently, and every periodic job then died with
     // "Connection is not available". queryRow has no stream lifecycle to leak.
+    //
+    // The check-for-error-except-NoRowsError dance below repeats at every at-most-one-row read,
+    // because queryRow reports absence as an error. It cannot be factored into a shared
+    // `queryOptionalRow` helper: forwarding the caller's row type needs a dependently-typed
+    // function, and the compiler rejects one with a Ballerina body ("a function with a
+    // non-'external' function body cannot be a dependently-typed function"). A helper that
+    // erased the row type to `record {}` would only move the cast to every call site.
     record {|string runtime_id;|}|sql:Error existingByName;
     if runtimeName is string {
         existingByName = dbClient->queryRow(`

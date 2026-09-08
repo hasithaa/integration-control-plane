@@ -91,8 +91,15 @@ class WorkflowTunnelSweepJob {
 
     *task:Job;
 
+    // Trapped for the same reason as the offline sweep above: a panic escaping execute()
+    // unschedules the job for the life of the process, and nothing reschedules it. This job
+    // is what turns an unconfirmed mutation into a notification, so a dead sweep loses those
+    // silently rather than loudly.
     public function execute() {
-        sweepWorkflowTunnelState();
+        error? result = trap sweepWorkflowTunnelState();
+        if result is error {
+            log:printError("The workflow tunnel sweep tick failed", result);
+        }
     }
 
 }
