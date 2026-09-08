@@ -42,6 +42,7 @@ import {
   useWorkItemsInfinite,
   valueOf,
   type HumanTask,
+  type WorkItemRow,
   type WorkflowDefinition,
   type WorkflowTarget,
 } from '../../api/workflows';
@@ -78,7 +79,7 @@ type Toast = { severity: 'success' | 'error'; message: string } | null;
 
 type WorkKind = 'task' | 'review';
 
-interface WorkItem {
+export interface WorkItem {
   kind: WorkKind;
   id: string;
   title: string;
@@ -91,6 +92,8 @@ interface WorkItem {
   trigger?: string;
   /** Task only: pending but the caller holds no completing role. */
   readOnly?: boolean;
+  /** Project inbox only: the integration that answered for this row, so its own drawer can open. */
+  componentId?: string;
 }
 
 const WORK_TYPE_OPTIONS = [
@@ -106,6 +109,28 @@ const WORK_STATUSES = ['All', 'PENDING', 'COMPLETED', 'FAILED', 'CANCELED', 'TER
 
 /** Compact trigger label for list chips. */
 const triggerChipLabel = (trigger?: string): string => (trigger === 'ON_FAILURE' ? 'Review failure' : trigger === 'PRE_RUN' ? 'Approval gate' : 'Review');
+
+/**
+ * One work-queue row as the table shows it. The runtime reports both kinds through one listing
+ * (`work-items`); this is the single place its row becomes the table's — the integration queue
+ * and the project inbox map through the same function so they can never drift.
+ */
+export function toWorkItem(t: WorkItemRow): WorkItem {
+  const kind: WorkKind = t.kind === 'REVIEW_ACTIVITY' ? 'review' : 'task';
+  const { workflow, task } = splitQualifiedName(t.taskName);
+  return {
+    kind,
+    id: t.taskId,
+    title: t.title || task || t.taskId,
+    workflowName: t.parentWorkflowType ?? workflow,
+    parentWorkflowId: t.parentWorkflowId,
+    taskQueue: t.taskQueue,
+    status: t.status,
+    startTime: t.startTime,
+    trigger: t.trigger,
+    readOnly: kind === 'task' && t.status === 'PENDING' && t.canComplete === false,
+  };
+}
 
 /** Hosts the unified queue and owns the toast everything under it reports through. */
 export default function UserPortal({
@@ -145,7 +170,7 @@ interface WorkItemSelection {
   allSelected: boolean;
 }
 
-function WorkItemTable({ items, onOpen, environmentId, integrationLabel, selection }: { items: WorkItem[]; onOpen: (w: WorkItem) => void; environmentId: string; integrationLabel?: (taskQueue?: string) => string; selection?: WorkItemSelection }) {
+export function WorkItemTable({ items, onOpen, environmentId, integrationLabel, selection }: { items: WorkItem[]; onOpen: (w: WorkItem) => void; environmentId: string; integrationLabel?: (taskQueue?: string) => string; selection?: WorkItemSelection }) {
   return (
     <ListingTable>
       <ListingTable.Head>
@@ -296,22 +321,7 @@ function WorkQueue({
       .map((p) => valueOf(p))
       .filter((p) => p !== undefined)
       .flatMap((p) => p?.items ?? [])
-      .map((t) => {
-        const kind: WorkKind = t.kind === 'REVIEW_ACTIVITY' ? 'review' : 'task';
-        const { workflow, task } = splitQualifiedName(t.taskName);
-        return {
-          kind,
-          id: t.taskId,
-          title: t.title || task || t.taskId,
-          workflowName: t.parentWorkflowType ?? workflow,
-          parentWorkflowId: t.parentWorkflowId,
-          taskQueue: t.taskQueue,
-          status: t.status,
-          startTime: t.startTime,
-          trigger: t.trigger,
-          readOnly: kind === 'task' && t.status === 'PENDING' && t.canComplete === false,
-        };
-      }),
+      .map(toWorkItem),
   );
 
   const isLoading = query.isLoading;
@@ -502,7 +512,7 @@ function WorkQueue({
  * what it does before it can be taken — completing is the task's purpose and leads; failing is a
  * task *operation* with consequences, so it is quieter and warns. Both submit in two steps.
  */
-function TaskDetailDialog({ scope, taskId, actionable, onClose, onToast, onDecided }: { scope: WorkflowScope; taskId: string; actionable?: boolean; onClose: () => void; onToast: (t: Toast) => void; onDecided?: (message: string) => void }) {
+export function TaskDetailDialog({ scope, taskId, actionable, onClose, onToast, onDecided }: { scope: WorkflowScope; taskId: string; actionable?: boolean; onClose: () => void; onToast: (t: Toast) => void; onDecided?: (message: string) => void }) {
   const [pausePolling, setPausePolling] = useState(false);
   const { data: taskResult, isLoading, error: taskError } = useHumanTask(scope, taskId, pausePolling);
   const task = valueOf(taskResult);

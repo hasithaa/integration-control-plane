@@ -16,37 +16,45 @@
  * under the License.
  */
 
-import { Box, Card, CardActionArea, Chip, ListingTable, Stack, Tooltip, Typography } from '@wso2/oxygen-ui';
-import { UserCheck, Workflow } from '@wso2/oxygen-ui-icons-react';
-import { useQueries } from '@tanstack/react-query';
-import { useMemo, type JSX } from 'react';
+import { Alert, Chip, CircularProgress, ListingTable, Snackbar, Stack, Tooltip, Typography } from '@wso2/oxygen-ui';
+import { Workflow } from '@wso2/oxygen-ui-icons-react';
+import { useQueries, useQueryClient } from '@tanstack/react-query';
+import { useMemo, useState, type JSX } from 'react';
 import { useNavigate } from 'react-router';
 import { useProjectRuntimes, type GqlRuntime } from '../../api/queries';
 import {
   instanceCountQueryOptions,
+  invalidateWorkflowQueries,
+  isPreparing,
   pendingReviewCountQueryOptions,
+  pendingWorkItemsQueryOptions,
   totalPendingTaskCountQueryOptions,
-  usePendingReviewActivityCount,
-  usePendingTaskCount,
   useWorkflowDefinitionsAcross,
   valueOf,
   type CappedCount,
   type PendingReviewCount,
 } from '../../api/workflows';
 import { narrow, resourceUrl, type ProjectScope } from '../../nav';
+import { formatDistanceToNow } from '../../utils/time';
+import { ReviewActivityDetailDialog, type Toast } from './AdminPortal';
 import { HeaderCell, StatusChip } from './shared';
+import { TaskDetailDialog, toWorkItem, WorkItemTable, type WorkItem } from './UserPortal';
 import type { WorkflowIntegrationEntry } from './useWorkflowPageScope';
 
 /**
  * The project level. Listing every instance project-wide is impossible by construction —
  * integrations may run against different Temporal servers or namespaces, and no single runtime
- * can see the others' work — so the project answers a different question: how is each
- * integration's workflow doing right now? For Executions that is a stats table, one row per
- * integration in the selected environment, with the numbers that say healthy-or-not (runtime
- * status, what is running, what failed today, what is waiting on a person) and a drill-down into
- * that integration's own pages. Human Tasks keeps its per-integration cards: that page is
- * personal — only work the caller can act on — and a card per integration is how a person picks
- * where their queue is.
+ * can see the others' work — so the project answers different questions, each by fanning out one
+ * bounded request per integration and merging client-side.
+ *
+ * Executions: how is each integration's workflow doing right now? A stats table, one row per
+ * integration in the selected environment, with the numbers that say healthy-or-not and a
+ * drill-down into that integration's own pages.
+ *
+ * Human Tasks: what is waiting for ME, across the project? That page is personal — only work the
+ * caller can act on — so the project level is an inbox: every pending task and review from every
+ * integration in one list, oldest first, each opening its own drawer in place. Picking an
+ * integration first was a menu standing where the work should be.
  */
 export default function ProjectWorkflowDashboard({
   scope,
@@ -77,18 +85,7 @@ export default function ProjectWorkflowDashboard({
   if (resource === 'workflows') {
     return <WorkflowStatsTable scope={scope} environmentId={environmentId} integrations={integrations} runtimeByComponent={runtimeByComponent} deployedIds={runtimesPending ? undefined : deployedIds} canViewHumanTasks={canViewHumanTasks} canViewWorkflows={canViewWorkflows} />;
   }
-  return (
-    <Stack gap={2}>
-      <Typography variant="body2" color="text.secondary">
-        Pick an integration to see its tasks and review activities.
-      </Typography>
-      <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 2 }}>
-        {integrations.map((integration) => (
-          <IntegrationCard key={integration.componentId} scope={scope} environmentId={environmentId} integration={integration} canViewHumanTasks={canViewHumanTasks} canViewWorkflows={canViewWorkflows} deployed={runtimesPending || deployedIds === undefined ? undefined : deployedIds.has(integration.componentId)} />
-        ))}
-      </Box>
-    </Stack>
-  );
+  return <ProjectInbox scope={scope} environmentId={environmentId} integrations={integrations} deployedIds={runtimesPending ? undefined : deployedIds} />;
 }
 
 /** One runtime per component — the most recently heard from, when an integration has several. */
@@ -101,6 +98,138 @@ function latestRuntimeByComponent(runtimes: GqlRuntime[] | undefined): Map<strin
     if (!current || (r.lastHeartbeat ?? '') > (current.lastHeartbeat ?? '')) byComponent.set(id, r);
   }
   return byComponent;
+}
+
+// ── The inbox ──
+
+/**
+ * Every pending task and review the caller can act on, from every deployed integration, in one
+ * list — oldest first, because the oldest item is the one someone has been waiting on longest.
+ * One bounded page per integration: the runtime already scopes the listing to what this caller's
+ * roles allow, so nothing is filtered here, and the page size bounds the cost of the fan-out.
+ */
+function ProjectInbox({ scope, environmentId, integrations, deployedIds }: { scope: ProjectScope; environmentId: string; integrations: WorkflowIntegrationEntry[]; deployedIds: Set<string> | undefined }): JSX.Element {
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const [toast, setToast] = useState<Toast>(null);
+  const [openTask, setOpenTask] = useState<WorkItem | null>(null);
+  const [openReview, setOpenReview] = useState<WorkItem | null>(null);
+
+  const deployed = useMemo(() => integrations.filter((i) => deployedIds?.has(i.componentId)), [integrations, deployedIds]);
+  const results = useQueries({ queries: deployed.map((d) => pendingWorkItemsQueryOptions({ componentId: d.componentId, environmentId })) });
+
+  // Merge the pages. Each item remembers the integration that answered for it (its drawer is
+  // that integration's), and the table labels rows by task queue, so the queue → name map is
+  // built from the rows themselves with the integration's own name as the fallback.
+  const { items, labels, failed, perIntegration } = useMemo(() => {
+    const merged: WorkItem[] = [];
+    const labels = new Map<string, string>();
+    const failed: string[] = [];
+    const perIntegration = new Map<string, number>();
+    deployed.forEach((d, i) => {
+      const r = results[i];
+      labels.set(d.componentId, d.name);
+      if (r?.error) failed.push(d.name);
+      const rows = valueOf(r?.data)?.items ?? [];
+      perIntegration.set(d.componentId, rows.length);
+      for (const row of rows) {
+        const item = toWorkItem(row);
+        item.componentId = d.componentId;
+        if (item.taskQueue) labels.set(item.taskQueue, d.name);
+        else item.taskQueue = d.componentId;
+        merged.push(item);
+      }
+    });
+    // Oldest first — ISO-8601 sorts lexicographically. Items without a time sink to the end.
+    merged.sort((a, b) => (a.startTime ?? '￿').localeCompare(b.startTime ?? '￿'));
+    return { items: merged, labels, failed, perIntegration };
+    // `results` is a fresh array each render; recomputing is cheap and keeps the list current.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [deployed, ...results.map((r) => r.data), ...results.map((r) => r.error)]);
+
+  const preparing = deployedIds === undefined || results.some((r) => r.isPending || isPreparing(r.data));
+  const tasks = items.filter((w) => w.kind === 'task').length;
+  const reviews = items.length - tasks;
+  const oldest = items[0]?.startTime;
+  const undeployed = deployedIds === undefined ? 0 : integrations.length - deployed.length;
+
+  const refresh = () => invalidateWorkflowQueries(queryClient, environmentId);
+  const openQueue = (componentId: string) => {
+    const integration = integrations.find((i) => i.componentId === componentId);
+    if (integration) navigate(`${resourceUrl(narrow(scope, integration.routeHandler), 'tasks')}?env=${encodeURIComponent(environmentId)}`);
+  };
+
+  return (
+    <Stack gap={2}>
+      <Typography variant="body2" color="text.secondary">
+        Everything waiting for you across this environment's integrations, oldest first. Open an item to decide it here; an integration's name opens its own queue.
+      </Typography>
+
+      {/* The strip: the shape of the queue at a glance, and where it comes from. */}
+      <Stack direction="row" flexWrap="wrap" gap={1} alignItems="center">
+        <Chip size="small" variant={tasks > 0 ? 'filled' : 'outlined'} color={tasks > 0 ? 'primary' : 'default'} label={preparing ? '… tasks' : `${tasks} task${tasks === 1 ? '' : 's'}`} />
+        <Chip size="small" variant={reviews > 0 ? 'filled' : 'outlined'} color={reviews > 0 ? 'primary' : 'default'} label={preparing ? '… reviews' : `${reviews} review${reviews === 1 ? '' : 's'}`} />
+        {!preparing && oldest && <Chip size="small" variant="outlined" label={`oldest waiting ${formatDistanceToNow(oldest)}`} />}
+        {deployed.length > 1 &&
+          deployed.map((d) => (
+            <Tooltip key={d.componentId} title={`Open the ${d.name} queue`}>
+              <Chip size="small" variant="outlined" onClick={() => openQueue(d.componentId)} label={`${d.name} · ${preparing && perIntegration.get(d.componentId) === undefined ? '…' : (perIntegration.get(d.componentId) ?? 0)}`} sx={{ cursor: 'pointer' }} />
+            </Tooltip>
+          ))}
+        {undeployed > 0 && (
+          <Typography variant="caption" color="text.disabled">
+            {undeployed} integration{undeployed === 1 ? '' : 's'} not deployed in this environment.
+          </Typography>
+        )}
+      </Stack>
+
+      {failed.length > 0 && <Alert severity="warning">{`Could not load the queue from ${failed.join(', ')}; the list may be missing their items.`}</Alert>}
+
+      {preparing && items.length === 0 ? (
+        <CircularProgress size={24} sx={{ display: 'block', mx: 'auto', py: 4 }} />
+      ) : items.length === 0 ? (
+        <Typography sx={{ py: 4, textAlign: 'center', color: 'text.secondary' }}>Nothing is waiting for you across {deployed.length === 1 ? 'this integration' : `these ${deployed.length} integrations`}.</Typography>
+      ) : (
+        <WorkItemTable items={items} onOpen={(w) => (w.kind === 'review' ? setOpenReview(w) : setOpenTask(w))} environmentId={environmentId} integrationLabel={(q) => labels.get(q ?? '') ?? q ?? '—'} />
+      )}
+
+      {/* Each item opens the drawer its own integration would — decisions go to the runtime that
+          owns the item, and a decision refreshes every view of this environment. */}
+      {openTask?.componentId && (
+        <TaskDetailDialog
+          scope={{ componentId: openTask.componentId, environmentId }}
+          taskId={openTask.id}
+          actionable={!openTask.readOnly}
+          onClose={() => setOpenTask(null)}
+          onToast={setToast}
+          onDecided={(message) => {
+            setOpenTask(null);
+            setToast({ severity: 'success', message });
+            refresh();
+          }}
+        />
+      )}
+      {openReview?.componentId && (
+        <ReviewActivityDetailDialog
+          scope={{ componentId: openReview.componentId, environmentId }}
+          taskId={openReview.id}
+          onClose={() => {
+            setOpenReview(null);
+            refresh();
+          }}
+          onToast={setToast}
+        />
+      )}
+
+      <Snackbar open={toast !== null} autoHideDuration={4000} onClose={() => setToast(null)} anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}>
+        {toast ? (
+          <Alert severity={toast.severity} onClose={() => setToast(null)} sx={{ width: '100%' }}>
+            {toast.message}
+          </Alert>
+        ) : undefined}
+      </Snackbar>
+    </Stack>
+  );
 }
 
 // ── The stats table ──
@@ -335,85 +464,5 @@ function WorkflowStatsTable({
         </ListingTable.Body>
       </ListingTable>
     </Stack>
-  );
-}
-
-// ── The Human Tasks cards ──
-
-function IntegrationCard({
-  scope,
-  environmentId,
-  integration,
-  canViewHumanTasks,
-  canViewWorkflows,
-  deployed,
-}: {
-  scope: ProjectScope;
-  environmentId: string;
-  integration: WorkflowIntegrationEntry;
-  canViewHumanTasks: boolean;
-  canViewWorkflows: boolean;
-  /** Whether this integration has a runtime in the selected environment; undefined while resolving. */
-  deployed?: boolean;
-}): JSX.Element {
-  const navigate = useNavigate();
-  // Component-scoped counts: the server narrows each to that integration's own published queue,
-  // so these are correct whatever namespace or Temporal server the integration runs against.
-  // An undeployed integration asks for nothing: there is no runtime to answer, and the numbers
-  // would sit on "…" forever pretending data was coming.
-  const componentScope = { componentId: integration.componentId, environmentId };
-  const { data: tasksResult } = usePendingTaskCount(componentScope, undefined, canViewHumanTasks && deployed === true);
-  const { data: reviewsResult } = usePendingReviewActivityCount(componentScope, undefined, (canViewHumanTasks || canViewWorkflows) && deployed === true);
-  const pendingTasks = valueOf(tasksResult);
-  const pendingReviews = valueOf(reviewsResult);
-  const pending = (pendingTasks ?? 0) + (pendingReviews?.count ?? 0);
-
-  return (
-    <Card variant="outlined">
-      <CardActionArea onClick={() => navigate(`${resourceUrl(narrow(scope, integration.routeHandler), 'tasks')}?env=${encodeURIComponent(environmentId)}`)} sx={{ p: 2, height: '100%' }}>
-        <Stack gap={1}>
-          <Stack direction="row" alignItems="center" justifyContent="space-between" gap={1}>
-            <Stack direction="row" alignItems="center" gap={1} sx={{ minWidth: 0 }}>
-              <Workflow size={16} />
-              <Typography variant="subtitle2" sx={{ fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                {integration.name}
-              </Typography>
-            </Stack>
-            {pending > 0 && <Chip size="small" color="primary" label={pending} />}
-          </Stack>
-          {deployed === false ? (
-            <Typography variant="caption" color="text.disabled">
-              Not deployed in this environment.
-            </Typography>
-          ) : deployed === undefined ? (
-            <Typography variant="caption" color="text.secondary">
-              Loading…
-            </Typography>
-          ) : (
-            <Stack direction="row" gap={2}>
-              {canViewHumanTasks && (
-                <Stack direction="row" alignItems="center" gap={0.5} sx={{ color: 'text.secondary' }}>
-                  <UserCheck size={13} />
-                  <Typography variant="caption">
-                    {pendingTasks ?? '…'} pending task{pendingTasks === 1 ? '' : 's'}
-                  </Typography>
-                </Stack>
-              )}
-              {(canViewHumanTasks || canViewWorkflows) && (
-                <Typography
-                  variant="caption"
-                  sx={{ color: 'text.secondary', textDecoration: 'underline', textDecorationStyle: 'dotted', cursor: 'pointer', '&:hover': { color: 'primary.main' } }}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    navigate(`${resourceUrl(narrow(scope, integration.routeHandler), 'tasks')}?tab=reviews&env=${encodeURIComponent(environmentId)}`);
-                  }}>
-                  {pendingReviews ? `${pendingReviews.count}${pendingReviews.capped ? '+' : ''}` : '…'} pending review{pendingReviews && pendingReviews.count === 1 ? '' : 's'}
-                </Typography>
-              )}
-            </Stack>
-          )}
-        </Stack>
-      </CardActionArea>
-    </Card>
   );
 }

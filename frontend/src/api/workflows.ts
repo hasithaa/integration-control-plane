@@ -829,6 +829,21 @@ export function useWorkItemsInfinite(s: Scope, filters: Omit<WorkItemFilters, 'p
   });
 }
 
+/**
+ * The first page of one integration's PENDING work items — tasks and reviews together, as the
+ * runtime lists them, scoped to what the caller may act on. The project inbox fans this out over
+ * every deployed integration and merges the pages client-side: a project-wide listing cannot be
+ * asked of any one runtime (integrations may run on different Temporal servers), but a page per
+ * integration can. Shared query options so the inbox and any badge read one cached result.
+ */
+export function pendingWorkItemsQueryOptions(s: Scope, limit = 50) {
+  return {
+    queryKey: ['wf', 'pending-work-items', s.componentId, s.environmentId, limit] as const,
+    queryFn: (): Promise<Fetchable<Page<WorkItemRow>>> => fetchWorkItems(s.componentId, s.environmentId, { status: 'PENDING', limit }),
+    refetchInterval: ({ state }: { state: { data?: Fetchable<Page<WorkItemRow>> } }) => fetchableRefetch(state.data) || 30000,
+  };
+}
+
 export interface ReviewActivityFilters {
   status?: string;
   parentWorkflowId?: string;
