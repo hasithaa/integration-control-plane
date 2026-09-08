@@ -1349,6 +1349,20 @@ public isolated function getAllUserRoleNames(string userId) returns string[]|err
         select row.role_name;
 }
 
+# Every role name the organization defines, whoever holds it. Used to ask a runtime for a
+# role-scoped count that must cover everyone: the runtime matches a task by role intersection,
+# so the union of all roles reaches every task any role could claim.
+#
+# + return - Distinct role names, or an error.
+public isolated function getAllRoleNames() returns string[]|error {
+    stream<record {|string role_name;|}, sql:Error?> roleStream = dbClient->query(`
+        SELECT DISTINCT r.role_name
+        FROM roles_v2 r
+    `);
+    return from record {|string role_name;|} row in roleStream
+        select row.role_name;
+}
+
 // ============================================================================
 // 3.7 Access Query Functions (Using Views)
 // ============================================================================

@@ -451,6 +451,27 @@ function handleWorkflowRequest(string componentId, string environmentId, string[
     // refreshing the one everyone reads.
     boolean forceRefresh = queryParams.removeIfHasKey("refresh") == "true";
 
+    // `all` is likewise this layer's instruction — stripped whatever the path, so it never
+    // reaches the cache key or the operation — and honoured only on the pending-task count.
+    // A project dashboard needs the TOTAL of pending tasks, not the caller's slice: the runtime
+    // counts a task only when its roles intersect the caller's, and an empty role set sees
+    // nothing, so the total is asked with every role the organization defines — the union
+    // intersects every task any role could claim. Gated on the workflow-view permissions the
+    // dashboard itself requires; a caller without them keeps the per-user count.
+    boolean wantTotal = queryParams.removeIfHasKey("all") == "true";
+    if wantTotal && method == http:GET && wfPath.length() == 2 && wfPath[0] == "human-tasks"
+            && wfPath[1] == "pending-count" {
+        boolean|error mayTotal = auth:hasAnyPermission(userContext.userId,
+                [auth:PERMISSION_WORKFLOW_VIEW_WORKFLOWS, auth:PERMISSION_WORKFLOW_MANAGE_WORKFLOWS], scope);
+        if mayTotal is boolean && mayTotal {
+            string[]|error allRoles = storage:getAllRoleNames();
+            if allRoles is error {
+                return workflowErrorResponse(500, "Failed to resolve organization roles: " + allRoles.message());
+            }
+            escapedRoles = allRoles.map(escapeRoleName);
+        }
+    }
+
     // The instance graph composes the stored model with the runtime's history, so it is handled
     // here rather than mapped to a single tunneled operation like every other path.
     if method == http:GET && wfPath.length() == 3 && wfPath[0] == "workflows"

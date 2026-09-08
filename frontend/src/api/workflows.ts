@@ -463,6 +463,11 @@ export interface WorkflowFilters {
   workflowId?: string;
   startTimeFrom?: string;
   startTimeTo?: string;
+  /** Close-time window — "finished in the last 24h" counts. The runtime honours both bounds. */
+  closeTimeFrom?: string;
+  closeTimeTo?: string;
+  /** WORKFLOW | AGENT — the memo kind, when a listing should cover only one. */
+  kind?: string;
   limit?: number;
   pageToken?: string;
 }
@@ -881,9 +886,10 @@ export interface PendingReviewCount {
  * REVIEW_ACTIVITY_MAX_PAGES so its client-side filters see everything. A full page reports `capped`
  * so the badge can say "50+" rather than claim exactly 50.
  */
-export function usePendingReviewActivityCount(s: Scope, taskQueue?: string, enabled = true) {
-  return useQuery({
-    queryKey: ['wf', 'pending-review-count', s.componentId, s.environmentId, taskQueue],
+/** Query options for the pending-review count — shared by the hook and the project dashboard's batch. */
+export function pendingReviewCountQueryOptions(s: Scope, taskQueue?: string) {
+  return {
+    queryKey: ['wf', 'pending-review-count', s.componentId, s.environmentId, taskQueue] as const,
     queryFn: (): Promise<Fetchable<PendingReviewCount>> =>
       wfFetchable<Page<ReviewActivity>>(s.componentId, s.environmentId, `review-activities${buildQuery({ status: 'PENDING', taskQueue, limit: PENDING_REVIEW_PAGE })}`).then((r) =>
         mapFetchable(r, (p) => ({
@@ -891,9 +897,60 @@ export function usePendingReviewActivityCount(s: Scope, taskQueue?: string, enab
           capped: p.hasMore === true,
         })),
       ),
-    enabled: enabledFor(s) && enabled,
-    refetchInterval: ({ state }) => fetchableRefetch(state.data) || 30000,
-  });
+    refetchInterval: ({ state }: { state: { data?: Fetchable<PendingReviewCount> } }) => fetchableRefetch(state.data) || 30000,
+  };
+}
+
+export function usePendingReviewActivityCount(s: Scope, taskQueue?: string, enabled = true) {
+  return useQuery({ ...pendingReviewCountQueryOptions(s, taskQueue), enabled: enabledFor(s) && enabled });
+}
+
+// ── Counts for the project dashboard ──
+//
+// The runtime has no count operation, so a count is a page: ask for the first COUNT_PAGE rows of
+// a filtered listing and report how many came back, `capped` when there were more. Exact below
+// the page size and an honest "50+" above it — a dashboard shows health, not a ledger, and a page
+// is what the runtime answers today without a module release.
+const COUNT_PAGE = 50;
+
+export interface CappedCount {
+  count: number;
+  /** True when the page filled: the real number is at least `count`. */
+  capped: boolean;
+}
+
+export function instanceCountQueryOptions(s: Scope, filters: Omit<WorkflowFilters, 'limit' | 'pageToken'>) {
+  return {
+    queryKey: ['wf', 'instance-count', s.componentId, s.environmentId, filters] as const,
+    queryFn: (): Promise<Fetchable<CappedCount>> =>
+      wfFetchable<Page<WorkflowInstance>>(s.componentId, s.environmentId, `workflows${buildQuery({ ...filters, limit: COUNT_PAGE })}`).then((r) =>
+        mapFetchable(r, (p) => ({ count: p.items?.length ?? 0, capped: p.hasMore === true })),
+      ),
+    refetchInterval: ({ state }: { state: { data?: Fetchable<CappedCount> } }) => fetchableRefetch(state.data) || 30000,
+  };
+}
+
+/** How many instances match the filters, as a capped page count. */
+export function useInstanceCount(s: Scope, filters: Omit<WorkflowFilters, 'limit' | 'pageToken'>, enabled = true) {
+  return useQuery({ ...instanceCountQueryOptions(s, filters), enabled: enabledFor(s) && enabled });
+}
+
+/**
+ * Pending human tasks across EVERY role — the project total, not the caller's slice. The
+ * per-user count (`usePendingTaskCount`) is what a person acts on; this is what a project
+ * dashboard reports. The server honours `all` only for callers with workflow-view permissions
+ * and answers everyone else with their per-user number, so the value is honest either way.
+ */
+export function totalPendingTaskCountQueryOptions(s: Scope) {
+  return {
+    queryKey: ['wf', 'pending-count-total', s.componentId, s.environmentId] as const,
+    queryFn: (): Promise<Fetchable<number>> => wfFetchable<{ count: number }>(s.componentId, s.environmentId, `human-tasks/pending-count${buildQuery({ all: true })}`).then((r) => mapFetchable(r, (d) => d.count ?? 0)),
+    refetchInterval: ({ state }: { state: { data?: Fetchable<number> } }) => fetchableRefetch(state.data) || 30000,
+  };
+}
+
+export function useTotalPendingTaskCount(s: Scope, enabled = true) {
+  return useQuery({ ...totalPendingTaskCountQueryOptions(s), enabled: enabledFor(s) && enabled });
 }
 
 export function reviewActivityQueryOptions(s: Scope, taskId: string) {
