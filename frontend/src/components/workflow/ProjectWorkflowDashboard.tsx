@@ -280,42 +280,48 @@ function WorkflowStatsTable({ scope, environmentId, integrations, runtimeByCompo
 // ── Human Tasks ──
 
 /**
- * What is waiting for the caller in each integration: their own pending tasks (the runtime
- * already scopes that count to their roles), the reviews awaiting anyone's decision, and — for
- * someone who oversees workflows — the integration's total so they can see work that is waiting
- * on other people. A row opens that integration's queue, where the deciding happens.
+ * The caller's queue, integration by integration. Human Tasks is always the person's own view —
+ * the runtime scopes every task count to their roles, and the reviews are the ones their queue
+ * lists — so the table does not say "for you", and it does not carry anyone else's total (that is
+ * the Workflow Executions table's job). One figure per row, Task Count, split into the two kinds
+ * of work the queue holds: review tasks and human tasks. A row opens that queue, where the
+ * deciding happens.
  */
-function TaskStatsTable({ scope, environmentId, integrations, runtimeByComponent, deployedIds, canViewHumanTasks, canViewWorkflows }: TableProps): JSX.Element {
+function TaskStatsTable({ scope, environmentId, integrations, runtimeByComponent, deployedIds, canViewHumanTasks }: TableProps): JSX.Element {
   const navigate = useNavigate();
   const since = useSinceWindow();
   const deployed = useMemo(() => integrations.filter((i) => deployedIds?.has(i.componentId)), [integrations, deployedIds]);
+  // Someone without the human-task permission still sees reviews (their queue shows them), so the
+  // human-task figure is simply absent for them and Task Count is the reviews alone.
   const rows = useIntegrationStats(
     deployed.map((d) => ({ componentId: d.componentId, environmentId })),
     since,
-    { instances: false, reviews: true, tasks: canViewWorkflows, myTasks: canViewHumanTasks },
+    { instances: false, reviews: true, tasks: false, myTasks: canViewHumanTasks },
   );
   const statsByComponent = new Map<string, IntegrationStats>(deployed.map((d, i) => [d.componentId, rows[i]]));
 
   const offline = offlineCount(deployed, runtimeByComponent);
-  const mine = sumOf(rows, (s) => s.myTasks);
   const reviewsTotal = totalOf(rows, (s) => s.reviews);
+  const humanTotal = sumOf(rows, (s) => s.myTasks);
+  const allTotal = canViewHumanTasks ? sumOf(rows, (s) => taskCount(s, true).value) : { text: reviewsTotal.text, count: reviewsTotal.count };
   const undeployed = deployedIds === undefined ? 0 : integrations.length - deployed.length;
   // Columns after Runtime, for the note rows to span.
-  const figures = 1 + (canViewHumanTasks ? 1 : 0) + (canViewWorkflows ? 1 : 0);
+  const figures = 2 + (canViewHumanTasks ? 1 : 0);
 
   const openQueue = (integration: WorkflowIntegrationEntry, tab?: 'reviews') => navigate(`${resourceUrl(narrow(scope, integration.routeHandler), 'tasks')}${tab ? `?tab=${tab}&` : '?'}env=${encodeURIComponent(environmentId)}`);
 
   return (
     <Stack gap={2}>
       <Typography variant="body2" color="text.secondary">
-        How much is waiting in each integration in this environment. Open a row for that integration's queue, where tasks and reviews are decided.
+        Review tasks are decisions a workflow is paused at; human tasks are assigned to the roles you hold. Open a row for that integration's queue to work through them.
       </Typography>
 
       {deployedIds !== undefined && deployed.length > 0 && (
         <Stack direction="row" flexWrap="wrap" gap={1} alignItems="center">
           <Chip size="small" variant={offline > 0 ? 'filled' : 'outlined'} color={offline > 0 ? 'warning' : 'default'} label={`${offline} ${plural(offline, 'runtime')} offline`} />
-          {canViewHumanTasks && <Chip size="small" variant={mine.count > 0 ? 'filled' : 'outlined'} color={mine.count > 0 ? 'primary' : 'default'} label={`${mine.text} ${plural(mine.count, 'task')} for you`} />}
-          <Chip size="small" variant={reviewsTotal.count > 0 ? 'filled' : 'outlined'} color={reviewsTotal.count > 0 ? 'primary' : 'default'} label={`${reviewsTotal.text} ${plural(reviewsTotal.count, 'review')} waiting`} />
+          <Chip size="small" variant={allTotal.count > 0 ? 'filled' : 'outlined'} color={allTotal.count > 0 ? 'primary' : 'default'} label={`${allTotal.text} ${plural(allTotal.count, 'task')} waiting`} />
+          <Chip size="small" variant="outlined" label={`${reviewsTotal.text} review`} />
+          {canViewHumanTasks && <Chip size="small" variant="outlined" label={`${humanTotal.text} human`} />}
           {undeployed > 0 && (
             <Typography variant="caption" color="text.disabled">
               {undeployed} {plural(undeployed, 'integration')} not deployed in this environment.
@@ -329,27 +335,30 @@ function TaskStatsTable({ scope, environmentId, integrations, runtimeByComponent
           <ListingTable.Row>
             <HeaderCell label="Integration" help="A workflow integration in this project. Open it for its queue." />
             <HeaderCell label="Runtime" help="Whether the integration's runtime is heartbeating into the control plane right now. An offline runtime cannot report its work; its figures show as —." />
-            {canViewHumanTasks && <HeaderCell label="Tasks for You" help="Pending human tasks assigned to a role you hold — the ones you can complete." />}
-            <HeaderCell label="Pending Reviews" help="Review activities waiting for a decision — approval gates and failed-activity reviews." />
-            {canViewWorkflows && <HeaderCell label="All Pending Tasks" help="Pending human tasks for anyone in any role — the integration's total, including work waiting on other people." />}
+            <HeaderCell label="Task Count" help="Everything waiting in this integration's queue: review tasks plus human tasks. A '+' means more than the first page of reviews." />
+            <HeaderCell label="Review Tasks" help="Review activities waiting for a decision — approval gates a workflow paused at, and failed activities waiting to be retried or failed. Decided in the queue's Reviews tab." />
+            {canViewHumanTasks && <HeaderCell label="Human Tasks" help="Human tasks assigned to a role you hold, waiting to be completed or failed." />}
           </ListingTable.Row>
         </ListingTable.Head>
         <ListingTable.Body>
           {integrations.map((integration) => {
             const s = statsByComponent.get(integration.componentId) ?? {};
+            const total = taskCount(s, canViewHumanTasks);
             return (
               <IntegrationRow key={integration.componentId} integration={integration} isDeployed={deployedIds?.has(integration.componentId)} runtime={runtimeByComponent.get(integration.componentId)} span={1 + figures} onOpen={() => openQueue(integration)}>
-                {canViewHumanTasks && (
-                  <ListingTable.Cell>
-                    <Typography variant="body2" component="span" sx={{ fontWeight: s.myTasks && s.myTasks > 0 ? 600 : 400, fontVariantNumeric: 'tabular-nums' }}>
-                      {numberText(s.myTasks)}
-                    </Typography>
-                  </ListingTable.Cell>
-                )}
+                <ListingTable.Cell>
+                  <Typography variant="body2" component="span" sx={{ fontWeight: (total.value ?? 0) > 0 ? 600 : 400, fontVariantNumeric: 'tabular-nums' }}>
+                    {total.text}
+                  </Typography>
+                </ListingTable.Cell>
                 <ListingTable.Cell>
                   <LinkedCount text={countText(s.reviews)} onClick={() => openQueue(integration, 'reviews')} />
                 </ListingTable.Cell>
-                {canViewWorkflows && <ListingTable.Cell>{numberText(s.tasks)}</ListingTable.Cell>}
+                {canViewHumanTasks && (
+                  <ListingTable.Cell>
+                    <LinkedCount text={numberText(s.myTasks)} onClick={() => openQueue(integration)} />
+                  </ListingTable.Cell>
+                )}
               </IntegrationRow>
             );
           })}
@@ -357,4 +366,17 @@ function TaskStatsTable({ scope, environmentId, integrations, runtimeByComponent
       </ListingTable>
     </Stack>
   );
+}
+
+/**
+ * Reviews plus human tasks as one figure. Loading while either part is; unavailable if either
+ * failed; "+" when the review page filled. `value` is the plain number for sums and emphasis.
+ */
+function taskCount(s: IntegrationStats, withHuman: boolean): { text: string; value: number | null | undefined } {
+  const parts: (number | null | undefined)[] = [s.reviews === undefined ? undefined : s.reviews === null ? null : s.reviews.count];
+  if (withHuman) parts.push(s.myTasks);
+  if (parts.some((p) => p === undefined)) return { text: '…', value: undefined };
+  if (parts.some((p) => p === null)) return { text: '—', value: null };
+  const value = parts.reduce<number>((n, p) => n + (p as number), 0);
+  return { text: `${value}${s.reviews?.capped ? '+' : ''}`, value };
 }

@@ -67,7 +67,7 @@ export default function WorkflowTasks(scope: ComponentScope | ProjectScope): JSX
           <>
             {dashboard ? (
               <>
-                Human tasks in <strong>{project?.name ?? scope.project}</strong>, integration by integration — what is waiting for you in each, and where to decide it.
+                Your human tasks in <strong>{project?.name ?? scope.project}</strong>, integration by integration. Open an integration to work through its queue.
               </>
             ) : (
               <>
