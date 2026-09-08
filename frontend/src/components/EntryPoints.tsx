@@ -57,7 +57,7 @@ import { useUpdateArtifactStatus, useUpdateListenerState, useTriggerTask } from 
 import { useListMiUsers, useCreateMiUser, useDeleteMiUser } from '../api/miUsers';
 import { ArtifactApiDefinition, ServiceResources, ServiceListeners, AutomationExecutions, ProxyApiReference } from './ArtifactTabs';
 import { StartWorkflowDialog, type Toast as WorkflowToast } from './workflow/AdminPortal';
-import WorkflowInstancesPanel from './workflow/WorkflowInstancesPanel';
+import { IntegrationStatsStrip } from './workflow/IntegrationStatsStrip';
 import { ArtifactTypeSelector } from './ArtifactDetail';
 import Authorized from './Authorized';
 import { Permissions } from '../constants/permissions';
@@ -498,14 +498,14 @@ function EntryPointDetail({ selected, onOpenDrawerTab }: { selected: SelectedArt
             ))}
           </Box>
         )}
-        {/* Listing instances calls /workflows, which the proxy gates on the workflow view permission,
-            so the panel is only rendered for someone who can actually load it. */}
-        {/* hasComponent narrows the scope so the task queue is a string: the panel must never run its
-            query unscoped, which would list the other integrations' runs too. This page only renders
-            at integration scope, so the guard is a type-level guarantee rather than a live branch. */}
+        {/* The integration's workflow figures — the same ones the project's Workflow Executions
+            table shows per row. Counting calls /workflows, which the proxy gates on the workflow
+            view permission, so the strip only renders for someone who can load it; the pending-work
+            cells are for those allowed to see work. hasComponent narrows the scope for the links:
+            this page only renders at integration scope, so it is a type-level guarantee. */}
         {artifactType === 'Workflow' && hasComponent(scope) && (
           <Authorized permissions={[Permissions.WORKFLOW_VIEW_WORKFLOWS, Permissions.WORKFLOW_MANAGE_WORKFLOWS]}>
-            <WorkflowInstancesPanel componentId={componentId} environmentId={envId} workflowType={artifactName} taskQueue={scope.component} />
+            <IntegrationStatsStrip scope={scope} componentId={componentId} environmentId={envId} canSeeWork />
           </Authorized>
         )}
         {/* pt: 0 for Service — it's the first block rendered (no header/overview above it here), so

@@ -712,18 +712,21 @@ export function useHumanTasksInfinite(s: Scope, filters: Omit<HumanTaskFilters, 
   });
 }
 
-function fetchPendingTaskCount(componentId: string, environmentId: string, taskQueue?: string): Promise<Fetchable<number>> {
-  return wfFetchable<{ count: number }>(componentId, environmentId, `human-tasks/pending-count${buildQuery({ taskQueue })}`).then((r) => mapFetchable(r, (d) => d.count ?? 0));
+/**
+ * Pending human tasks the caller's roles can act on — the personal count behind the queue badge
+ * and the project's per-integration "for you" column. Query options so both read one result.
+ */
+export function pendingTaskCountQueryOptions(s: Scope, taskQueue?: string) {
+  return {
+    queryKey: ['wf', 'pending-count', s.componentId, s.environmentId, taskQueue] as const,
+    queryFn: (): Promise<Fetchable<number>> => wfFetchable<{ count: number }>(s.componentId, s.environmentId, `human-tasks/pending-count${buildQuery({ taskQueue })}`).then((r) => mapFetchable(r, (d) => d.count ?? 0)),
+    refetchInterval: ({ state }: { state: { data?: Fetchable<number> } }) => fetchableRefetch(state.data) || 30000,
+  };
 }
 
 /** `enabled` lets a caller skip the poll when the count is not being shown. */
 export function usePendingTaskCount(s: Scope, taskQueue?: string, enabled = true) {
-  return useQuery({
-    queryKey: ['wf', 'pending-count', s.componentId, s.environmentId, taskQueue],
-    queryFn: () => fetchPendingTaskCount(s.componentId, s.environmentId, taskQueue),
-    enabled: enabledFor(s) && enabled,
-    refetchInterval: ({ state }) => fetchableRefetch(state.data) || 30000,
-  });
+  return useQuery({ ...pendingTaskCountQueryOptions(s, taskQueue), enabled: enabledFor(s) && enabled });
 }
 
 // Query options for one task's detail; shared by useHumanTask and useQueries-based batch fetches.
@@ -827,21 +830,6 @@ export function useWorkItemsInfinite(s: Scope, filters: Omit<WorkItemFilters, 'p
     refetchInterval: ({ state }) => fetchableRefetch(state.data?.pages[state.data.pages.length - 1]),
     enabled: enabledFor(s),
   });
-}
-
-/**
- * The first page of one integration's PENDING work items — tasks and reviews together, as the
- * runtime lists them, scoped to what the caller may act on. The project inbox fans this out over
- * every deployed integration and merges the pages client-side: a project-wide listing cannot be
- * asked of any one runtime (integrations may run on different Temporal servers), but a page per
- * integration can. Shared query options so the inbox and any badge read one cached result.
- */
-export function pendingWorkItemsQueryOptions(s: Scope, limit = 50) {
-  return {
-    queryKey: ['wf', 'pending-work-items', s.componentId, s.environmentId, limit] as const,
-    queryFn: (): Promise<Fetchable<Page<WorkItemRow>>> => fetchWorkItems(s.componentId, s.environmentId, { status: 'PENDING', limit }),
-    refetchInterval: ({ state }: { state: { data?: Fetchable<Page<WorkItemRow>> } }) => fetchableRefetch(state.data) || 30000,
-  };
 }
 
 export interface ReviewActivityFilters {
