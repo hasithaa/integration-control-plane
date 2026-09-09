@@ -16,14 +16,15 @@
  * under the License.
  */
 
-import { Chip, ListingTable, Stack, Tooltip, Typography } from '@wso2/oxygen-ui';
+import { Chip, ListingTable, Stack, Typography } from '@wso2/oxygen-ui';
 import { Workflow } from '@wso2/oxygen-ui-icons-react';
 import { useMemo, type JSX, type ReactNode } from 'react';
 import { useNavigate } from 'react-router';
 import { useProjectRuntimes, type GqlRuntime } from '../../api/queries';
 import { useWorkflowDefinitionsAcross } from '../../api/workflows';
 import { narrow, resourceUrl, type ProjectScope } from '../../nav';
-import { HeaderCell, StatusChip } from './shared';
+import { formatDistanceToNow } from '../../utils/time';
+import { HeaderCell } from './shared';
 import type { WorkflowIntegrationEntry } from './useWorkflowPageScope';
 import { countText, numberText, sumOf, totalOf, useIntegrationStats, useSinceWindow, type IntegrationStats } from './WorkflowStats';
 
@@ -117,8 +118,11 @@ function LinkedCount({ text, onClick }: { text: string; onClick: () => void }): 
 }
 
 /**
- * The row shape both tables share: the integration's name, then either a note spanning the
- * figures (still resolving, or not deployed here) or the runtime's status followed by the cells.
+ * The row shape both tables share: the integration's name, then either the figures or one note
+ * spanning them — still resolving, not deployed here, or runtime offline. There is no runtime
+ * column: a runtime's status is a fact about the runtime, shown where runtimes are managed, and
+ * the only thing it changes here is whether figures can arrive at all. When they cannot, the row
+ * says why instead of showing a line of dashes.
  */
 function IntegrationRow({
   integration,
@@ -131,12 +135,13 @@ function IntegrationRow({
   integration: WorkflowIntegrationEntry;
   isDeployed: boolean | undefined;
   runtime: GqlRuntime | undefined;
-  /** How many columns the note covers: the runtime column plus every figure. */
+  /** How many columns the note covers: every figure. */
   span: number;
   onOpen: () => void;
   children: ReactNode;
 }): JSX.Element {
   const clickable = isDeployed === true;
+  const offline = isDeployed === true && (runtime?.status ?? '').toUpperCase() !== 'RUNNING';
   return (
     <ListingTable.Row hover={clickable} onClick={clickable ? onOpen : undefined} sx={{ cursor: clickable ? 'pointer' : 'default' }}>
       <ListingTable.Cell>
@@ -161,17 +166,16 @@ function IntegrationRow({
             Not deployed in this environment.
           </Typography>
         </ListingTable.Cell>
+      ) : offline ? (
+        // The runtime answers every figure in this row; while it is not heartbeating there is
+        // nothing to count, and the reason reads better than six dashes.
+        <ListingTable.Cell colSpan={span}>
+          <Typography variant="caption" color="warning.main">
+            Runtime offline{runtime?.lastHeartbeat ? ` — last heartbeat ${formatDistanceToNow(runtime.lastHeartbeat)}` : ''}. Figures return when it heartbeats again.
+          </Typography>
+        </ListingTable.Cell>
       ) : (
-        <>
-          <ListingTable.Cell>
-            <Tooltip title={runtime?.lastHeartbeat ? `Last heartbeat ${new Date(runtime.lastHeartbeat).toLocaleString()}` : ''}>
-              <span>
-                <StatusChip status={runtime?.status ?? 'UNKNOWN'} />
-              </span>
-            </Tooltip>
-          </ListingTable.Cell>
-          {children}
-        </>
+        children
       )}
     </ListingTable.Row>
   );
@@ -213,7 +217,7 @@ function WorkflowStatsTable({ scope, environmentId, integrations, runtimeByCompo
   return (
     <Stack gap={2}>
       <Typography variant="body2" color="text.secondary">
-        How each integration's workflows are doing in this environment. Open a row to start, inspect and manage its executions; pending tasks and reviews open in Human Tasks.
+        Open an integration to start, inspect and manage its executions. Pending reviews and tasks open in Human Tasks.
       </Typography>
 
       {deployedIds !== undefined && deployed.length > 0 && (
@@ -232,7 +236,6 @@ function WorkflowStatsTable({ scope, environmentId, integrations, runtimeByCompo
         <ListingTable.Head>
           <ListingTable.Row>
             <HeaderCell label="Integration" help="A workflow integration in this project. Open it to work with its executions." />
-            <HeaderCell label="Runtime" help="Whether the integration's runtime is heartbeating into the control plane right now, from its last heartbeat." />
             <HeaderCell label="Workflow Types" help="Workflow definitions this integration publishes, from its heartbeat metadata." />
             <HeaderCell label="Running" help="Instances currently executing or parked. A '+' means more than the first page." />
             <HeaderCell label="Suspended" help="Instances paused by an operator, waiting to be resumed." />
@@ -247,7 +250,7 @@ function WorkflowStatsTable({ scope, environmentId, integrations, runtimeByCompo
             const s = statsByComponent.get(integration.componentId) ?? {};
             const types = typesByComponent.get(integration.componentId);
             return (
-              <IntegrationRow key={integration.componentId} integration={integration} isDeployed={deployedIds?.has(integration.componentId)} runtime={runtimeByComponent.get(integration.componentId)} span={canSeeWork ? 8 : 6} onOpen={() => openExecutions(integration)}>
+              <IntegrationRow key={integration.componentId} integration={integration} isDeployed={deployedIds?.has(integration.componentId)} runtime={runtimeByComponent.get(integration.componentId)} span={canSeeWork ? 7 : 5} onOpen={() => openExecutions(integration)}>
                 <ListingTable.Cell>{definitions.isLoading && types === undefined ? '…' : (types ?? 0)}</ListingTable.Cell>
                 <ListingTable.Cell>{countText(s.running)}</ListingTable.Cell>
                 <ListingTable.Cell>{countText(s.suspended)}</ListingTable.Cell>
@@ -305,7 +308,7 @@ function TaskStatsTable({ scope, environmentId, integrations, runtimeByComponent
   const humanTotal = sumOf(rows, (s) => s.myTasks);
   const allTotal = canViewHumanTasks ? sumOf(rows, (s) => taskCount(s, true).value) : { text: reviewsTotal.text, count: reviewsTotal.count };
   const undeployed = deployedIds === undefined ? 0 : integrations.length - deployed.length;
-  // Columns after Runtime, for the note rows to span.
+  // Columns after the name, for the note rows to span.
   const figures = 2 + (canViewHumanTasks ? 1 : 0);
 
   const openQueue = (integration: WorkflowIntegrationEntry, tab?: 'reviews') => navigate(`${resourceUrl(narrow(scope, integration.routeHandler), 'tasks')}${tab ? `?tab=${tab}&` : '?'}env=${encodeURIComponent(environmentId)}`);
@@ -333,8 +336,7 @@ function TaskStatsTable({ scope, environmentId, integrations, runtimeByComponent
       <ListingTable>
         <ListingTable.Head>
           <ListingTable.Row>
-            <HeaderCell label="Integration" help="A workflow integration in this project. Open it for its queue." />
-            <HeaderCell label="Runtime" help="Whether the integration's runtime is heartbeating into the control plane right now. An offline runtime cannot report its work; its figures show as —." />
+            <HeaderCell label="Integration" help="A workflow integration in this project. Open it for its queue. A row whose runtime is offline says so in place of its figures." />
             <HeaderCell label="Task Count" help="Everything waiting in this integration's queue: review tasks plus human tasks. A '+' means more than the first page of reviews." />
             <HeaderCell label="Review Tasks" help="Review activities waiting for a decision — approval gates a workflow paused at, and failed activities waiting to be retried or failed. Decided in the queue's Reviews tab." />
             {canViewHumanTasks && <HeaderCell label="Human Tasks" help="Human tasks assigned to a role you hold, waiting to be completed or failed." />}
@@ -345,7 +347,7 @@ function TaskStatsTable({ scope, environmentId, integrations, runtimeByComponent
             const s = statsByComponent.get(integration.componentId) ?? {};
             const total = taskCount(s, canViewHumanTasks);
             return (
-              <IntegrationRow key={integration.componentId} integration={integration} isDeployed={deployedIds?.has(integration.componentId)} runtime={runtimeByComponent.get(integration.componentId)} span={1 + figures} onOpen={() => openQueue(integration)}>
+              <IntegrationRow key={integration.componentId} integration={integration} isDeployed={deployedIds?.has(integration.componentId)} runtime={runtimeByComponent.get(integration.componentId)} span={figures} onOpen={() => openQueue(integration)}>
                 <ListingTable.Cell>
                   <Typography variant="body2" component="span" sx={{ fontWeight: (total.value ?? 0) > 0 ? 600 : 400, fontVariantNumeric: 'tabular-nums' }}>
                     {total.text}
