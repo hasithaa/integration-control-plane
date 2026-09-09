@@ -57,7 +57,7 @@ import { useUpdateArtifactStatus, useUpdateListenerState, useTriggerTask } from 
 import { useListMiUsers, useCreateMiUser, useDeleteMiUser } from '../api/miUsers';
 import { ArtifactApiDefinition, ServiceResources, ServiceListeners, AutomationExecutions, ProxyApiReference } from './ArtifactTabs';
 import { StartWorkflowDialog, type Toast as WorkflowToast } from './workflow/AdminPortal';
-import { IntegrationStatsStrip } from './workflow/IntegrationStatsStrip';
+import { DefinitionStatsStrip } from './workflow/DefinitionStatsStrip';
 import { ArtifactTypeSelector } from './ArtifactDetail';
 import Authorized from './Authorized';
 import { Permissions } from '../constants/permissions';
@@ -498,14 +498,15 @@ function EntryPointDetail({ selected, onOpenDrawerTab }: { selected: SelectedArt
             ))}
           </Box>
         )}
-        {/* The integration's workflow figures — the same ones the project's Workflow Executions
-            table shows per row. Counting calls /workflows, which the proxy gates on the workflow
-            view permission, so the strip only renders for someone who can load it; the pending-work
-            cells are for those allowed to see work. hasComponent narrows the scope for the links:
-            this page only renders at integration scope, so it is a type-level guarantee. */}
+        {/* The selected definition's figures — the same columns the project's Workflow Executions
+            table shows, scoped to the workflow type chosen in the selector above so the two agree.
+            Counting calls /workflows, which the proxy gates on the workflow view permission, so
+            the strip only renders for someone who can load it; the pending-work cells are for
+            those allowed to see work. hasComponent narrows the scope for the links: this page only
+            renders at integration scope, so it is a type-level guarantee. */}
         {artifactType === 'Workflow' && hasComponent(scope) && (
           <Authorized permissions={[Permissions.WORKFLOW_VIEW_WORKFLOWS, Permissions.WORKFLOW_MANAGE_WORKFLOWS]}>
-            <IntegrationStatsStrip scope={scope} componentId={componentId} environmentId={envId} canSeeWork />
+            <DefinitionStatsStrip scope={scope} componentId={componentId} environmentId={envId} workflowType={artifactName} canSeeWork />
           </Authorized>
         )}
         {/* pt: 0 for Service — it's the first block rendered (no header/overview above it here), so

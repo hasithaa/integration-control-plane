@@ -16,12 +16,13 @@
  * under the License.
  */
 
-import { useQueries } from '@tanstack/react-query';
+import { useQueries, useQuery } from '@tanstack/react-query';
 import { useMemo } from 'react';
 import {
   instanceCountQueryOptions,
   pendingReviewCountQueryOptions,
   pendingTaskCountQueryOptions,
+  pendingWorkItemCountQueryOptions,
   totalPendingTaskCountQueryOptions,
   valueOf,
   type CappedCount,
@@ -56,6 +57,8 @@ export interface IntegrationStats {
   tasks?: number | null;
   /** Pending human tasks the caller's roles can act on — their slice. */
   myTasks?: number | null;
+  /** Per-definition only: `tasks` came from a page that filled, so the real number is at least that. */
+  tasksCapped?: boolean;
 }
 
 /** Which figures a view actually shows; the others are not requested. */
@@ -104,6 +107,36 @@ export function useIntegrationStats(scopes: StatsScope[], since: string, include
     tasks: settle<number>(tasks[i]),
     myTasks: settle<number>(myTasks[i]),
   }));
+}
+
+/**
+ * The same figures for ONE workflow definition: instances filtered by workflow type on the
+ * runtime, pending work counted from the work-items listing filtered by parent workflow type.
+ * Shown on the integration overview beside the definition selector, so the numbers follow the
+ * selection — a strip that read across every type under a selector for one would say two things.
+ * `reviews` and `tasks` are capped page counts here, like the instance figures.
+ */
+export function useDefinitionStats(scope: StatsScope, workflowType: string, since: string, includeWork: boolean): IntegrationStats {
+  const filters = { workflowType };
+  const running = useQuery(instanceCountQueryOptions(scope, { ...filters, status: 'RUNNING' }));
+  const suspended = useQuery(instanceCountQueryOptions(scope, { ...filters, status: 'SUSPENDED' }));
+  const failed = useQuery(instanceCountQueryOptions(scope, { ...filters, status: 'FAILED', closeTimeFrom: since }));
+  const completed = useQuery(instanceCountQueryOptions(scope, { ...filters, status: 'COMPLETED', closeTimeFrom: since }));
+  const reviews = useQuery({ ...pendingWorkItemCountQueryOptions(scope, { kind: 'REVIEW_ACTIVITY', parentWorkflowType: workflowType }), enabled: includeWork });
+  const tasks = useQuery({ ...pendingWorkItemCountQueryOptions(scope, { kind: 'HUMAN_TASK', parentWorkflowType: workflowType, allRoles: true }), enabled: includeWork });
+  const settle = <T,>(r: { data?: unknown; error: unknown }): T | null | undefined => (r.error ? null : (valueOf(r.data as Parameters<typeof valueOf>[0]) as T | undefined));
+  const taskPage = settle<CappedCount>(tasks);
+  return {
+    running: settle<CappedCount>(running),
+    suspended: settle<CappedCount>(suspended),
+    failed: settle<CappedCount>(failed),
+    completed: settle<CappedCount>(completed),
+    reviews: settle<CappedCount>(reviews),
+    // The integration-wide shape carries `tasks` as a plain number; here it is a page count, so
+    // the number and its cap travel in two fields.
+    tasks: taskPage === undefined || taskPage === null ? taskPage : taskPage.count,
+    tasksCapped: taskPage?.capped ?? false,
+  };
 }
 
 /** A capped count as text: exact below the page size, "50+" at it, "…" while loading, "—" when unavailable. */

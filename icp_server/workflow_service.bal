@@ -452,15 +452,19 @@ function handleWorkflowRequest(string componentId, string environmentId, string[
     boolean forceRefresh = queryParams.removeIfHasKey("refresh") == "true";
 
     // `all` is likewise this layer's instruction — stripped whatever the path, so it never
-    // reaches the cache key or the operation — and honoured only on the pending-task count.
-    // A project dashboard needs the TOTAL of pending tasks, not the caller's slice: the runtime
-    // counts a task only when its roles intersect the caller's, and an empty role set sees
-    // nothing, so the total is asked with every role the organization defines — the union
-    // intersects every task any role could claim. Gated on the workflow-view permissions the
-    // dashboard itself requires; a caller without them keeps the per-user count.
+    // reaches the cache key or the operation — and honoured on two reads: the pending-task
+    // count, and the work-items listing (which the integration overview reads one page of, per
+    // workflow definition, to count what that definition is waiting on). A dashboard needs the
+    // TOTAL of pending tasks, not the caller's slice: the runtime lists a task only when its
+    // roles intersect the caller's, and an empty role set sees nothing, so the total is asked
+    // with every role the organization defines — the union intersects every task any role could
+    // claim. Gated on the workflow-view permissions the dashboards themselves require, which
+    // already let the caller read every instance's history; a caller without them keeps the
+    // per-user view.
     boolean wantTotal = queryParams.removeIfHasKey("all") == "true";
-    if wantTotal && method == http:GET && wfPath.length() == 2 && wfPath[0] == "human-tasks"
-            && wfPath[1] == "pending-count" {
+    boolean totalCapablePath = (wfPath.length() == 2 && wfPath[0] == "human-tasks" && wfPath[1] == "pending-count")
+            || (wfPath.length() == 1 && wfPath[0] == "work-items");
+    if wantTotal && method == http:GET && totalCapablePath {
         boolean|error mayTotal = auth:hasAnyPermission(userContext.userId,
                 [auth:PERMISSION_WORKFLOW_VIEW_WORKFLOWS, auth:PERMISSION_WORKFLOW_MANAGE_WORKFLOWS], scope);
         if mayTotal is boolean && mayTotal {

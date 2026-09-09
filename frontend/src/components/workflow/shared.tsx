@@ -274,10 +274,11 @@ export function DetailDrawer({ title, status, onClose, actions, menu, children }
 }
 
 /** A titled section card used through the task and review drawers. */
-export function SectionCard({ title, collapsible, children }: { title: string; collapsible?: boolean; children: ReactNode }): JSX.Element {
+export function SectionCard({ title, collapsible, defaultOpen = true, children }: { title: string; collapsible?: boolean; defaultOpen?: boolean; children: ReactNode }): JSX.Element {
   // Open by default: the context is why the reader is here. Collapsing is for the second visit,
-  // once the facts are absorbed and the actions are what is left.
-  const [open, setOpen] = useState(true);
+  // once the facts are absorbed and the actions are what is left. A section that starts closed
+  // is one most readers never need — advanced settings whose defaults are right.
+  const [open, setOpen] = useState(defaultOpen);
   const header = (
     <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ px: 2, py: 1.5 }}>
       <Typography variant="subtitle2" sx={sectionTitleSx}>

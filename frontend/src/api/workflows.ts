@@ -956,6 +956,26 @@ export function useTotalPendingTaskCount(s: Scope, enabled = true) {
   return useQuery({ ...totalPendingTaskCountQueryOptions(s), enabled: enabledFor(s) && enabled });
 }
 
+/**
+ * Pending work of one kind for one workflow definition, as a capped page count — the runtime
+ * filters work items by parent workflow type, which the pending-count endpoint cannot. With
+ * `allRoles` the ICP substitutes every organization role for the caller's (same gate as the
+ * total pending-task count), so a human-task figure is the definition's total rather than the
+ * caller's slice; reviews are not role-scoped and never need it.
+ */
+export function pendingWorkItemCountQueryOptions(s: Scope, filters: { kind: 'HUMAN_TASK' | 'REVIEW_ACTIVITY'; parentWorkflowType: string; allRoles?: boolean }) {
+  return {
+    queryKey: ['wf', 'pending-work-item-count', s.componentId, s.environmentId, filters] as const,
+    queryFn: (): Promise<Fetchable<CappedCount>> =>
+      wfFetchable<Page<WorkItemRow>>(
+        s.componentId,
+        s.environmentId,
+        `work-items${buildQuery({ status: 'PENDING', kind: filters.kind, parentWorkflowType: filters.parentWorkflowType, limit: COUNT_PAGE, all: filters.allRoles ? true : undefined })}`,
+      ).then((r) => mapFetchable(r, (p) => ({ count: p.items?.length ?? 0, capped: p.hasMore === true }))),
+    refetchInterval: ({ state }: { state: { data?: Fetchable<CappedCount> } }) => fetchableRefetch(state.data) || 30000,
+  };
+}
+
 export function reviewActivityQueryOptions(s: Scope, taskId: string) {
   return {
     queryKey: ['wf', 'review-activity', s.componentId, s.environmentId, taskId] as const,

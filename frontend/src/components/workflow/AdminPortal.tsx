@@ -497,22 +497,47 @@ export function StartWorkflowDialog({ scope, initialWorkflowType, onClose, onToa
           />
           <DefinitionsUnavailableNotice failed={definitions.failed} />
           <SubmitError message={startError} onClear={() => setStartError(null)} />
-          {formFields ? (
-            <SchemaFormFields fields={formFields} values={formValues} errors={fieldErrors} onChange={setFormValue} />
-          ) : (
-            selected &&
-            (selected.inputSchema ? (
-              <SchemaDisclosure schema={selected.inputSchema} />
-            ) : (
-              <Typography variant="caption" color="text.secondary">
-                No input schema defined for this workflow.
-              </Typography>
-            ))
+          {/* The workflow's own input is one thing; how the run is identified and bounded is
+              another. The first is what the person came to fill in; the second has defaults
+              almost everyone keeps, so it waits behind a closed section. */}
+          {selected && (
+            <SectionCard title="Input">
+              {formFields ? (
+                <SchemaFormFields fields={formFields} values={formValues} errors={fieldErrors} onChange={setFormValue} />
+              ) : selected.inputSchema ? (
+                <SchemaDisclosure schema={selected.inputSchema} />
+              ) : (
+                <Typography variant="caption" color="text.secondary">
+                  This workflow takes no input.
+                </Typography>
+              )}
+            </SectionCard>
           )}
-          <Stack direction="row" gap={2}>
-            <TextField label="Workflow ID (optional)" fullWidth size="small" value={workflowId} onChange={(e) => setWorkflowId(e.target.value)} />
-            <TextField label="Timeout (seconds)" type="number" size="small" sx={{ width: 200 }} value={timeout} onChange={(e) => setTimeoutVal(e.target.value)} placeholder="e.g. 300" slotProps={{ inputLabel: { shrink: true } }} />
-          </Stack>
+          {selected && (
+            <SectionCard title="Advanced" collapsible defaultOpen={false}>
+              <Stack gap={2}>
+                <TextField
+                  label="Workflow ID"
+                  fullWidth
+                  size="small"
+                  value={workflowId}
+                  onChange={(e) => setWorkflowId(e.target.value)}
+                  helperText="Names this run so it can be found or referenced later. Left empty, the runtime assigns one; a second start with the same ID is rejected while the first is running."
+                />
+                <TextField
+                  label="Timeout (seconds)"
+                  type="number"
+                  size="small"
+                  fullWidth
+                  value={timeout}
+                  onChange={(e) => setTimeoutVal(e.target.value)}
+                  placeholder="e.g. 300"
+                  slotProps={{ inputLabel: { shrink: true } }}
+                  helperText="The longest this run may take end to end before it is timed out. Left empty, the workflow's own limit applies."
+                />
+              </Stack>
+            </SectionCard>
+          )}
         </Stack>
       </DialogContent>
       <DialogActions>
