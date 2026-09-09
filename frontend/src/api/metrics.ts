@@ -17,7 +17,7 @@
  */
 import { useQuery } from '@tanstack/react-query';
 import { useRef } from 'react';
-import { observabilityMetricsApiUrl } from '../paths';
+import { observabilityMetricsApiUrl, observabilityWorkflowMetricsApiUrl } from '../paths';
 import { authenticatedFetch } from '../auth/tokenManager';
 import { gql } from './graphql';
 
@@ -50,6 +50,33 @@ export interface MetricEntry {
 export interface MetricsResponse {
   inboundMetrics: MetricEntry[];
   outboundMetrics: MetricEntry[];
+}
+
+// ── Workflow metrics ──
+//
+// The Ballerina workflow module publishes one record per workflow event (a run started or
+// closed, an activity attempt, a data event, a task decision); the server groups them into
+// series by tag combination. `sample` says which event a series counts.
+
+export type WorkflowSample = 'workflow.started' | 'workflow.closed' | 'activity.executed' | 'data.sent' | 'task.decided';
+
+export interface WorkflowMetricEntry {
+  sample: WorkflowSample;
+  /** workflow_type, activity_type, status, outcome, task_kind, task_name, action, data_name, icp_runtimeId, app_name, deployment — whichever the sample carries. */
+  tags: Record<string, string>;
+  count: TimeSeriesData;
+  duration_seconds_avg: TimeSeriesData;
+  duration_seconds_max: TimeSeriesData;
+  duration_seconds_percentile_50: TimeSeriesData;
+  duration_seconds_percentile_95: TimeSeriesData;
+  duration_seconds_percentile_99: TimeSeriesData;
+}
+
+export interface WorkflowMetricsResponse {
+  runs: WorkflowMetricEntry[];
+  activities: WorkflowMetricEntry[];
+  decisions: WorkflowMetricEntry[];
+  dataEvents: WorkflowMetricEntry[];
 }
 
 async function fetchMetrics(req: MetricsRequest): Promise<MetricsResponse> {
@@ -89,6 +116,57 @@ async function fetchMetrics(req: MetricsRequest): Promise<MetricsResponse> {
     }
     throw error;
   }
+}
+
+async function fetchWorkflowMetrics(req: MetricsRequest): Promise<WorkflowMetricsResponse> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 10000);
+  try {
+    const res = await authenticatedFetch(observabilityWorkflowMetricsApiUrl(), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(req),
+      signal: controller.signal,
+    });
+    clearTimeout(timeoutId);
+    if (!res.ok) {
+      const text = await res.text();
+      let errorMessage = text;
+      try {
+        errorMessage = JSON.parse(text).message || text;
+      } catch {
+        // raw text it is
+      }
+      const error: Error & { status?: number } = new Error(errorMessage);
+      error.status = res.status;
+      throw error;
+    }
+    return (await res.json()) as WorkflowMetricsResponse;
+  } catch (error) {
+    clearTimeout(timeoutId);
+    if (error instanceof Error && error.name === 'AbortError') {
+      throw new Error('Observability service is unavailable. Request timed out.');
+    }
+    throw error;
+  }
+}
+
+/** The workflow-domain counterpart of {@link useMetrics}: same request, answered from the workflow module's samples. */
+export function useWorkflowMetrics(req: MetricsRequest | null, getTimeRange?: () => { startTime: string; endTime: string }) {
+  const getTimeRangeRef = useRef(getTimeRange);
+  getTimeRangeRef.current = getTimeRange;
+
+  return useQuery<WorkflowMetricsResponse>({
+    queryKey: ['workflow-metrics', req],
+    queryFn: () => {
+      const baseReq = getTimeRangeRef.current ? { ...req!, ...getTimeRangeRef.current() } : req!;
+      return fetchWorkflowMetrics(baseReq);
+    },
+    enabled: !!req,
+    refetchInterval: false,
+    retry: false,
+    staleTime: 0,
+  });
 }
 
 // ── OpenSearch observability metrics availability ──

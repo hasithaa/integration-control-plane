@@ -2218,6 +2218,46 @@ public type MetricEntriesResponse record {
     MetricEntry[] outboundMetrics;
 };
 
+# One series of workflow samples sharing a tag combination — a workflow type's closed runs with
+# status "failed", an activity type's attempts with outcome "completed", a task's decisions with
+# outcome "denied". The workflow module publishes one record per event under
+# `logger = "workflow-metrics"`; `sample` says which event, and `count` is how many landed in each
+# interval. The duration series are meaningful for `workflow.closed` and `activity.executed`.
+#
+# + sample - `workflow.started` | `workflow.closed` | `activity.executed` | `data.sent` | `task.decided`
+# + tags - The combination's tags: `workflow_type`, `activity_type`, `status`, `outcome`,
+#          `task_kind`, `task_name`, `action`, `data_name`, plus `icp_runtimeId`, `app_name`,
+#          `deployment` — whichever the sample carries
+# + count - Events per interval
+# + duration_seconds_avg - Mean duration per interval, where the sample has one
+# + duration_seconds_max - Longest duration per interval
+# + duration_seconds_percentile_50 - Median duration per interval
+# + duration_seconds_percentile_95 - 95th-percentile duration per interval
+# + duration_seconds_percentile_99 - 99th-percentile duration per interval
+public type WorkflowMetricEntry record {
+    string sample;
+    map<string> tags;
+    Metric count;
+    Metric duration_seconds_avg;
+    Metric duration_seconds_max;
+    Metric duration_seconds_percentile_50;
+    Metric duration_seconds_percentile_95;
+    Metric duration_seconds_percentile_99;
+};
+
+# Workflow metrics for a set of runtimes, grouped by what each series counts.
+#
+# + runs - `workflow.started` and `workflow.closed` series, by workflow type (and status for closed)
+# + activities - `activity.executed` series, by activity type and outcome
+# + decisions - `task.decided` series, by task kind, task name, action and outcome
+# + dataEvents - `data.sent` series, by data name
+public type WorkflowMetricEntriesResponse record {
+    WorkflowMetricEntry[] runs;
+    WorkflowMetricEntry[] activities;
+    WorkflowMetricEntry[] decisions;
+    WorkflowMetricEntry[] dataEvents;
+};
+
 // === Auth Related Types ===
 
 public type Credentials record {

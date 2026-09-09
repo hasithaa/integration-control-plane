@@ -25,6 +25,7 @@ import { useMoesifMetricsConfig } from '../api/metricsMoesif';
 import { isMoesifEnabled } from '../config/api';
 import EmptyListing from '../components/EmptyListing';
 import NotFound from '../components/NotFound';
+import WorkflowMetricsSection from '../components/WorkflowMetricsSection';
 import { resourceUrl, broaden, hasComponent, type ProjectScope, type ComponentScope } from '../nav';
 
 export interface MetricsPageProps {
@@ -804,6 +805,7 @@ export default function MetricsOpenSearch({ scope, backendSelector, opensearchCo
           )}
         </>
       )}
+      {!isLoading && !error && <WorkflowMetricsSection request={metricsRequest} getTimeRange={getTimeRange} makeLabel={makeLabel} />}
     </PageContent>
   );
 }
