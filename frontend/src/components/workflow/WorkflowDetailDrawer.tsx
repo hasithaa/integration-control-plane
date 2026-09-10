@@ -47,7 +47,9 @@ import DateTime from '../DateTime';
 // the sidebar's collapsed/expanded state.
 // A flex column, so only the body scrolls: the header (and its close button) and the lifecycle
 // bar stay put however far down the execution the reader is.
-const drawerPaperSx = (sidebarWidth: number) => ({ '& .MuiDrawer-paper': { width: `calc(100% - ${sidebarWidth}px)`, position: 'fixed', top: 64, height: 'calc(100% - 64px)', borderLeft: '1px solid', borderColor: 'divider', display: 'flex', flexDirection: 'column', overflow: 'hidden' } });
+const drawerPaperSx = (sidebarWidth: number) => ({
+  '& .MuiDrawer-paper': { width: `calc(100% - ${sidebarWidth}px)`, position: 'fixed', top: 64, height: 'calc(100% - 64px)', borderLeft: '1px solid', borderColor: 'divider', display: 'flex', flexDirection: 'column', overflow: 'hidden' },
+});
 const headerSx = { px: 2, py: 1.5, borderBottom: '1px solid', borderColor: 'divider', flexShrink: 0 };
 const emptySx = { py: 4, textAlign: 'center', color: 'text.secondary' };
 

@@ -18,16 +18,7 @@
 
 import { useQueries, useQuery } from '@tanstack/react-query';
 import { useMemo } from 'react';
-import {
-  instanceCountQueryOptions,
-  pendingReviewCountQueryOptions,
-  pendingTaskCountQueryOptions,
-  pendingWorkItemCountQueryOptions,
-  totalPendingTaskCountQueryOptions,
-  valueOf,
-  type CappedCount,
-  type PendingReviewCount,
-} from '../../api/workflows';
+import { instanceCountQueryOptions, pendingReviewCountQueryOptions, pendingTaskCountQueryOptions, pendingWorkItemCountQueryOptions, totalPendingTaskCountQueryOptions, valueOf, type CappedCount, type PendingReviewCount } from '../../api/workflows';
 
 /**
  * The numbers that say how one integration's workflows are doing, and the pieces that show them.
@@ -93,7 +84,7 @@ export function useIntegrationStats(scopes: StatsScope[], since: string, include
   const myTasks = useQueries({ queries: scopes.map((s) => ({ ...pendingTaskCountQueryOptions(s), enabled: include.myTasks })) });
 
   // A metric that errored reads as null — shown as "—" — rather than spinning forever as "…".
-  const settle = <T,>(r: { data?: unknown; error: unknown } | undefined): T | null | undefined => {
+  const settle = <T>(r: { data?: unknown; error: unknown } | undefined): T | null | undefined => {
     if (!r) return undefined;
     if (r.error) return null;
     return valueOf(r.data as Parameters<typeof valueOf>[0]) as T | undefined;
@@ -124,7 +115,7 @@ export function useDefinitionStats(scope: StatsScope, workflowType: string, sinc
   const completed = useQuery(instanceCountQueryOptions(scope, { ...filters, status: 'COMPLETED', closeTimeFrom: since }));
   const reviews = useQuery({ ...pendingWorkItemCountQueryOptions(scope, { kind: 'REVIEW_ACTIVITY', parentWorkflowType: workflowType }), enabled: includeWork });
   const tasks = useQuery({ ...pendingWorkItemCountQueryOptions(scope, { kind: 'HUMAN_TASK', parentWorkflowType: workflowType, allRoles: true }), enabled: includeWork });
-  const settle = <T,>(r: { data?: unknown; error: unknown }): T | null | undefined => (r.error ? null : (valueOf(r.data as Parameters<typeof valueOf>[0]) as T | undefined));
+  const settle = <T>(r: { data?: unknown; error: unknown }): T | null | undefined => (r.error ? null : (valueOf(r.data as Parameters<typeof valueOf>[0]) as T | undefined));
   const taskPage = settle<CappedCount>(tasks);
   return {
     running: settle<CappedCount>(running),

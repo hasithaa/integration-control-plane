@@ -25,7 +25,23 @@ import SearchField from '../SearchField';
 import SchemaFormFields from './SchemaFormFields';
 import WorkflowDetailDrawer from './WorkflowDetailDrawer';
 import StructuredValue from './StructuredValue';
-import { buildFormResult, diffFormValues, displayWorkflowId, extractNodeExecutionDetail, formatTime, formValuesFromObject, gatewayScope, jsonPretty, ownerLabel, ownerScope, parseFormSchema, sectionTitleSx, sortByStartTimeDesc, splitQualifiedName, type PortalScope } from './helpers';
+import {
+  buildFormResult,
+  diffFormValues,
+  displayWorkflowId,
+  extractNodeExecutionDetail,
+  formatTime,
+  formValuesFromObject,
+  gatewayScope,
+  jsonPretty,
+  ownerLabel,
+  ownerScope,
+  parseFormSchema,
+  sectionTitleSx,
+  sortByStartTimeDesc,
+  splitQualifiedName,
+  type PortalScope,
+} from './helpers';
 import { ActionCard, DetailDrawer, DetailRow, HeaderCell, IdText, ListFooter, NotProvided, RefreshingNote, SchemaDisclosure, SectionCard, StatusChip, SubmitError, WorkflowIdLink, type WorkflowScope } from './shared';
 import Authorized from '../Authorized';
 import { Permissions } from '../../constants/permissions';
@@ -348,7 +364,9 @@ function WorkflowsAdmin({
                   <ListingTable.Cell>
                     <StatusChip status={wf.status} />
                   </ListingTable.Cell>
-                  <ListingTable.Cell><DateTime value={wf.startTime} /></ListingTable.Cell>
+                  <ListingTable.Cell>
+                    <DateTime value={wf.startTime} />
+                  </ListingTable.Cell>
                 </ListingTable.Row>
               ))}
             </ListingTable.Body>
@@ -728,10 +746,7 @@ export function ReviewActivityDetailDialog({ scope, taskId, onClose, onToast }: 
   );
 
   return (
-    <DetailDrawer
-      title={heading}
-      status={activity?.status}
-      onClose={onClose}>
+    <DetailDrawer title={heading} status={activity?.status} onClose={onClose}>
       {waiting ? (
         <CircularProgress size={24} sx={{ display: 'block', mx: 'auto', py: 4 }} />
       ) : loadError || !activity ? (
@@ -756,7 +771,9 @@ export function ReviewActivityDetailDialog({ scope, taskId, onClose, onToast }: 
                 <WorkflowIdLink workflowId={activity.parentWorkflowId} environmentId={scope.environmentId} onNavigate={onClose} truncate copy />
               </DetailRow>
               <DetailRow label="Trigger">{reviewTriggerLabel(activity.trigger)}</DetailRow>
-              <DetailRow label="Created"><DateTime value={activity.startTime} /></DetailRow>
+              <DetailRow label="Created">
+                <DateTime value={activity.startTime} />
+              </DetailRow>
               {activity.errorMessage && <DetailRow label="Error">{activity.errorMessage}</DetailRow>}
             </Stack>
           </SectionCard>
@@ -778,9 +795,7 @@ export function ReviewActivityDetailDialog({ scope, taskId, onClose, onToast }: 
               </Stack>
             </SectionCard>
           )}
-          {isCompleted && decision?.['input'] != null && (
-            <StructuredValue title="Input the reviewer submitted" raw={jsonPretty(decision['input']) || ''} environmentId={scope.environmentId} collapsible />
-          )}
+          {isCompleted && decision?.['input'] != null && <StructuredValue title="Input the reviewer submitted" raw={jsonPretty(decision['input']) || ''} environmentId={scope.environmentId} collapsible />}
 
           {/* Deciding a review is human-task work as much as workflow management: either
               manage permission offers the decision (the proxy accepts both). */}

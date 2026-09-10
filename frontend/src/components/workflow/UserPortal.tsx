@@ -234,7 +234,9 @@ export function WorkItemTable({ items, onOpen, environmentId, integrationLabel, 
               <ListingTable.Cell>
                 <StatusChip status={w.status} />
               </ListingTable.Cell>
-              <ListingTable.Cell><DateTime value={w.startTime} /></ListingTable.Cell>
+              <ListingTable.Cell>
+                <DateTime value={w.startTime} />
+              </ListingTable.Cell>
             </ListingTable.Row>
           );
         })}
@@ -637,10 +639,7 @@ export function TaskDetailDialog({ scope, taskId, actionable, onClose, onToast }
   );
 
   return (
-    <DetailDrawer
-      title={task ? taskDisplayName(task) : displayWorkflowId(taskId)}
-      status={taskDisplayStatus(task?.status)}
-      onClose={onClose}>
+    <DetailDrawer title={task ? taskDisplayName(task) : displayWorkflowId(taskId)} status={taskDisplayStatus(task?.status)} onClose={onClose}>
       {waiting ? (
         <CircularProgress size={24} sx={{ display: 'block', mx: 'auto', py: 4 }} />
       ) : taskError || !task ? (
@@ -664,7 +663,9 @@ export function TaskDetailDialog({ scope, taskId, actionable, onClose, onToast }
               <DetailRow label="Parent Workflow">
                 <WorkflowIdLink workflowId={task.parentWorkflowId} environmentId={scope.environmentId} onNavigate={onClose} truncate copy />
               </DetailRow>
-              <DetailRow label="Created"><DateTime value={task?.startTime} /></DetailRow>
+              <DetailRow label="Created">
+                <DateTime value={task?.startTime} />
+              </DetailRow>
               <DetailRow label="Eligible Roles">
                 {eligibleRoles?.length ? (
                   <Stack direction="row" gap={0.5} flexWrap="wrap">

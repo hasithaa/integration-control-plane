@@ -926,9 +926,7 @@ export function instanceCountQueryOptions(s: Scope, filters: Omit<WorkflowFilter
   return {
     queryKey: ['wf', 'instance-count', s.componentId, s.environmentId, filters] as const,
     queryFn: (): Promise<Fetchable<CappedCount>> =>
-      wfFetchable<Page<WorkflowInstance>>(s.componentId, s.environmentId, `workflows${buildQuery({ ...filters, limit: COUNT_PAGE })}`).then((r) =>
-        mapFetchable(r, (p) => ({ count: p.items?.length ?? 0, capped: p.hasMore === true })),
-      ),
+      wfFetchable<Page<WorkflowInstance>>(s.componentId, s.environmentId, `workflows${buildQuery({ ...filters, limit: COUNT_PAGE })}`).then((r) => mapFetchable(r, (p) => ({ count: p.items?.length ?? 0, capped: p.hasMore === true }))),
     refetchInterval: ({ state }: { state: { data?: Fetchable<CappedCount> } }) => fetchableRefetch(state.data) || 30000,
   };
 }
@@ -983,11 +981,9 @@ export function pendingWorkItemCountQueryOptions(s: Scope, filters: { kind: 'HUM
   return {
     queryKey: ['wf', 'pending-work-item-count', s.componentId, s.environmentId, filters] as const,
     queryFn: (): Promise<Fetchable<CappedCount>> =>
-      wfFetchable<Page<WorkItemRow>>(
-        s.componentId,
-        s.environmentId,
-        `work-items${buildQuery({ status: 'PENDING', kind: filters.kind, parentWorkflowType: filters.parentWorkflowType, limit: COUNT_PAGE, all: filters.allRoles ? true : undefined })}`,
-      ).then((r) => mapFetchable(r, (p) => ({ count: p.items?.length ?? 0, capped: p.hasMore === true }))),
+      wfFetchable<Page<WorkItemRow>>(s.componentId, s.environmentId, `work-items${buildQuery({ status: 'PENDING', kind: filters.kind, parentWorkflowType: filters.parentWorkflowType, limit: COUNT_PAGE, all: filters.allRoles ? true : undefined })}`).then((r) =>
+        mapFetchable(r, (p) => ({ count: p.items?.length ?? 0, capped: p.hasMore === true })),
+      ),
     refetchInterval: ({ state }: { state: { data?: Fetchable<CappedCount> } }) => fetchableRefetch(state.data) || 30000,
   };
 }

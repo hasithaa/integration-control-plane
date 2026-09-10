@@ -254,7 +254,13 @@ function WorkflowStatsTable({ scope, environmentId, integrations, runtimeByCompo
             const s = statsByComponent.get(integration.componentId) ?? {};
             const types = typesByComponent.get(integration.componentId);
             return (
-              <IntegrationRow key={integration.componentId} integration={integration} isDeployed={deployedIds?.has(integration.componentId)} runtime={runtimeByComponent.get(integration.componentId)} span={canSeeWork ? 7 : 5} onOpen={() => openExecutions(integration)}>
+              <IntegrationRow
+                key={integration.componentId}
+                integration={integration}
+                isDeployed={deployedIds?.has(integration.componentId)}
+                runtime={runtimeByComponent.get(integration.componentId)}
+                span={canSeeWork ? 7 : 5}
+                onOpen={() => openExecutions(integration)}>
                 <ListingTable.Cell>{definitions.isLoading && types === undefined ? '…' : (types ?? 0)}</ListingTable.Cell>
                 <ListingTable.Cell>{countText(s.running)}</ListingTable.Cell>
                 <ListingTable.Cell>{countText(s.suspended)}</ListingTable.Cell>
@@ -374,7 +380,9 @@ function ProjectInbox({ scope, environmentId, integrations, runtimeByComponent, 
     if (resolving) return 'Finding the integrations deployed in this environment…';
     if (deployed.length === 0) return 'No workflow integration is deployed in this environment.';
     const parts: string[] = [];
-    parts.push(`Showing ${items.length} item${items.length === 1 ? '' : 's'} — ${tasks} task${tasks === 1 ? '' : 's'}, ${reviews} review${reviews === 1 ? '' : 's'} — from ${answered.length} of ${deployed.length} integration${deployed.length === 1 ? '' : 's'}.`);
+    parts.push(
+      `Showing ${items.length} item${items.length === 1 ? '' : 's'} — ${tasks} task${tasks === 1 ? '' : 's'}, ${reviews} review${reviews === 1 ? '' : 's'} — from ${answered.length} of ${deployed.length} integration${deployed.length === 1 ? '' : 's'}.`,
+    );
     if (answering.length) parts.push(`${joinNames(answering.map((s) => s.integration.name))} ${answering.length === 1 ? 'is' : 'are'} still answering; ${answering.length === 1 ? 'its' : 'their'} work joins the list as it arrives.`);
     if (offline.length) parts.push(`${joinNames(offline.map((s) => s.integration.name))} ${offline.length === 1 ? 'is' : 'are'} offline — ${offline.length === 1 ? 'its' : 'their'} tasks are not included.`);
     if (failed.length) parts.push(`${joinNames(failed.map((s) => s.integration.name))} could not be reached — ${failed.length === 1 ? 'its' : 'their'} tasks are not included.`);

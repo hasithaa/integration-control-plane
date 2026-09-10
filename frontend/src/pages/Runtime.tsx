@@ -569,15 +569,7 @@ function EnvironmentRuntimeCard({
 
       {drawerOpen && componentId && <BoundSecretDrawer componentId={componentId} environmentId={environmentId} environmentName={environmentName} onClose={() => setDrawerOpen(false)} />}
       {addOpen && componentId && (
-        <AddRuntimeModal
-          environmentId={environmentId}
-          environmentName={environmentName}
-          componentId={componentId}
-          componentType={componentType}
-          projectHandle={projectHandle}
-          integrationHandle={integrationHandle}
-          onClose={() => setAddOpen(false)}
-        />
+        <AddRuntimeModal environmentId={environmentId} environmentName={environmentName} componentId={componentId} componentType={componentType} projectHandle={projectHandle} integrationHandle={integrationHandle} onClose={() => setAddOpen(false)} />
       )}
     </>
   );
