@@ -55,9 +55,11 @@ const emptySx = { py: 4, textAlign: 'center', color: 'text.secondary' };
  * A reset point named by the workflow's own steps rather than by history internals. Points carry
  * the step names around them when the runtime could attribute them; the ones it could not (the
  * run's opening task, the tasks between steps) used to read as bare "event 19" — accurate and
- * useless. Position gives them a name: the first point is the start of the run, and an unnamed
- * later point sits after whatever the previous point named. The raw event id stays visible as a
- * second line, since it is what the audit trail will record.
+ * useless, and a Temporal detail the person resetting a workflow should never have to know.
+ * Position gives them a name: the first point is the start of the run, an unnamed later point
+ * sits after whatever the previous point named, and failing even that it is the Nth checkpoint.
+ * The event id stays the radio's value — it is what the reset command and the audit trail take —
+ * but it is not shown.
  */
 function resetPointLabel(points: ResetPoint[], index: number): string {
   const names = (p: ResetPoint) => p.nodeNames.map((n) => splitQualifiedName(n).task ?? n);
@@ -68,7 +70,7 @@ function resetPointLabel(points: ResetPoint[], index: number): string {
     const prev = names(points[i]);
     if (prev.length) return `After ${prev[prev.length - 1]}`;
   }
-  return `Workflow task ${points[index].eventId}`;
+  return `Checkpoint ${index + 1} of ${points.length}`;
 }
 
 export default function WorkflowDetailDrawer({ scope, workflowId, onClose }: { scope: WorkflowScope; workflowId: string; onClose: () => void }) {
@@ -281,7 +283,7 @@ export default function WorkflowDetailDrawer({ scope, workflowId, onClose }: { s
                             {point.isFirstFailure ? ' — just before the first failure' : ''}
                           </Typography>
                           <Typography variant="caption" color="text.secondary">
-                            event {point.eventId} · <DateTime value={point.timestamp} />
+                            <DateTime value={point.timestamp} />
                           </Typography>
                         </Stack>
                       }
