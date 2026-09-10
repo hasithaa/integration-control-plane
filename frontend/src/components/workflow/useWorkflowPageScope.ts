@@ -88,13 +88,13 @@ export function useWorkflowPageScope(scope: ComponentScope | ProjectScope, selec
   const { data: queues = {} } = useWorkflowTaskQueues({ componentId: gatewayComponentId, environmentId: activeEnvId });
   const targets = baseTargets.map((t) => ({ ...t, handler: queues[t.componentId] ?? t.handler }));
 
-  // Every integration in the project, with its workflow-typing — what the project level renders
-  // as a dashboard now that listings are integration-scoped.
+  // Every integration in the project, with whether it hosts workflows: typed as one, or a runtime of it
+  // has published a worker's task queue — management is enabled per runtime, not per integration type.
   const integrations = allComponents.map((c) => ({
     componentId: c.id,
     name: c.displayName ?? c.name,
     routeHandler: c.handler,
-    workflow: isWorkflowIntegration(c.displayType),
+    workflow: isWorkflowIntegration(c.displayType) || c.id in queues,
   }));
   const workflowIntegrations = integrations.filter((i) => i.workflow);
 

@@ -102,7 +102,7 @@ isolated function handleInstanceGraphRequest(string componentId, string environm
     json[] executedNodes = tree is map<json> && tree["nodes"] is json[] ? <json[]>tree["nodes"] : [];
 
     [json, string, string]?|error model = workflowGraphFromStoredMetadata(componentId, environmentId,
-            workflowType);
+            workflowType, stringField(info, "taskQueue"));
     if model is error {
         log:printError("Failed to read the stored workflow model", 'error = model,
                 workflowType = workflowType);
@@ -174,8 +174,6 @@ isolated function instanceGraphResponse(string workflowType, map<json> info, jso
     // matching step at or after the last anchored one.
     int cursor = 0;
 
-    // Whether any executed node named its step.
-    boolean sawStepId = false;
     int executedCount = 0;
 
     foreach json node in executedNodes {
@@ -190,9 +188,6 @@ isolated function instanceGraphResponse(string workflowType, map<json> info, jso
             continue;
         }
         executedCount += 1;
-        if stepId is string {
-            sawStepId = true;
-        }
 
         if nodeType == REVIEW_ACTIVITY_TYPE {
             // Attaches to the step it reviews, named by the step id in its memo. A review that
@@ -258,9 +253,8 @@ isolated function instanceGraphResponse(string workflowType, map<json> info, jso
         steps: steps.toJson(),
         takenArms: takenArms.toJson(),
         unmatched: unmatched,
-        // False only when steps ran and not one of them was named: the run cannot be placed on the model at
-        // all.
-        stepIdsAvailable: executedCount == 0 || sawStepId
+        // False only when steps ran and none could be placed, stamped or interpolated.
+        stepIdsAvailable: executedCount == 0 || steps.length() > 0 || reviews.length() > 0
     };
     http:Response response = new;
     response.statusCode = 200;
@@ -402,12 +396,25 @@ isolated function stringField(map<json> value, string key) returns string? {
 // The graph of one workflow type — a workflow's control flow or an agent's star — from any RUNNING
 // runtime's published descriptor, with the descriptor's checksum and which of the two it is.
 isolated function workflowGraphFromStoredMetadata(string componentId, string environmentId,
-        string workflowType) returns [json, string, string]?|error {
-    // Project-wide, not component-wide: the console may be reading through a different integration
-    // than the one that owns this workflow, and the drawing must not silently degrade because of it.
+        string workflowType, string? taskQueue) returns [json, string, string]?|error {
+    // Project-wide: the console may read a run through a sibling integration. Within a project a task
+    // queue names one integration, so the run's own queue picks its owner before any other match.
     types:WorkflowMetadataRecord[] metadataRecords =
         check storage:getWorkflowMetadataForProjectEnv(componentId, environmentId);
+    types:WorkflowMetadataRecord[] ordered = [];
+    if taskQueue is string {
+        foreach types:WorkflowMetadataRecord metadataRecord in metadataRecords {
+            if metadataRecord.taskQueue == taskQueue {
+                ordered.push(metadataRecord);
+            }
+        }
+    }
     foreach types:WorkflowMetadataRecord metadataRecord in metadataRecords {
+        if taskQueue !is string || metadataRecord.taskQueue != taskQueue {
+            ordered.push(metadataRecord);
+        }
+    }
+    foreach types:WorkflowMetadataRecord metadataRecord in ordered {
         json|error document = metadataRecord.metadata.fromJsonString();
         if document !is map<json> {
             continue;

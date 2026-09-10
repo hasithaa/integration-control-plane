@@ -873,9 +873,9 @@ export function flowUnavailable(data: InstanceGraph | undefined): string | null 
     return "This integration hasn't published the workflow's structure, so this run is shown as its history. Redeploy it with a current runtime to see the flow.";
   }
   if (data.stepIdsAvailable === false) {
-    // The structure exists but nothing can be pinned to it; drawing it would show every step as
+    // The structure exists but no step of this run could be placed on it; drawing it would show every step as
     // "not reached", which is a wrong statement rather than a missing one.
-    return 'This run could not be placed on the workflow’s structure, so it is shown as its history. It was read through an integration built against an older workflow module — redeploy it to see the path taken.';
+    return 'This run could not be placed on the workflow’s structure, so it is shown as its history. Its steps carry no step ids — typically an integration built against an older workflow module.';
   }
   return null;
 }
