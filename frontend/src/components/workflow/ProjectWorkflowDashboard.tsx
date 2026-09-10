@@ -377,7 +377,8 @@ function ProjectInbox({ scope, environmentId, integrations, runtimeByComponent, 
   useEffect(() => {
     if (settled || deployedIds === undefined) return;
     if (allAnswered) {
-      answeredAtSettleRef.current = new Set(deployed.filter((_, i) => statuses[i] !== 'fetching').map((d) => d.componentId));
+      // Every reachable source has answered, so none of them can be late.
+      answeredAtSettleRef.current = new Set(deployed.map((d) => d.componentId));
       setSettled(true);
       return;
     }
