@@ -18,7 +18,7 @@
 
 import { Alert, Chip, CircularProgress, ListingTable, Snackbar, Stack, Tooltip, Typography } from '@wso2/oxygen-ui';
 import { Workflow } from '@wso2/oxygen-ui-icons-react';
-import { useMemo, useState, type JSX, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type JSX, type ReactNode } from 'react';
 import { useQueries, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router';
 import { useProjectRuntimes, type GqlRuntime } from '../../api/queries';
@@ -300,6 +300,9 @@ interface SourceState {
   fetchedAt?: number;
 }
 
+/** How long the list is held for slow sources before it is shown with what has arrived. */
+const HOLD_MS = 6000;
+
 const joinNames = (xs: string[]): string => (xs.length <= 1 ? xs.join('') : `${xs.slice(0, -1).join(', ')} and ${xs[xs.length - 1]}`);
 
 /**
@@ -334,6 +337,67 @@ function ProjectInbox({ scope, environmentId, integrations, runtimeByComponent, 
     queries: deployed.map((d) => ({ ...pendingWorkItemsQueryOptions({ componentId: d.componentId, environmentId }), enabled: online(d) })),
   });
 
+  // ── Merging gracefully ──
+  // The sources answer at different moments. Re-sorting the whole list each time one arrives
+  // would move rows under the reader's eye, so the merge is done in two phases. First the list
+  // is HELD: nothing is shown until every reachable source has answered or a short grace period
+  // has passed — most of the time that is a second or two, and the reader sees one complete,
+  // oldest-first list. Then the order is FROZEN: every item keeps the position it was first
+  // shown in; a source answering after the hold appends its items at the bottom (oldest-first
+  // among themselves) and is named as late; an item that is decided simply leaves. The natural
+  // order is still oldest-first for everything shown together — only late arrivals break it, and
+  // they say so.
+  const orderRef = useRef<Map<string, number>>(new Map());
+  const seqRef = useRef(0);
+  const [settled, setSettled] = useState(false);
+  const [lateIds, setLateIds] = useState<Set<string>>(new Set());
+  const answeredAtSettleRef = useRef<Set<string>>(new Set());
+
+  const statusOf = (d: WorkflowIntegrationEntry, i: number): SourceState['status'] => {
+    const r = results[i];
+    if (!online(d)) return 'offline';
+    if (r?.error) return 'failed';
+    if (r?.isPending || isPreparing(r?.data)) return 'fetching';
+    if (isRefreshing(r?.data)) return 'refreshing';
+    return 'ready';
+  };
+  const statuses = deployed.map((d, i) => statusOf(d, i));
+  const allAnswered = deployedIds !== undefined && statuses.every((st) => st !== 'fetching');
+
+  // A new environment is a new list: forget the order, hold again.
+  useEffect(() => {
+    orderRef.current = new Map();
+    seqRef.current = 0;
+    answeredAtSettleRef.current = new Set();
+    setLateIds(new Set());
+    setSettled(false);
+  }, [environmentId]);
+
+  // Settle when every reachable source has answered, or after the grace period — whichever first.
+  useEffect(() => {
+    if (settled || deployedIds === undefined) return;
+    if (allAnswered) {
+      answeredAtSettleRef.current = new Set(deployed.filter((_, i) => statuses[i] !== 'fetching').map((d) => d.componentId));
+      setSettled(true);
+      return;
+    }
+    const t = setTimeout(() => {
+      answeredAtSettleRef.current = new Set(deployed.filter((_, i) => statuses[i] !== 'fetching').map((d) => d.componentId));
+      setSettled(true);
+    }, HOLD_MS);
+    return () => clearTimeout(t);
+    // statuses is derived from results, which is a fresh array each render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [settled, deployedIds, allAnswered, ...statuses]);
+
+  // A source that answers after the hold is late: its items go to the bottom, and it is named.
+  useEffect(() => {
+    if (!settled) return;
+    const late = deployed.filter((d, i) => (statuses[i] === 'ready' || statuses[i] === 'refreshing') && !answeredAtSettleRef.current.has(d.componentId)).map((d) => d.componentId);
+    if (late.some((id) => !lateIds.has(id))) setLateIds((prev) => new Set([...prev, ...late]));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [settled, ...statuses]);
+
   const { items, labels, sources } = useMemo(() => {
     const merged: WorkItem[] = [];
     const labels = new Map<string, string>();
@@ -342,11 +406,7 @@ function ProjectInbox({ scope, environmentId, integrations, runtimeByComponent, 
       const r = results[i];
       labels.set(d.componentId, d.name);
       const rows = valueOf(r?.data)?.items ?? [];
-      let status: SourceState['status'] = 'ready';
-      if (!online(d)) status = 'offline';
-      else if (r?.error) status = 'failed';
-      else if (r?.isPending || isPreparing(r?.data)) status = 'fetching';
-      else if (isRefreshing(r?.data)) status = 'refreshing';
+      const status = statuses[i];
       sources.push({ integration: d, status, count: rows.length, fetchedAt: fetchedAtOf(r?.data) });
       if (status === 'offline' || status === 'failed') return;
       for (const row of rows) {
@@ -357,33 +417,46 @@ function ProjectInbox({ scope, environmentId, integrations, runtimeByComponent, 
         merged.push(item);
       }
     });
-    // Oldest first — ISO-8601 sorts lexicographically. Items without a time sink to the end.
+    // Natural order: oldest first — ISO-8601 sorts lexicographically; items without a time sink.
     merged.sort((a, b) => (a.startTime ?? '\uffff').localeCompare(b.startTime ?? '\uffff'));
+    if (!settled) return { items: merged, labels, sources };
+    // Frozen order: first appearance decides the position, so nothing already shown moves.
+    const order = orderRef.current;
+    for (const w of merged) if (!order.has(w.id)) order.set(w.id, ++seqRef.current);
+    merged.sort((a, b) => (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0));
     return { items: merged, labels, sources };
     // `results` is a fresh array each render; recomputing is cheap and keeps the list current.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [deployed, runtimeByComponent, ...results.map((r) => r.data), ...results.map((r) => r.error), ...results.map((r) => r.isPending)]);
+  }, [deployed, runtimeByComponent, settled, ...results.map((r) => r.data), ...results.map((r) => r.error), ...results.map((r) => r.isPending)]);
 
   const answered = sources.filter((s) => s.status === 'ready' || s.status === 'refreshing');
   const answering = sources.filter((s) => s.status === 'fetching');
   const offline = sources.filter((s) => s.status === 'offline');
   const failed = sources.filter((s) => s.status === 'failed');
+  const late = sources.filter((s) => lateIds.has(s.integration.componentId) && s.count > 0);
   const resolving = deployedIds === undefined;
   const undeployed = resolving ? 0 : integrations.length - deployed.length;
   const tasks = items.filter((w) => w.kind === 'task').length;
   const reviews = items.length - tasks;
+  const holding = !resolving && !settled;
 
-  // The line that says what the list is: how much, from how many of the sources, and what is
-  // missing. Written from the states rather than assumed, so it is never more confident than
-  // the data behind it.
+  // The line that says what the list is: how much, from how many of the sources, what is still
+  // coming, and what is missing. Written from the states rather than assumed, so it is never more
+  // confident than the data behind it.
   const summary = (() => {
     if (resolving) return 'Finding the integrations deployed in this environment…';
     if (deployed.length === 0) return 'No workflow integration is deployed in this environment.';
+    const reachable = deployed.length - offline.length;
+    if (holding) return `Collecting tasks from ${reachable} integration${reachable === 1 ? '' : 's'}… The list appears once they have answered, so it does not shift while you read it.`;
     const parts: string[] = [];
     parts.push(
-      `Showing ${items.length} item${items.length === 1 ? '' : 's'} — ${tasks} task${tasks === 1 ? '' : 's'}, ${reviews} review${reviews === 1 ? '' : 's'} — from ${answered.length} of ${deployed.length} integration${deployed.length === 1 ? '' : 's'}.`,
+      `Showing ${items.length} item${items.length === 1 ? '' : 's'} — ${tasks} task${tasks === 1 ? '' : 's'}, ${reviews} review${reviews === 1 ? '' : 's'} — from ${answered.length} of ${deployed.length} integration${deployed.length === 1 ? '' : 's'}, oldest first.`,
     );
-    if (answering.length) parts.push(`${joinNames(answering.map((s) => s.integration.name))} ${answering.length === 1 ? 'is' : 'are'} still answering; ${answering.length === 1 ? 'its' : 'their'} work joins the list as it arrives.`);
+    if (answering.length) parts.push(`${joinNames(answering.map((s) => s.integration.name))} ${answering.length === 1 ? 'is' : 'are'} still answering; ${answering.length === 1 ? 'its' : 'their'} work is added at the bottom when it arrives.`);
+    if (late.length)
+      parts.push(
+        `${joinNames(late.map((s) => s.integration.name))} answered after the list was shown — ${late.length === 1 ? 'its' : 'their'} ${late.reduce((n, s) => n + s.count, 0)} item${late.reduce((n, s) => n + s.count, 0) === 1 ? ' is' : 's are'} at the bottom, not in time order.`,
+      );
     if (offline.length) parts.push(`${joinNames(offline.map((s) => s.integration.name))} ${offline.length === 1 ? 'is' : 'are'} offline — ${offline.length === 1 ? 'its' : 'their'} tasks are not included.`);
     if (failed.length) parts.push(`${joinNames(failed.map((s) => s.integration.name))} could not be reached — ${failed.length === 1 ? 'its' : 'their'} tasks are not included.`);
     return parts.join(' ');
@@ -412,7 +485,7 @@ function ProjectInbox({ scope, environmentId, integrations, runtimeByComponent, 
   return (
     <Stack gap={2}>
       <Stack direction="row" alignItems="center" gap={1} flexWrap="wrap">
-        {answering.length > 0 && <CircularProgress size={14} />}
+        {(holding || answering.length > 0) && <CircularProgress size={14} />}
         <Typography variant="body2" color="text.secondary">
           {summary}
           {undeployed > 0 ? ` ${undeployed} integration${undeployed === 1 ? ' is' : 's are'} not deployed in this environment.` : ''}
@@ -436,7 +509,7 @@ function ProjectInbox({ scope, environmentId, integrations, runtimeByComponent, 
         </Stack>
       )}
 
-      {resolving || (items.length === 0 && answering.length > 0) ? (
+      {resolving || holding ? (
         <CircularProgress size={24} sx={{ display: 'block', mx: 'auto', py: 4 }} />
       ) : items.length === 0 ? (
         <Typography sx={{ py: 4, textAlign: 'center', color: 'text.secondary' }}>
