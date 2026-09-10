@@ -962,10 +962,10 @@ export function useTotalPendingTaskCount(s: Scope, enabled = true) {
  * page per integration can, and each page reports its own readiness so the inbox can say which
  * sources it is showing.
  */
-export function pendingWorkItemsQueryOptions(s: Scope, limit = 50) {
+export function pendingWorkItemsQueryOptions(s: Scope, limit = 50, pageToken?: string) {
   return {
-    queryKey: ['wf', 'pending-work-items', s.componentId, s.environmentId, limit] as const,
-    queryFn: (): Promise<Fetchable<Page<WorkItemRow>>> => fetchWorkItems(s.componentId, s.environmentId, { status: 'PENDING', limit }),
+    queryKey: ['wf', 'pending-work-items', s.componentId, s.environmentId, limit, pageToken ?? ''] as const,
+    queryFn: (): Promise<Fetchable<Page<WorkItemRow>>> => fetchWorkItems(s.componentId, s.environmentId, { status: 'PENDING', limit, pageToken }),
     refetchInterval: ({ state }: { state: { data?: Fetchable<Page<WorkItemRow>> } }) => fetchableRefetch(state.data) || 30000,
   };
 }

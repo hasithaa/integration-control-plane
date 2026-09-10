@@ -28,7 +28,7 @@ import { formatClock, formatDistanceToNow } from '../../utils/time';
 import { useTimeZone } from '../../contexts/TimeZoneContext';
 import { ReviewActivityDetailDialog, type Toast } from './AdminPortal';
 import { TaskDetailDialog, toWorkItem, WorkItemTable, type WorkItem } from './UserPortal';
-import { HeaderCell } from './shared';
+import { HeaderCell, ListFooter } from './shared';
 import type { WorkflowIntegrationEntry } from './useWorkflowPageScope';
 import { countText, numberText, sumOf, totalOf, useIntegrationStats, useSinceWindow, type IntegrationStats } from './WorkflowStats';
 
@@ -298,6 +298,10 @@ interface SourceState {
   status: 'offline' | 'fetching' | 'refreshing' | 'ready' | 'failed';
   count: number;
   fetchedAt?: number;
+  /** The source reported more than the pages loaded so far. */
+  hasMore?: boolean;
+  nextToken?: string;
+  loadingMore?: boolean;
 }
 
 /** How long the list is held for slow sources before it is shown with what has arrived. */
@@ -333,8 +337,18 @@ function ProjectInbox({ scope, environmentId, integrations, runtimeByComponent, 
   // An offline runtime cannot answer; asking it only produces an error to explain. Its row in the
   // strip says why it is missing instead.
   const online = (d: WorkflowIntegrationEntry) => (runtimeByComponent.get(d.componentId)?.status ?? '').toUpperCase() === 'RUNNING';
+  // ── Paging, per source ──
+  // Each source is asked for one page of 50. A source with more says so ("50+"), and Load more
+  // asks every such source for its next page — one more request per source, never a re-read of
+  // what is already shown. The follow-up pages are separate queries keyed by their token, so the
+  // first page's polling keeps the list fresh while the later pages stay as they were loaded.
+  const [moreTokens, setMoreTokens] = useState<Record<string, string[]>>({});
   const results = useQueries({
     queries: deployed.map((d) => ({ ...pendingWorkItemsQueryOptions({ componentId: d.componentId, environmentId }), enabled: online(d) })),
+  });
+  const pageDescriptors = useMemo(() => deployed.flatMap((d) => (moreTokens[d.componentId] ?? []).map((token) => ({ componentId: d.componentId, token }))), [deployed, moreTokens]);
+  const moreResults = useQueries({
+    queries: pageDescriptors.map((pd) => ({ ...pendingWorkItemsQueryOptions({ componentId: pd.componentId, environmentId }, 50, pd.token), refetchInterval: false as const })),
   });
 
   // ── Merging gracefully ──
@@ -367,6 +381,7 @@ function ProjectInbox({ scope, environmentId, integrations, runtimeByComponent, 
   // A new environment is a new list: forget the order, hold again.
   useEffect(() => {
     orderRef.current = new Map();
+    setMoreTokens({});
     seqRef.current = 0;
     answeredAtSettleRef.current = new Set();
     setLateIds(new Set());
@@ -406,9 +421,14 @@ function ProjectInbox({ scope, environmentId, integrations, runtimeByComponent, 
     deployed.forEach((d, i) => {
       const r = results[i];
       labels.set(d.componentId, d.name);
-      const rows = valueOf(r?.data)?.items ?? [];
+      const first = valueOf(r?.data);
+      // The source's later pages, in the order they were asked for.
+      const later = pageDescriptors.map((pd, j) => (pd.componentId === d.componentId ? valueOf(moreResults[j]?.data) : undefined)).filter((pg) => pg !== undefined);
+      const loadingMore = pageDescriptors.some((pd, j) => pd.componentId === d.componentId && (moreResults[j]?.isPending || isPreparing(moreResults[j]?.data)));
+      const last = later.length ? later[later.length - 1] : first;
+      const rows = [...(first?.items ?? []), ...later.flatMap((pg) => pg?.items ?? [])];
       const status = statuses[i];
-      sources.push({ integration: d, status, count: rows.length, fetchedAt: fetchedAtOf(r?.data) });
+      sources.push({ integration: d, status, count: rows.length, fetchedAt: fetchedAtOf(r?.data), hasMore: last?.hasMore === true, nextToken: last?.nextPageToken ?? undefined, loadingMore });
       if (status === 'offline' || status === 'failed') return;
       for (const row of rows) {
         const item = toWorkItem(row);
@@ -428,7 +448,21 @@ function ProjectInbox({ scope, environmentId, integrations, runtimeByComponent, 
     return { items: merged, labels, sources };
     // `results` is a fresh array each render; recomputing is cheap and keeps the list current.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [deployed, runtimeByComponent, settled, ...results.map((r) => r.data), ...results.map((r) => r.error), ...results.map((r) => r.isPending)]);
+  }, [deployed, runtimeByComponent, settled, pageDescriptors, ...results.map((r) => r.data), ...results.map((r) => r.error), ...results.map((r) => r.isPending), ...moreResults.map((r) => r.data), ...moreResults.map((r) => r.isPending)]);
+
+  // Load more asks every source that reported more for its next page.
+  const anyMore = sources.some((src) => src.hasMore && src.nextToken && (src.status === 'ready' || src.status === 'refreshing'));
+  const anyLoadingMore = sources.some((src) => src.loadingMore);
+  const loadMore = () =>
+    setMoreTokens((prev) => {
+      const next = { ...prev };
+      for (const src of sources) {
+        if (!src.hasMore || !src.nextToken) continue;
+        const list = next[src.integration.componentId] ?? [];
+        if (!list.includes(src.nextToken)) next[src.integration.componentId] = [...list, src.nextToken];
+      }
+      return next;
+    });
 
   const answered = sources.filter((s) => s.status === 'ready' || s.status === 'refreshing');
   const answering = sources.filter((s) => s.status === 'fetching');
@@ -459,6 +493,8 @@ function ProjectInbox({ scope, environmentId, integrations, runtimeByComponent, 
         `${joinNames(late.map((s) => s.integration.name))} answered after the list was shown — ${late.length === 1 ? 'its' : 'their'} ${late.reduce((n, s) => n + s.count, 0)} item${late.reduce((n, s) => n + s.count, 0) === 1 ? ' is' : 's are'} at the bottom, not in time order.`,
       );
     if (offline.length) parts.push(`${joinNames(offline.map((s) => s.integration.name))} ${offline.length === 1 ? 'is' : 'are'} offline — ${offline.length === 1 ? 'its' : 'their'} tasks are not included.`);
+    const withMore = sources.filter((src) => src.hasMore && (src.status === 'ready' || src.status === 'refreshing'));
+    if (withMore.length) parts.push(`${joinNames(withMore.map((src) => src.integration.name))} ${withMore.length === 1 ? 'has' : 'have'} more than the ${withMore.map((src) => src.count).join(' and ')} shown — load more below.`);
     if (failed.length) parts.push(`${joinNames(failed.map((s) => s.integration.name))} could not be reached — ${failed.length === 1 ? 'its' : 'their'} tasks are not included.`);
     return parts.join(' ');
   })();
@@ -471,7 +507,9 @@ function ProjectInbox({ scope, environmentId, integrations, runtimeByComponent, 
     const updated = s.fetchedAt ? `updated ${formatClock(s.fetchedAt * 1000, { zone })}` : '';
     switch (s.status) {
       case 'ready':
-        return { label: `${name} · ${s.count}`, color: 'default' as const, variant: 'outlined' as const, tip: `${s.count} pending from ${name}${updated ? ` — ${updated}` : ''}. Open its queue.` };
+        return s.hasMore
+          ? { label: `${name} · ${s.count}+`, color: 'default' as const, variant: 'outlined' as const, tip: `Showing the first ${s.count} from ${name}; it has more. Load more below, or open its queue.${updated ? ` ${updated}.` : ''}` }
+          : { label: `${name} · ${s.count}`, color: 'default' as const, variant: 'outlined' as const, tip: `${s.count} pending from ${name}${updated ? ` — ${updated}` : ''}. Open its queue.` };
       case 'refreshing':
         return { label: `${name} · ${s.count} · updating…`, color: 'default' as const, variant: 'outlined' as const, tip: `${name} answered ${updated}; a fresh copy is on its way after a change.` };
       case 'fetching':
@@ -517,7 +555,10 @@ function ProjectInbox({ scope, environmentId, integrations, runtimeByComponent, 
           {answered.length === 0 ? 'No integration could be asked for its tasks right now.' : `Nothing is waiting for you across ${answered.length === 1 ? 'this integration' : `these ${answered.length} integrations`}.`}
         </Typography>
       ) : (
-        <WorkItemTable items={items} onOpen={(w) => (w.kind === 'review' ? setOpenReview(w) : setOpenTask(w))} environmentId={environmentId} integrationLabel={(q) => labels.get(q ?? '') ?? q ?? '—'} />
+        <>
+          <WorkItemTable items={items} onOpen={(w) => (w.kind === 'review' ? setOpenReview(w) : setOpenTask(w))} environmentId={environmentId} integrationLabel={(q) => labels.get(q ?? '') ?? q ?? '—'} />
+          <ListFooter count={items.length} singular="item" plural="items" hasMore={anyMore} loadingMore={anyLoadingMore} onLoadMore={loadMore} />
+        </>
       )}
 
       {/* Each item opens the drawer its own integration would — decisions go to the runtime that
