@@ -1066,9 +1066,7 @@ isolated function mapWorkflowRequestToOperation(string method, string[] wfPath,
             }
             "work-items" => {
                 if segments == 1 {
-                    // The unified queue: tasks and reviews together. The service layer injects
-                    // `kinds` as the intersection of what the caller asked for and what their
-                    // permissions allow — this mapping never decides visibility.
+                    // The unified queue: tasks and reviews together.
                     return ["workItems.list", queryParams];
                 }
             }
@@ -1124,10 +1122,8 @@ isolated function mapWorkflowRequestToOperation(string method, string[] wfPath,
                 }
                 return ["instances." + wfPath[3], params];
             }
-            // Reset replays the run to a chosen workflow task and re-executes everything after
-            // it — the recovery tool for a run wedged by a bad deploy or a poisoned decision.
-            // Not folded into WF_INSTANCE_ACTIONS: its body carries structure the bare actions
-            // never have, and the module rejects a reset whose resetType it does not know.
+            // Reset replays the run to a chosen workflow task and re-executes everything after it — the recovery
+            // tool for a run wedged by a bad deploy or a poisoned decision.
             if segments == 3 && wfPath[2] == "reset" {
                 map<json> params = {workflowId: wfPath[1]};
                 foreach string key in ["resetType", "eventId", "reason", "reapply", "runId"] {
@@ -1152,9 +1148,8 @@ isolated function mapWorkflowRequestToOperation(string method, string[] wfPath,
             }
         }
         "review-activities" if segments == 2 && wfPath[1] == "bulk-retry" => {
-            // One decision over many reviews: retry or fail them together, addressed by
-            // explicit ids or by the parent instance. The module enforces the exactly-one-of
-            // rule and reports per-item outcomes, so a partial success is visible as itself.
+            // One decision over many reviews: retry or fail them together, addressed by explicit ids or by the
+            // parent instance.
             map<json> params = {};
             foreach string key in ["action", "taskIds", "parentWorkflowId", "activityName", "feedback"] {
                 if body[key] !is () {

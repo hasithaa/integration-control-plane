@@ -23,19 +23,8 @@ import type { ExecutionGraph, InstanceGraph, StepExecution } from '../../api/wor
 import { paletteColor, statusColorName } from './graphVisuals';
 import { MODEL_ACTIVITY_LABELS, modelStepId } from './helpers';
 
-/**
- * The agent's compact rail: everything the agent declares, as a categorized list — human tasks,
- * events, tools, activities, and the model's own calls. An agent has no lexical control flow (the
- * model decides what runs and when), so a list of capabilities *is* the whole static story, told
- * in the same visual language as a workflow's flow rail: executed rows carry their status colour
- * and a ×N badge, never-invoked ones stay muted. Clicking a row filters the timeline to that
- * row's executions, exactly like a flow step.
- *
- * The model's own section is special: the star's single `model` node covers every built-in model
- * call, but Thinking (llmChat) and Generate / Generate Result (the calls that carry the business
- * payload) mean different things to a reader, so they get one row each — synthesized from the
- * executions, selected by `model#<activity>` ids the overview resolves client-side.
- */
+// The agent's compact rail: everything the agent declares, as a categorized list — human tasks, events, tools,
+// activities, and the model's own calls.
 
 interface Row {
   id: string;

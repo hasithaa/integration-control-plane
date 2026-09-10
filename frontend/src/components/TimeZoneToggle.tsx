@@ -22,7 +22,7 @@ import type { JSX } from 'react';
 import { useTimeZone } from '../contexts/TimeZoneContext';
 import { localOffsetLabel } from '../utils/time';
 
-/** Names the zone the workflow pages' times are on and switches it between local and UTC. */
+// Names the zone the workflow pages' times are on and switches it between local and UTC.
 export default function TimeZoneToggle(): JSX.Element {
   const { zone, label, toggle } = useTimeZone();
   const other = zone === 'utc' ? `your local time (${localOffsetLabel()})` : 'UTC';

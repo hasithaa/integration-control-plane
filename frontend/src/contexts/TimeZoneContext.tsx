@@ -19,10 +19,10 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type JSX, type ReactNode } from 'react';
 import { getTimeZonePreference, setTimeZonePreference, zoneLabel, type TimeZonePreference } from '../utils/time';
 
-/** The clock the workflow pages show times on — local or UTC — chosen once per browser. */
+// The clock the workflow pages show times on — local or UTC — chosen once per browser.
 interface TimeZoneState {
   zone: TimeZonePreference;
-  /** Human name of the zone in effect: "UTC", or e.g. "UTC+05:30 · Asia/Colombo". */
+  // Human name of the zone in effect: "UTC", or e.g. "UTC+05:30 · Asia/Colombo".
   label: string;
   setZone: (zone: TimeZonePreference) => void;
   toggle: () => void;
@@ -40,7 +40,7 @@ export function TimeZoneProvider({ children }: { children: ReactNode }): JSX.Ele
   return <TimeZoneContext.Provider value={value}>{children}</TimeZoneContext.Provider>;
 }
 
-/** The time-zone preference; local when no provider is mounted. */
+// The time-zone preference; local when no provider is mounted.
 export function useTimeZone(): TimeZoneState {
   const ctx = useContext(TimeZoneContext);
   return ctx ?? { zone: 'local', label: zoneLabel('local'), setZone: () => {}, toggle: () => {} };

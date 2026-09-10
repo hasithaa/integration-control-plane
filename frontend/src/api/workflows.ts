@@ -34,12 +34,12 @@ export interface WorkflowInstance {
   runId?: string;
   workflowType?: string;
   status?: string;
-  /** What this instance is — WORKFLOW, AGENT, HUMAN_TASK, REVIEW_ACTIVITY, CHILD_WORKFLOW — from
-   * the memo its starter stamped. Routing asks this, never the id's prefix. */
+  // What this instance is — WORKFLOW, AGENT, HUMAN_TASK, REVIEW_ACTIVITY, CHILD_WORKFLOW — from the memo its starter
+  // stamped. Routing asks this, never the id's prefix.
   kind?: string;
   startTime?: string;
   closeTime?: string;
-  /** The project's Temporal namespace, and the task queue of the integration that owns this run. */
+  // The project's Temporal namespace, and the task queue of the integration that owns this run.
   namespace?: string;
   taskQueue?: string;
   [key: string]: unknown;
@@ -56,7 +56,7 @@ export interface HumanTask {
   taskName?: string;
   title?: string;
   description?: string;
-  /** The read-only context the workflow handed the task — `taskInput` in the module's read model. */
+  // The read-only context the workflow handed the task — `taskInput` in the module's read model.
   taskInput?: Record<string, unknown>;
   formSchema?: Record<string, unknown> | string;
   parentWorkflowId?: string;
@@ -68,8 +68,8 @@ export interface HumanTask {
   eligibleRoles?: string[];
   canComplete?: boolean;
   result?: unknown;
-  /** Who decided the task and when — () while it is pending, and for tasks decided before the
-   *  runtime recorded the completer in the task's memo. */
+  // Who decided the task and when — () while it is pending, and for tasks decided before the runtime recorded the
+  // completer in the task's memo.
   completedBy?: string;
   completedAt?: string;
   namespace?: string;
@@ -113,9 +113,9 @@ export interface HistoryEvent {
 export interface ExecutionGraphNode {
   id: string;
   label: string;
-  /** Node kind, e.g. WORKFLOW, ACTIVITY, HUMAN_TASK, SIGNAL, TIMER. */
+  // Node kind, e.g. WORKFLOW, ACTIVITY, HUMAN_TASK, SIGNAL, TIMER.
   type: string;
-  /** Same status vocabulary as workflow instances (RUNNING, COMPLETED, FAILED, …). */
+  // Same status vocabulary as workflow instances (RUNNING, COMPLETED, FAILED, …).
   status?: string;
   metadata?: Record<string, unknown> | null;
 }
@@ -132,27 +132,24 @@ export interface ExecutionGraph {
 }
 
 // ── Instance graph (the workflow's own structure, joined to one run) ──
-//
-// The execution graph above is a run's history in the order it happened: it cannot say which branch
-// of an `if` was taken, that three history nodes are one loop body running three times, or that a
-// step was never reached. The instance graph answers all three by returning the workflow's published
-// structure alongside the run, keyed on the step ids the compiler assigned to each call site.
+// The execution graph above is a run's history in the order it happened: it cannot say which branch of an `if` was
+// taken, that three history nodes are one loop body running three times, or that a step was never reached.
 
-/** A node of the workflow's *structure* — every step and control-flow block, whether or not it ran. */
+// A node of the workflow's *structure* — every step and control-flow block, whether or not it ran.
 export interface ModelGraphNode {
-  /** Identity of this call site within its workflow, e.g. `reserveStock#2`, `if#1`, or an author-chosen `reserve-express`. */
+  // Identity of this call site within its workflow, e.g. `reserveStock#2`, `if#1`, or an author-chosen `reserve-express`.
   stepId: string;
-  /** ACTIVITY | HUMAN_TASK | CHILD_WORKFLOW | EVENT_WAIT | SLEEP | AWAIT_RESULT | BRANCH | LOOP | TRY. */
+  // ACTIVITY | HUMAN_TASK | CHILD_WORKFLOW | EVENT_WAIT | SLEEP | AWAIT_RESULT | BRANCH | LOOP | TRY.
   kind: string;
-  /** What the node names — the activity, task, or child workflow. Absent for control flow. */
+  // What the node names — the activity, task, or child workflow. Absent for control flow.
   target?: string;
-  /** Display text: a branch condition, a looped expression. Never part of the identity. */
+  // Display text: a branch condition, a looped expression. Never part of the identity.
   label?: string;
-  /** Step id of the enclosing control-flow node. Absent at the top level. */
+  // Step id of the enclosing control-flow node. Absent at the top level.
   parent?: string;
-  /** Which arm of `parent` this node sits in: `then`, `else`, `body`, `do`, `onFail`, or match patterns. */
+  // Which arm of `parent` this node sits in: `then`, `else`, `body`, `do`, `onFail`, or match patterns.
   branch?: string;
-  /** An agent tool's backing kind — ACTIVITY, AI_TOOL, PEER — which decides its rail category. */
+  // An agent tool's backing kind — ACTIVITY, AI_TOOL, PEER — which decides its rail category.
   source?: string;
   line?: number;
   column?: number;
@@ -161,18 +158,18 @@ export interface ModelGraphNode {
 export interface ModelGraphEdge {
   from: string;
   to: string;
-  /** Why this edge is taken: an arm name, loop `body`/`repeat`. */
+  // Why this edge is taken: an arm name, loop `body`/`repeat`.
   when?: string;
 }
 
 export interface ModelGraph {
-  /** Source file the workflow body was read from. */
+  // Source file the workflow body was read from.
   file?: string;
   nodes: ModelGraphNode[];
   edges: ModelGraphEdge[];
 }
 
-/** A review task drawn on the step it gates, rather than as a step of its own. */
+// A review task drawn on the step it gates, rather than as a step of its own.
 export interface StepReview {
   taskId?: string;
   label?: string;
@@ -181,11 +178,11 @@ export interface StepReview {
   endTime?: string;
 }
 
-/** What happened at one step of the model during this run. A step that never ran has no entry at all. */
+// What happened at one step of the model during this run. A step that never ran has no entry at all.
 export interface StepExecution {
-  /** Executions of this one call site: >1 means a loop iterated, or the step was retried past a failure. */
+  // Executions of this one call site: >1 means a loop iterated, or the step was retried past a failure.
   count: number;
-  /** History event id per execution, in order, so a particular iteration's input and result can be recovered. */
+  // History event id per execution, in order, so a particular iteration's input and result can be recovered.
   eventIds: string[];
   type?: string;
   label?: string;
@@ -198,7 +195,7 @@ export interface StepExecution {
   reviews?: StepReview[];
 }
 
-/** An executed node that could not be placed on the model — a real gap, reported rather than hidden. */
+// An executed node that could not be placed on the model — a real gap, reported rather than hidden.
 export interface UnmatchedNode {
   label?: string;
   type?: string;
@@ -210,33 +207,25 @@ export interface UnmatchedNode {
 export interface InstanceGraph {
   workflowType: string;
   status: string;
-  /** What the model describes: a workflow's control flow, or an agent's star. An agent's executions
-   * carry no step ids (the model, not code, decides what runs), so they are matched client-side. */
+  // What the model describes: a workflow's control flow, or an agent's star. An agent's executions carry no step ids (the
+  // model, not code, decides what runs), so they are matched client-side.
   graphKind?: 'workflow' | 'agent';
-  /** Checksum of the descriptor the model was read from; a redeploy may have moved on from the run. */
+  // Checksum of the descriptor the model was read from; a redeploy may have moved on from the run.
   descriptorChecksum?: string | null;
-  /** Null when no runtime has published a descriptor for this type — draw the flat history instead. */
+  // Null when no runtime has published a descriptor for this type — draw the flat history instead.
   graph: ModelGraph | null;
-  /**
-   * False when steps ran but none named itself, so the run cannot be placed on the model. Step ids are
-   * decoded by the runtime that serves the read, and a project shares one Temporal namespace — so an
-   * integration built against an older module can answer for a workflow it doesn't own and report none.
-   */
+  // False when steps ran but none named itself, so the run cannot be placed on the model.
   stepIdsAvailable?: boolean;
-  /** Keyed by step id. */
+  // Keyed by step id.
   steps: Record<string, StepExecution>;
-  /** Branch/loop/try step id → the arms something actually ran inside. The only evidence of a taken path. */
+  // Branch/loop/try step id → the arms something actually ran inside. The only evidence of a taken path.
   takenArms: Record<string, string[]>;
   unmatched: UnmatchedNode[];
 }
 
 // ── Low-level request helper (mirrors logs.ts: timeout + error extraction) ──
 
-// The workflow API is asynchronous end to end: the ICP holds no request open. A read may
-// answer 202 {status: "FETCHING"} while a runtime materializes it (the ICP coalesces
-// identical requests, so polling is cheap); a mutation always answers 202 {operationId} and
-// its outcome — including "someone else got there first" — arrives on the operation poll.
-// This helper absorbs that contract so every hook keeps its synchronous shape.
+// The workflow API is asynchronous end to end: the ICP holds no request open.
 const WF_ASYNC_DEADLINE_MS = 75_000;
 const WF_POLL_FALLBACK_MS = 750;
 
@@ -256,10 +245,8 @@ async function wfFetchOnce(url: string, init: RequestInit): Promise<{ status: nu
         body = { message: text };
       }
     }
-    // The server marks an answer it is serving from an invalidated entry: a mutation staled
-    // the scope, this copy predates it, and a single refresh is already running behind it.
-    // Discarding this header was the whole stale-data bug — the client cached the
-    // pre-mutation answer as fresh and never asked again.
+    // The server marks an answer it is serving from an invalidated entry: a mutation staled the scope, this copy predates
+    // it, and a single refresh is already running behind it.
     const stale = res.headers.get('x-workflow-stale') === 'true';
     const fetchedAtRaw = res.headers.get('x-workflow-fetched-at');
     const fetchedAt = fetchedAtRaw ? Number(fetchedAtRaw) : undefined;
@@ -274,37 +261,23 @@ async function wfFetchOnce(url: string, init: RequestInit): Promise<{ status: nu
   }
 }
 
-// crypto.randomUUID exists only in a secure context — HTTPS, or localhost. A console served
-// over plain HTTP on any other host would throw here and fail every mutation before it was
-// sent, so the key falls back to something unique enough for de-duplicating one submit.
+// crypto.randomUUID exists only in a secure context — HTTPS, or localhost.
 const newIdempotencyKey = (): string => (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function' ? crypto.randomUUID() : `wf-${Date.now()}-${Math.random().toString(36).slice(2)}`);
 
-/**
- * A read that may not be answered yet.
- *
- * The workflow API materializes a read through the integration, so the first request for a
- * view nobody has opened recently is answered `202 {status:"FETCHING"}`. Waiting for it inside
- * the request — which is what this module used to do — makes the page hang with a spinner for
- * as long as it takes, and tells the user nothing. Surfacing the state instead lets the page
- * say so and come back for it.
- */
+// A read that may not be answered yet. The workflow API materializes a read through the integration, so the first
+// request for a view nobody has opened recently is answered `202 {status:"FETCHING"}`.
 export type Fetchable<T> = { state: 'ready'; value: T; stale?: boolean; fetchedAt?: number } | { state: 'fetching'; retryAfterMs: number };
 
-/** Named to sit beside react-query's own `isFetching` without being mistaken for it: this is
- *  the SERVER still preparing the answer, not the browser having a request in flight. */
+// Named to sit beside react-query's own `isFetching` without being mistaken for it: this is the SERVER still preparing
+// the answer, not the browser having a request in flight.
 export const isPreparing = <T>(r: Fetchable<T> | undefined): boolean => r?.state === 'fetching';
 export const valueOf = <T>(r: Fetchable<T> | undefined): T | undefined => (r?.state === 'ready' ? r.value : undefined);
 
-/** How soon to come back for a read the server is still preparing, when it names no interval. */
+// How soon to come back for a read the server is still preparing, when it names no interval.
 const WF_FETCHING_POLL_MS = 900;
 
-/**
- * A read request that reports `fetching` rather than waiting for the answer.
- *
- * Used by the list and detail queries, whose caller is a page that can render the state. The
- * polling belongs to react-query here: it already knows how to come back, and it keeps the
- * previous answer on screen while it does.
- */
+// A read request that reports `fetching` rather than waiting for the answer. Used by the list and detail queries, whose
+// caller is a page that can render the state.
 async function wfFetchable<T>(componentId: string, environmentId: string, subpath: string): Promise<Fetchable<T>> {
   const { status, body, stale, fetchedAt } = await wfFetchOnce(workflowApiUrl(componentId, environmentId, subpath), {});
   if (status === 202) {
@@ -320,31 +293,17 @@ async function wfFetchable<T>(componentId: string, environmentId: string, subpat
   return { state: 'ready', value: body as T, stale, fetchedAt };
 }
 
-/** How soon to come back for the replacement of a STALE answer. Reading a stale entry is what
- *  claims its refresh, and that refresh lands within a second or two — but the entry TTLs
- *  (15s) are shorter than the resting cadence (30s), so a view that waited 30s found the row
- *  expired *again*, was served stale *again*, and never once displayed a fresh copy: the
- *  "refreshing…" line burned permanently. Coming back quickly collects the copy this very
- *  request triggered, the flag drops, and the view rests. The follow-up reads the row cache —
- *  the refresh itself stays coalesced to one command however many viewers follow up. */
+// How soon to come back for the replacement of a STALE answer.
 const WF_STALE_FOLLOWUP_MS = 3000;
 
-/**
- * Comes back at the interval the server asked for while a read is still being prepared, and
- * keeps coming back while the served answer is STALE — a mutation invalidated it and the fresh
- * copy is on its way. Stopping on stale data was the bug: the pre-mutation answer stayed on
- * screen indefinitely, a completed task still reading as pending.
- */
-/** A fresh answer younger than this keeps a gentle settle-poll: an answer produced right
- *  after a mutation can predate that mutation's effects, and a client parked on it would
- *  show the pre-mutation world until the page was reloaded. */
+// Comes back at the interval the server asked for while a read is still being prepared, and keeps coming back while the
+// served answer is STALE — a mutation invalidated it and the fresh copy is on its way.
 const WF_SETTLE_WINDOW_S = 65;
 const WF_SETTLE_POLL_MS = 30000;
 
 // ── Auto-refresh, as a choice ─────────────────────────────────────────────────
-// Per viewer, persisted in the browser: the periodic "refreshing…" line is useful on a wall
-// screen and distracting mid-thought, and only the person looking knows which mode they are in.
-// Off means off — even a stale answer waits for the refresh button.
+// Per viewer, persisted in the browser: the periodic "refreshing…" line is useful on a wall screen and distracting
+// mid-thought, and only the person looking knows which mode they are in.
 const AUTO_REFRESH_KEY = 'wf.autoRefresh';
 
 export function autoRefreshEnabled(): boolean {
@@ -364,35 +323,30 @@ export function setAutoRefreshEnabled(on: boolean): void {
 }
 
 const fetchableRefetch = <T>(data: Fetchable<T> | undefined): number | false => {
-  // A read still being PREPARED always polls — there is nothing on screen to preserve, and
-  // stopping would strand the view on "fetching…" forever. The toggle governs refreshing data
-  // that is already shown.
+  // A read still being PREPARED always polls — there is nothing on screen to preserve, and stopping would strand the view
+  // on "fetching…" forever. The toggle governs refreshing data that is already shown.
   if (data?.state === 'fetching') return data.retryAfterMs;
   if (!autoRefreshEnabled()) return false;
   if (data?.state !== 'ready') return false;
   if (data.stale) return WF_STALE_FOLLOWUP_MS;
-  // Young answers keep being checked until they age out of the settle window; old ones rest.
-  // These polls read the server's row cache — a refresh only happens once the row expires,
-  // one coalesced fetch at a time, so nobody bursts.
+  // Young answers keep being checked until they age out of the settle window; old ones rest. These polls read the server's
+  // row cache — a refresh only happens once the row expires, one coalesced fetch at a time, so nobody bursts.
   if (data.fetchedAt && Date.now() / 1000 - data.fetchedAt < WF_SETTLE_WINDOW_S) return WF_SETTLE_POLL_MS;
   return false;
 };
 
-/** True while the server is replacing this answer: it is shown, and its successor is coming. */
-/** When this answer was produced (epoch seconds), for the "Updated at" display. */
+// True while the server is replacing this answer: it is shown, and its successor is coming.
+// When this answer was produced (epoch seconds), for the "Updated at" display.
 export const fetchedAtOf = <T>(r: Fetchable<T> | undefined): number | undefined => (r?.state === 'ready' ? r.fetchedAt : undefined);
 
 export const isRefreshing = <T>(r: Fetchable<T> | undefined): boolean => r?.state === 'ready' && r.stale === true;
 
-/** Applies a projection to a ready value, so a hook can unwrap an envelope or default a
- *  field without losing the `fetching` state. */
+// Applies a projection to a ready value, so a hook can unwrap an envelope or default a field without losing the
+// `fetching` state.
 const mapFetchable = <A, B>(r: Fetchable<A>, f: (a: A) => B): Fetchable<B> => (r.state === 'ready' ? { state: 'ready', value: f(r.value), stale: r.stale, fetchedAt: r.fetchedAt } : r);
 
-/**
- * A request that waits for its answer. Mutations use this: the caller pressed a button, so a
- * spinner on that button is the honest thing to show, and a queued operation is polled by its
- * id rather than re-sent.
- */
+// A request that waits for its answer. Mutations use this: the caller pressed a button, so a spinner on that button is
+// the honest thing to show, and a queued operation is polled by its id rather than re-sent.
 async function wfRequest<T>(componentId: string, environmentId: string, subpath: string, init: RequestInit = {}): Promise<T> {
   const method = (init.method ?? 'GET').toUpperCase();
   let request = init;
@@ -457,16 +411,16 @@ function fetchDefinitions(componentId: string, environmentId: string): Promise<F
 
 export interface WorkflowFilters {
   status?: string;
-  /** Restricts results to one integration's task queue; omitted covers the whole namespace. */
+  // Restricts results to one integration's task queue; omitted covers the whole namespace.
   taskQueue?: string;
   workflowType?: string;
   workflowId?: string;
   startTimeFrom?: string;
   startTimeTo?: string;
-  /** Close-time window — "finished in the last 24h" counts. The runtime honours both bounds. */
+  // Close-time window — "finished in the last 24h" counts. The runtime honours both bounds.
   closeTimeFrom?: string;
   closeTimeTo?: string;
-  /** WORKFLOW | AGENT — the memo kind, when a listing should cover only one. */
+  // WORKFLOW | AGENT — the memo kind, when a listing should cover only one.
   kind?: string;
   limit?: number;
   pageToken?: string;
@@ -475,9 +429,8 @@ export interface WorkflowFilters {
 export function useWorkflowInstances(s: Scope, filters: WorkflowFilters) {
   return useQuery({
     queryKey: ['wf', 'instances', s.componentId, s.environmentId, filters],
-    // Reports `fetching` on the first request for a view the server has not materialized yet,
-    // so the page can say so instead of showing a spinner for however long it takes, and comes
-    // back at the interval the server asked for.
+    // Reports `fetching` on the first request for a view the server has not materialized yet, so the page can say so instead
+    // of showing a spinner for however long it takes, and comes back at the interval the server asked for.
     queryFn: () => wfFetchable<Page<WorkflowInstance>>(s.componentId, s.environmentId, `workflows${buildQuery({ ...filters })}`),
     refetchInterval: ({ state }) => fetchableRefetch(state.data),
     enabled: enabledFor(s),
@@ -488,11 +441,8 @@ function fetchWorkflowInstances(componentId: string, environmentId: string, filt
   return wfFetchable<Page<WorkflowInstance>>(componentId, environmentId, `workflows${buildQuery({ ...filters })}`);
 }
 
-/**
- * The instance listing as forward-only pages, the way Temporal's visibility API pages: each page
- * hands back an opaque token for the next, so "load more" appends rather than jumping to an offset.
- * `pageToken` is owned by the pagination, which is why the caller's filters cannot carry one.
- */
+// The instance listing as forward-only pages, the way Temporal's visibility API pages: each page hands back an opaque
+// token for the next, so "load more" appends rather than jumping to an offset.
 export function useWorkflowInstancesInfinite(s: Scope, filters: Omit<WorkflowFilters, 'pageToken'>) {
   return useInfiniteQuery({
     queryKey: ['wf', 'instances', s.componentId, s.environmentId, filters],
@@ -509,15 +459,8 @@ export function useWorkflowInstancesInfinite(s: Scope, filters: Omit<WorkflowFil
   });
 }
 
-/**
- * The Temporal task queue of every workflow integration in the gateway component's project and
- * environment, keyed by component id — read from the metadata each runtime publishes on heartbeat.
- *
- * This is the only place the console can learn which queue an integration's worker actually serves:
- * the component "handler" is just the component's name, and the two are unrelated strings. An
- * integration built against a module that predates the field has no entry, so callers fall back to
- * not narrowing rather than filtering by a queue that does not exist.
- */
+// The Temporal task queue of every workflow integration in the gateway component's project and environment, keyed by
+// component id — read from the metadata each runtime publishes on heartbeat.
 export function useWorkflowTaskQueues(s: Scope) {
   return useQuery({
     queryKey: ['wf', 'task-queues', s.componentId, s.environmentId],
@@ -558,28 +501,14 @@ export function useWorkflowExecutionGraph(s: Scope, workflowId: string | null) {
 export function useWorkflowInstanceGraph(s: Scope, workflowId: string | null) {
   return useQuery({
     queryKey: ['wf', 'instanceGraph', s.componentId, s.environmentId, workflowId],
-    // Follows the same contract as every other read. On the blocking helper this was the one
-    // view that still polled inside the request, so opening the graph on a cold cache sat there
-    // until the client deadline instead of saying it was being prepared.
+    // Follows the same contract as every other read.
     queryFn: () => wfFetchable<InstanceGraph>(s.componentId, s.environmentId, `workflows/${encodeURIComponent(workflowId!)}/instance-graph`),
     refetchInterval: ({ state }) => fetchableRefetch(state.data),
     enabled: enabledFor(s) && !!workflowId,
   });
 }
 
-/**
- * Invalidates every workflow query for an environment, whichever component key each was cached
- * under. A project shares one Temporal namespace, so a listing is cached under the runtime that
- * served the read — the gateway — while a mutation is sent to the runtime that owns the row;
- * keying on the component would miss the very list the user is looking at.
- *
- * Deliberately not per-kind. The server invalidates its whole scope on any completed mutation,
- * because one action moves several views at once — a completed task changes the task list, the
- * unified queue, both badge counts, AND the parent workflow's status, history and graph. The
- * per-kind lists this replaces kept drifting behind that (task completion never refreshed the
- * work queue or the parent instance). Each refetch is answered from the server's row cache, so
- * matching its breadth costs a handful of locally-served GETs, not a burst at the integration.
- */
+// Invalidates every workflow query for an environment, whichever component key each was cached under.
 function invalidateForEnvironment(qc: ReturnType<typeof useQueryClient>, environmentId: string): void {
   qc.invalidateQueries({ predicate: (q) => q.queryKey[0] === 'wf' && q.queryKey[3] === environmentId });
 }
@@ -594,19 +523,19 @@ export function useStartWorkflow(s: Scope) {
 
 // ── Reset and bulk retry ──
 
-/** One point a run can be reset to: a workflow-task event, named by the steps around it. */
+// One point a run can be reset to: a workflow-task event, named by the steps around it.
 export interface ResetPoint {
   eventId: number;
   eventType: string;
   timestamp: string;
   nodeIds: string[];
   nodeNames: string[];
-  /** The point just before the run's first failure — usually the one a recovery wants. */
+  // The point just before the run's first failure — usually the one a recovery wants.
   isFirstFailure: boolean;
 }
 
-/** The reset points of a run, loaded only while the reset dialog is open — a history read has
- *  a cost, and most drawer visits never reset anything. */
+// The reset points of a run, loaded only while the reset dialog is open — a history read has a cost, and most drawer
+// visits never reset anything.
 export function useResetPoints(s: Scope, workflowId: string | null, enabled: boolean) {
   return useQuery({
     queryKey: ['wf', 'reset-points', s.componentId, s.environmentId, workflowId],
@@ -618,8 +547,8 @@ export function useResetPoints(s: Scope, workflowId: string | null, enabled: boo
 
 export type ResetType = 'first-workflow-task' | 'last-workflow-task' | 'workflow-task-id';
 
-/** Resets a run to a chosen workflow task: everything after the point re-executes as a new run
- *  of the same workflow ID — including activities whose side effects already happened. */
+// Resets a run to a chosen workflow task: everything after the point re-executes as a new run of the same workflow ID —
+// including activities whose side effects already happened.
 export function useResetWorkflow(s: Scope) {
   const qc = useQueryClient();
   return useMutation({
@@ -629,7 +558,7 @@ export function useResetWorkflow(s: Scope) {
   });
 }
 
-/** What one bulk decision did, item by item — a partial success is visible as itself. */
+// What one bulk decision did, item by item — a partial success is visible as itself.
 export interface BulkRetryResult {
   action: string;
   requested: number;
@@ -639,18 +568,14 @@ export interface BulkRetryResult {
   items?: Array<{ taskId?: string; outcome?: string; detail?: string }>;
 }
 
-/**
- * Retries or fails several review activities in one decision — addressed by explicit ids, which
- * is how the work queue submits a selection. A plain request rather than a hook, because a
- * selection can span integrations and each batch must go to the runtime that owns its task
- * queue; the caller groups, calls this per owner, and invalidates once.
- */
+// Retries or fails several review activities in one decision — addressed by explicit ids, which is how the work queue
+// submits a selection.
 export function bulkRetryReviewsRequest(s: Scope, body: { taskIds?: string[]; parentWorkflowId?: string; action: 'retry' | 'fail'; feedback?: string }): Promise<BulkRetryResult> {
   return wfRequest<BulkRetryResult>(s.componentId, s.environmentId, 'review-activities/bulk-retry', jsonBody({ method: 'POST' }, body));
 }
 
-/** Invalidates every workflow query for an environment — the client-side mirror of the server's
- *  scope-wide staling. Exported for callers that mutate outside useMutation. */
+// Invalidates every workflow query for an environment — the client-side mirror of the server's scope-wide staling.
+// Exported for callers that mutate outside useMutation.
 export function invalidateWorkflowQueries(qc: ReturnType<typeof useQueryClient>, environmentId: string): void {
   invalidateForEnvironment(qc, environmentId);
 }
@@ -695,7 +620,7 @@ export function useHumanTasks(s: Scope, filters: HumanTaskFilters) {
   });
 }
 
-/** Paged the way the runtime pages — forward-only tokens — so "Load more" appends. */
+// Paged the way the runtime pages — forward-only tokens — so "Load more" appends.
 export function useHumanTasksInfinite(s: Scope, filters: Omit<HumanTaskFilters, 'pageToken'>) {
   return useInfiniteQuery({
     queryKey: ['wf', 'human-tasks', s.componentId, s.environmentId, filters],
@@ -712,10 +637,8 @@ export function useHumanTasksInfinite(s: Scope, filters: Omit<HumanTaskFilters, 
   });
 }
 
-/**
- * Pending human tasks the caller's roles can act on — the personal count behind the queue badge
- * and the project's per-integration "for you" column. Query options so both read one result.
- */
+// Pending human tasks the caller's roles can act on — the personal count behind the queue badge and the project's
+// per-integration "for you" column. Query options so both read one result.
 export function pendingTaskCountQueryOptions(s: Scope, taskQueue?: string) {
   return {
     queryKey: ['wf', 'pending-count', s.componentId, s.environmentId, taskQueue] as const,
@@ -724,7 +647,7 @@ export function pendingTaskCountQueryOptions(s: Scope, taskQueue?: string) {
   };
 }
 
-/** `enabled` lets a caller skip the poll when the count is not being shown. */
+// `enabled` lets a caller skip the poll when the count is not being shown.
 export function usePendingTaskCount(s: Scope, taskQueue?: string, enabled = true) {
   return useQuery({ ...pendingTaskCountQueryOptions(s, taskQueue), enabled: enabledFor(s) && enabled });
 }
@@ -734,9 +657,8 @@ export function humanTaskQueryOptions(s: Scope, taskId: string) {
   return {
     queryKey: ['wf', 'human-task', s.componentId, s.environmentId, taskId] as const,
     queryFn: () => wfFetchable<HumanTask>(s.componentId, s.environmentId, `human-tasks/${encodeURIComponent(taskId)}`),
-    // Without this the query reports `fetching` once and never asks again, which is worse
-    // than the blocking behaviour it replaced: the dialog would spin until something else
-    // happened to invalidate it.
+    // Without this the query reports `fetching` once and never asks again, which is worse than the blocking behaviour it
+    // replaced: the dialog would spin until something else happened to invalidate it.
     refetchInterval: ({ state }: { state: { data?: Fetchable<HumanTask> } }) => fetchableRefetch(state.data),
   };
 }
@@ -745,9 +667,8 @@ export function useHumanTask(s: Scope, taskId: string | null, paused = false) {
   const options = humanTaskQueryOptions(s, taskId ?? '');
   return useQuery({
     ...options,
-    // Paused while the person is filling the completion form: a background refetch swaps the
-    // task object under their typing and flashes the refreshing line — churn they can feel,
-    // about a task whose only interesting change is the one THEY are about to make.
+    // Paused while the person is filling the completion form: a background refetch swaps the task object under their typing
+    // and flashes the refreshing line — churn they can feel, about a task whose only interesting change is the one THEY are.
     refetchInterval: paused ? false : options.refetchInterval,
     enabled: enabledFor(s) && !!taskId,
   });
@@ -779,13 +700,13 @@ export function useFailHumanTask(s: Scope) {
 
 // ── The unified work queue ──
 
-/** One row of a person's work queue: a human task, or a review activity (a fixed decision). */
+// One row of a person's work queue: a human task, or a review activity (a fixed decision).
 export interface WorkItemRow {
   kind: 'HUMAN_TASK' | 'REVIEW_ACTIVITY';
   taskId: string;
   taskName?: string;
   title?: string;
-  /** Reviews only: PRE_RUN (approval gate) | ON_FAILURE (rerun decision). */
+  // Reviews only: PRE_RUN (approval gate) | ON_FAILURE (rerun decision).
   trigger?: string;
   parentWorkflowId?: string;
   parentWorkflowType?: string;
@@ -798,7 +719,7 @@ export interface WorkItemRow {
 }
 
 export interface WorkItemFilters {
-  /** HUMAN_TASK or REVIEW_ACTIVITY; both when absent. The proxy narrows to the caller's permissions. */
+  // HUMAN_TASK or REVIEW_ACTIVITY; both when absent. The proxy narrows to the caller's permissions.
   kind?: string;
   status?: string;
   parentWorkflowId?: string;
@@ -814,13 +735,12 @@ function fetchWorkItems(componentId: string, environmentId: string, filters: Wor
   return wfFetchable<Page<WorkItemRow>>(componentId, environmentId, `work-items${buildQuery({ ...filters })}`);
 }
 
-/** Paged the way the runtime pages — one token stream across both kinds. */
+// Paged the way the runtime pages — one token stream across both kinds.
 export function useWorkItemsInfinite(s: Scope, filters: Omit<WorkItemFilters, 'pageToken'>) {
   return useInfiniteQuery({
     queryKey: ['wf', 'work-items', s.componentId, s.environmentId, filters],
-    // The last read hook still on the blocking helper: the work queue — the page people live
-    // on — sat on a spinner for a cold cache and, worse, held a completed task as pending
-    // because it never learned its answer had gone stale.
+    // The last read hook still on the blocking helper: the work queue — the page people live on — sat on a spinner for a
+    // cold cache and, worse, held a completed task as pending because it never learned its answer had gone stale.
     queryFn: ({ pageParam }) => fetchWorkItems(s.componentId, s.environmentId, { ...filters, pageToken: pageParam || undefined }),
     initialPageParam: '',
     getNextPageParam: (last, _pages, lastParam) => {
@@ -844,9 +764,8 @@ export interface ReviewActivityFilters {
   pageToken?: string;
 }
 
-// Review-activity pages are fetched and combined up to this many pages so client-side
-// filters (e.g. by workflow name, which the runtime API cannot filter on) see the
-// full set rather than only the first page.
+// Review-activity pages are fetched and combined up to this many pages so client-side filters (e.g. by workflow name,
+// which the runtime API cannot filter on) see the full set rather than only the first page.
 const REVIEW_ACTIVITY_MAX_PAGES = 20;
 
 // Page size the badge count reads; a full page is reported as capped rather than as an exact total.
@@ -857,9 +776,8 @@ async function fetchReviewActivities(componentId: string, environmentId: string,
   let pageToken: string | undefined;
   for (let i = 0; i < REVIEW_ACTIVITY_MAX_PAGES; i++) {
     const result = await wfFetchable<Page<ReviewActivity>>(componentId, environmentId, `review-activities${buildQuery({ ...filters, pageToken })}`);
-    // Each page is its own cached read, so any of them may still be being prepared. The
-    // listing is reported as fetching until every page it needs has arrived: combining the
-    // pages that did arrive would present a partial set as the whole.
+    // Each page is its own cached read, so any of them may still be being prepared. The listing is reported as fetching
+    // until every page it needs has arrived: combining the pages that did arrive would present a partial set as the whole.
     if (result.state === 'fetching') return result;
     const page = result.value;
     items.push(...(page.items ?? []));
@@ -878,19 +796,14 @@ export function useReviewActivities(s: Scope, filters: ReviewActivityFilters) {
   });
 }
 
-/** How many review activities are awaiting a decision, and whether that count hit the page cap. */
+// How many review activities are awaiting a decision, and whether that count hit the page cap.
 export interface PendingReviewCount {
   count: number;
   capped: boolean;
 }
 
-/**
- * Count of review activities awaiting a decision, for the tab badge. The runtime has no count
- * endpoint, so this reads a single PENDING page — one request, unlike the listing, which walks up to
- * REVIEW_ACTIVITY_MAX_PAGES so its client-side filters see everything. A full page reports `capped`
- * so the badge can say "50+" rather than claim exactly 50.
- */
-/** Query options for the pending-review count — shared by the hook and the project dashboard's batch. */
+// Count of review activities awaiting a decision, for the tab badge.
+// Query options for the pending-review count — shared by the hook and the project dashboard's batch.
 export function pendingReviewCountQueryOptions(s: Scope, taskQueue?: string) {
   return {
     queryKey: ['wf', 'pending-review-count', s.componentId, s.environmentId, taskQueue] as const,
@@ -910,16 +823,13 @@ export function usePendingReviewActivityCount(s: Scope, taskQueue?: string, enab
 }
 
 // ── Counts for the project dashboard ──
-//
-// The runtime has no count operation, so a count is a page: ask for the first COUNT_PAGE rows of
-// a filtered listing and report how many came back, `capped` when there were more. Exact below
-// the page size and an honest "50+" above it — a dashboard shows health, not a ledger, and a page
-// is what the runtime answers today without a module release.
+// The runtime has no count operation, so a count is a page: ask for the first COUNT_PAGE rows of a filtered listing and
+// report how many came back, `capped` when there were more.
 const COUNT_PAGE = 50;
 
 export interface CappedCount {
   count: number;
-  /** True when the page filled: the real number is at least `count`. */
+  // True when the page filled: the real number is at least `count`.
   capped: boolean;
 }
 
@@ -932,17 +842,13 @@ export function instanceCountQueryOptions(s: Scope, filters: Omit<WorkflowFilter
   };
 }
 
-/** How many instances match the filters, as a capped page count. */
+// How many instances match the filters, as a capped page count.
 export function useInstanceCount(s: Scope, filters: Omit<WorkflowFilters, 'limit' | 'pageToken'>, enabled = true) {
   return useQuery({ ...instanceCountQueryOptions(s, filters), enabled: enabledFor(s) && enabled });
 }
 
-/**
- * Pending human tasks across EVERY role — the project total, not the caller's slice. The
- * per-user count (`usePendingTaskCount`) is what a person acts on; this is what a project
- * dashboard reports. The server honours `all` only for callers with workflow-view permissions
- * and answers everyone else with their per-user number, so the value is honest either way.
- */
+// Pending human tasks across EVERY role — the project total, not the caller's slice. The per-user count
+// (`usePendingTaskCount`) is what a person acts on; this is what a project dashboard reports.
 export function totalPendingTaskCountQueryOptions(s: Scope) {
   return {
     queryKey: ['wf', 'pending-count-total', s.componentId, s.environmentId] as const,
@@ -955,14 +861,8 @@ export function useTotalPendingTaskCount(s: Scope, enabled = true) {
   return useQuery({ ...totalPendingTaskCountQueryOptions(s), enabled: enabledFor(s) && enabled });
 }
 
-/**
- * The first page of one integration's PENDING work items — tasks and reviews together, as the
- * runtime lists them, already scoped to what the caller may act on. The project inbox fans this
- * out over every deployed integration and merges the pages client-side: a project-wide listing
- * cannot be asked of any one runtime (integrations may run on different Temporal servers), but a
- * page per integration can, and each page reports its own readiness so the inbox can say which
- * sources it is showing.
- */
+// The first page of one integration's PENDING work items — tasks and reviews together, as the runtime lists them,
+// already scoped to what the caller may act on.
 export function pendingWorkItemsQueryOptions(s: Scope, limit = 50, pageToken?: string) {
   return {
     queryKey: ['wf', 'pending-work-items', s.componentId, s.environmentId, limit, pageToken ?? ''] as const,
@@ -971,13 +871,8 @@ export function pendingWorkItemsQueryOptions(s: Scope, limit = 50, pageToken?: s
   };
 }
 
-/**
- * Pending work of one kind for one workflow definition, as a capped page count — the runtime
- * filters work items by parent workflow type, which the pending-count endpoint cannot. With
- * `allRoles` the ICP substitutes every organization role for the caller's (same gate as the
- * total pending-task count), so a human-task figure is the definition's total rather than the
- * caller's slice; reviews are not role-scoped and never need it.
- */
+// Pending work of one kind for one workflow definition, as a capped page count — the runtime filters work items by
+// parent workflow type, which the pending-count endpoint cannot.
 export function pendingWorkItemCountQueryOptions(s: Scope, filters: { kind: 'HUMAN_TASK' | 'REVIEW_ACTIVITY'; parentWorkflowType: string; allRoles?: boolean }) {
   return {
     queryKey: ['wf', 'pending-work-item-count', s.componentId, s.environmentId, filters] as const,
@@ -1024,60 +919,39 @@ export function useReviewDecision(s: Scope) {
 }
 
 // ── Project-scope workflow management ────────────────────────────────────────
-//
-// A project shares one Temporal engine. Every runtime in it is bound to the same namespace
-// (`namespace = <project>` in the runtime config) and differs only by task queue
-// (`taskQueue = <integration>`). The management API relays to that engine, so any one runtime
-// answers for the whole project: calling every integration's callback URL is unnecessary and would
-// return the same namespace-wide rows once per runtime.
-//
-// Reads therefore go through a single gateway runtime, and scope is expressed with the `taskQueue`
-// query parameter that the listings and pending-count accept:
-//   - integration scope - taskQueue is that integration, so only its rows come back;
-//   - project scope - taskQueue omitted, covering every task queue in the namespace, and never
-//     another namespace, since the client is namespace-bound.
-// Each record carries its own namespace/taskQueue, and that is what routes a follow-up operation
-// back to the integration that owns it.
-//
-// `/definitions` is the exception: it takes no taskQueue and reports only what its own runtime
-// hosts, so a project-wide list of startable workflows does have to ask every integration.
+// A project shares one Temporal engine. Every runtime in it is bound to the same namespace (`namespace = <project>` in
+// the runtime config) and differs only by task queue (`taskQueue = <integration>`).
 
 export interface WorkflowTarget {
   componentId: string;
   componentName: string;
-  /** The component handler — what the runtime is configured with as its `taskQueue`. */
+  // The component handler — what the runtime is configured with as its `taskQueue`.
   handler: string;
 }
 
-/** A value tagged with the integration it came from. */
+// A value tagged with the integration it came from.
 export type Owned<T> = T & { componentId: string; componentName: string };
 
-/** Resolves a record's `taskQueue` back to the integration that owns it, when it is one we know. */
+// Resolves a record's `taskQueue` back to the integration that owns it, when it is one we know.
 export function targetForTaskQueue(targets: WorkflowTarget[], taskQueue?: string): WorkflowTarget | undefined {
   return taskQueue ? targets.find((t) => t.handler === taskQueue) : undefined;
 }
 
-/**
- * 403/404/503 mean "this integration has nothing to contribute" — no running workflow runtime, or
- * not visible to the caller — rather than a failure worth reporting.
- */
+// 403/404/503 mean "this integration has nothing to contribute" — no running workflow runtime, or not visible to the
+// caller — rather than a failure worth reporting.
 function isAbsent(e: unknown): boolean {
   const status = (e as { status?: number } | null | undefined)?.status;
   return status === 403 || status === 404 || status === 503;
 }
 
 export interface DefinitionsAcross {
-  /** Every startable workflow, tagged with the integration whose runtime hosts it. */
+  // Every startable workflow, tagged with the integration whose runtime hosts it.
   items: Owned<WorkflowDefinition>[];
   isLoading: boolean;
   failed: { componentName: string; message: string }[];
 }
 
-/**
- * Workflow definitions from every target. This is the one listing that must fan out, because
- * `/definitions` is runtime-local: it backs the project-wide "start a workflow" choice, where the
- * chosen definition also determines which runtime to start it on.
- */
+// Workflow definitions from every target.
 export function useWorkflowDefinitionsAcross(targets: WorkflowTarget[], environmentId: string): DefinitionsAcross {
   const results = useQueries({
     queries: targets.map((t) => ({
@@ -1093,9 +967,8 @@ export function useWorkflowDefinitionsAcross(targets: WorkflowTarget[], environm
   results.forEach((r, i) => {
     const target = targets[i];
     if (!target) return;
-    // A target whose definitions are still being prepared contributes nothing yet; the query
-    // comes back for it, and `isLoading` below keeps the caller from treating the partial
-    // fan-out as complete.
+    // A target whose definitions are still being prepared contributes nothing yet; the query comes back for it, and
+    // `isLoading` below keeps the caller from treating the partial fan-out as complete.
     for (const d of valueOf(r.data) ?? []) {
       items.push({ ...d, componentId: target.componentId, componentName: target.componentName });
     }
@@ -1105,20 +978,15 @@ export function useWorkflowDefinitionsAcross(targets: WorkflowTarget[], environm
   });
   return {
     items,
-    // Still "loading" while any target's definitions are being prepared server-side: the list
-    // is genuinely incomplete until they arrive.
-    // `isPending` (no answer yet — including a query still disabled while the environment
-    // resolves) and not just `isLoading`: without it a not-yet-started fan-out reported
-    // "loaded, zero items", and the dashboard flashed "0 workflow types" before the number.
+    // Still "loading" while any target's definitions are being prepared server-side: the list is genuinely incomplete until
+    // they arrive.
     isLoading: results.some((r) => r.isPending || isPreparing(r.data)),
     failed,
   };
 }
 
-/**
- * Distinct workflow types, for the workflow-name filter — several integrations in a project may
- * host the same type and the filter only needs one entry per name.
- */
+// Distinct workflow types, for the workflow-name filter — several integrations in a project may host the same type and
+// the filter only needs one entry per name.
 export function distinctWorkflowTypes(definitions: WorkflowDefinition[]): WorkflowDefinition[] {
   const byType = new Map<string, WorkflowDefinition>();
   for (const d of definitions) {

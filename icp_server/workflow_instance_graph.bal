@@ -114,10 +114,8 @@ isolated function handleInstanceGraphRequest(string componentId, string environm
         // is still worth returning; the console can draw it as a chain.
         return instanceGraphResponse(workflowType, info, (), (), "workflow", executedNodes, []);
     }
-    // An agent's executions join the star exactly the way a workflow's join its flow: by the
-    // step id each call was stamped with (the model node, tool:<name>, task:<name>). The one
-    // difference is downstream — an agent has no lexical order, so unstamped executions are
-    // reported as unmatched rather than interpolated onto the graph.
+    // An agent's executions join the star exactly the way a workflow's join its flow: by the step id each
+    // call was stamped with (the model node, tool:<name>, task:<name>).
     return instanceGraphResponse(workflowType, info, model[0], model[1], model[2], executedNodes,
             graphNodesOf(model[0]));
 }
@@ -158,9 +156,7 @@ isolated function instanceGraphHalf(WorkflowReadOutcome|error outcome, string wh
     return body;
 }
 
-// Builds the response: the model as published, plus one entry per step that ran. An agent joins
-// by step id exactly like a workflow — the runtime stamps every agent call with its star node
-// (model, tool:<name>, task:<name>) — but never by interpolation, since an agent has no order.
+// Builds the response: the model as published, plus one entry per step that ran.
 isolated function instanceGraphResponse(string workflowType, map<json> info, json? graph,
         string? checksum, string graphKind, json[] executedNodes, json[] modelNodes)
         returns http:Response {
@@ -178,11 +174,7 @@ isolated function instanceGraphResponse(string workflowType, map<json> info, jso
     // matching step at or after the last anchored one.
     int cursor = 0;
 
-    // Whether any executed node named its step. The decoding happens in the runtime that serves the
-    // read, so an integration built against a module without step ids reports none — and since a
-    // project shares one Temporal namespace, that can be a *different* integration than the one that
-    // owns the workflow. Saying so lets the console explain an unanchored drawing instead of
-    // presenting every step as "not reached", which would be wrong rather than merely unhelpful.
+    // Whether any executed node named its step.
     boolean sawStepId = false;
     int executedCount = 0;
 
@@ -219,9 +211,8 @@ isolated function instanceGraphResponse(string workflowType, map<json> info, jso
         if stepId is string {
             resolved = stepId;
         } else if graphKind == "agent" {
-            // The model chose this call, so there is no lexical order to interpolate against —
-            // an unstamped agent execution (an integration built before the site carriers) can
-            // only be reported, not placed.
+            // The model chose this call, so there is no lexical order to interpolate against — an unstamped agent
+            // execution (an integration built before the site carriers) can only be reported, not placed.
             unmatched.push(unmatchedEntry(node, "no step id, and an agent has no order to place it by"));
             continue;
         } else {
@@ -267,9 +258,8 @@ isolated function instanceGraphResponse(string workflowType, map<json> info, jso
         steps: steps.toJson(),
         takenArms: takenArms.toJson(),
         unmatched: unmatched,
-        // False only when steps ran and not one of them was named: the run cannot be placed on the
-        // model at all. Guessing by activity name instead would draw a confident, wrong path, because
-        // the same activity is often called from several arms — which is why step ids exist.
+        // False only when steps ran and not one of them was named: the run cannot be placed on the model at
+        // all.
         stepIdsAvailable: executedCount == 0 || sawStepId
     };
     http:Response response = new;
@@ -409,9 +399,8 @@ isolated function stringField(map<json> value, string key) returns string? {
     return raw is string ? raw : ();
 }
 
-// The graph of one workflow type — a workflow's control flow or an agent's star — from any
-// RUNNING runtime's published descriptor, with the descriptor's checksum and which of the two
-// it is. Returns () when no runtime has described this type.
+// The graph of one workflow type — a workflow's control flow or an agent's star — from any RUNNING
+// runtime's published descriptor, with the descriptor's checksum and which of the two it is.
 isolated function workflowGraphFromStoredMetadata(string componentId, string environmentId,
         string workflowType) returns [json, string, string]?|error {
     // Project-wide, not component-wide: the console may be reading through a different integration

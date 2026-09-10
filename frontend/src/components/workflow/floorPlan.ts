@@ -16,49 +16,37 @@
  * under the License.
  */
 
-/**
- * Turns a workflow's published structure into a floor plan: nested boxes, one per control-flow block,
- * with its steps laid out inside.
- *
- * This is deliberately *not* general graph layout. A workflow body is single-threaded — `worker`,
- * `fork` and `start` are compile errors inside one — so its shape is always a tree of blocks: a
- * sequence of steps, some of which are branches, loops or do/on-fail blocks containing further
- * sequences. That lets the layout be a straightforward recursive box-packing pass, which yields a
- * stable, readable drawing where a spring or layered algorithm would produce something that moves
- * every time a step is added.
- *
- * Two passes: `measure` computes each block's size bottom-up, then `place` assigns absolute
- * coordinates top-down. Kept free of React and of the theme so the geometry can be unit-tested.
- */
+// Turns a workflow's published structure into a floor plan: nested boxes, one per control-flow block, with its steps
+// laid out inside. This is deliberately *not* general graph layout.
 
 import type { ModelGraph, ModelGraphNode } from '../../api/workflows';
 
 // ── Geometry (px) ──
 export const STEP_W = 148;
 export const STEP_H = 40;
-/** Between siblings in a sequence — the gap the connector line is drawn in. */
+// Between siblings in a sequence — the gap the connector line is drawn in.
 export const V_GAP = 18;
-/** Between the arms of a branch or do/on-fail block, laid side by side. */
+// Between the arms of a branch or do/on-fail block, laid side by side.
 export const ARM_GAP = 14;
-/** Container padding: the top leaves room for the decision diamond, the bottom for the merge. */
+// Container padding: the top leaves room for the decision diamond, the bottom for the merge.
 export const PAD_X = 10;
 export const PAD_TOP = 34;
 export const PAD_BOTTOM = 16;
-/** The arm's label chip ("then", "else", "onFail"), drawn at the top of the arm's column. */
+// The arm's label chip ("then", "else", "onFail"), drawn at the top of the arm's column.
 export const ARM_LABEL_H = 18;
-/** An arm with no steps in it still needs a slot, or the block collapses and reads as if it had one arm. */
+// An arm with no steps in it still needs a slot, or the block collapses and reads as if it had one arm.
 export const EMPTY_ARM_W = 72;
 export const EMPTY_ARM_H = 20;
-/** The Start and End pills that bracket the whole plan. */
+// The Start and End pills that bracket the whole plan.
 export const PILL_W = 84;
 export const PILL_H = 24;
 export const CANVAS_PAD = 14;
 
-/** Kinds that contain other nodes. Everything else is a step and draws as a single box. */
+// Kinds that contain other nodes. Everything else is a step and draws as a single box.
 const CONTAINER_KINDS = new Set(['BRANCH', 'LOOP', 'TRY']);
 export const isContainer = (kind: string): boolean => CONTAINER_KINDS.has(kind.toUpperCase());
 
-/** One arm of a container: its name, the sequence inside it, and where it was placed. */
+// One arm of a container: its name, the sequence inside it, and where it was placed.
 export interface PlacedArm {
   name: string;
   children: PlacedNode[];
@@ -66,7 +54,7 @@ export interface PlacedArm {
   y: number;
   w: number;
   h: number;
-  /** True when nothing inside this arm ran, which is what greys the whole column out. */
+  // True when nothing inside this arm ran, which is what greys the whole column out.
   empty: boolean;
 }
 
@@ -80,13 +68,13 @@ export interface PlacedNode {
 }
 
 export interface FloorPlan {
-  /** The top-level sequence, in source order. */
+  // The top-level sequence, in source order.
   nodes: PlacedNode[];
   width: number;
   height: number;
   start: { x: number; y: number };
   end: { x: number; y: number };
-  /** Centre line every top-level box is aligned to, which the Start/End pills sit on too. */
+  // Centre line every top-level box is aligned to, which the Start/End pills sit on too.
   axis: number;
 }
 
@@ -104,11 +92,7 @@ interface MeasuredArm {
   h: number;
 }
 
-/**
- * Groups the flat node list into `parent → arm → children`, preserving source order. Nodes whose
- * `parent` names a node that isn't in the list are treated as top-level rather than dropped: a
- * consumer should never lose a step because the descriptor disagreed with itself.
- */
+// Groups the flat node list into `parent → arm → children`, preserving source order.
 function groupByParent(nodes: ModelGraphNode[]): { roots: ModelGraphNode[]; armsOf: Map<string, Map<string, ModelGraphNode[]>> } {
   const known = new Set(nodes.map((n) => n.stepId));
   const roots: ModelGraphNode[] = [];
@@ -135,12 +119,8 @@ function groupByParent(nodes: ModelGraphNode[]): { roots: ModelGraphNode[]; arms
   return { roots, armsOf };
 }
 
-/**
- * Arm order for a container. Taken from the edges leaving it, because those are emitted in the order
- * the compiler walked the arms — `then` before `else`, `do` before `onFail`. Arms that appear only in
- * the node list (an edge missing, or a match clause) are appended so nothing is lost, and arms named
- * by an edge but holding no steps are kept so an empty `else` still draws a column.
- */
+// Arm order for a container. Taken from the edges leaving it, because those are emitted in the order the compiler walked
+// the arms — `then` before `else`, `do` before `onFail`.
 function armOrder(containerId: string, graph: ModelGraph, byArm: Map<string, ModelGraphNode[]>): string[] {
   const order: string[] = [];
   for (const e of graph.edges ?? []) {
@@ -160,7 +140,7 @@ function measureSequence(nodes: ModelGraphNode[], graph: ModelGraph, armsOf: Map
   return { children, w, h };
 }
 
-/** Bottom-up size of one node: a step is fixed, a container is as big as its arms need. */
+// Bottom-up size of one node: a step is fixed, a container is as big as its arms need.
 function measure(node: ModelGraphNode, graph: ModelGraph, armsOf: Map<string, Map<string, ModelGraphNode[]>>, depth: number): Measured {
   if (!isContainer(node.kind) || depth > 24) {
     // The depth cap is a cycle guard: a descriptor whose parent links form a loop would otherwise
@@ -192,7 +172,7 @@ function measure(node: ModelGraphNode, graph: ModelGraph, armsOf: Map<string, Ma
   };
 }
 
-/** Top-down placement: each node is centred on `axis`, and each arm column on its own centre. */
+// Top-down placement: each node is centred on `axis`, and each arm column on its own centre.
 function place(measured: Measured, x: number, y: number): PlacedNode {
   const placed: PlacedNode = { node: measured.node, x, y, w: measured.w, h: measured.h, arms: [] };
   if (measured.arms.length === 0) return placed;
@@ -214,10 +194,8 @@ function place(measured: Measured, x: number, y: number): PlacedNode {
   return placed;
 }
 
-/**
- * Lays out a whole workflow: the top-level sequence bracketed by Start and End pills.
- * Returns canvas dimensions the caller can hand straight to an `<svg viewBox>`.
- */
+// Lays out a whole workflow: the top-level sequence bracketed by Start and End pills. Returns canvas dimensions the
+// caller can hand straight to an `<svg viewBox>`.
 export function layoutFloorPlan(graph: ModelGraph): FloorPlan {
   const nodes = graph.nodes ?? [];
   const { roots, armsOf } = groupByParent(nodes);

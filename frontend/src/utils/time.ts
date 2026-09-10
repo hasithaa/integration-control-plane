@@ -16,7 +16,7 @@
  * under the License.
  */
 
-/** Timestamps as `YYYY-MM-DD HH:mm:ss`, 24h, on one clock (local or UTC); no locale-dependent formatting. */
+// Timestamps as `YYYY-MM-DD HH:mm:ss`, 24h, on one clock (local or UTC); no locale-dependent formatting.
 
 export type TimeZonePreference = 'local' | 'utc';
 
@@ -44,7 +44,7 @@ export function setTimeZonePreference(zone: TimeZonePreference): void {
   }
 }
 
-/** The IANA name of the browser's zone, e.g. "Asia/Colombo"; empty when the browser does not say. */
+// The IANA name of the browser's zone, e.g. "Asia/Colombo"; empty when the browser does not say.
 export function localZoneName(): string {
   try {
     return Intl.DateTimeFormat().resolvedOptions().timeZone ?? '';
@@ -53,7 +53,7 @@ export function localZoneName(): string {
   }
 }
 
-/** The local zone's offset from UTC right now, as "UTC+05:30" / "UTC-04:00" / "UTC". */
+// The local zone's offset from UTC right now, as "UTC+05:30" / "UTC-04:00" / "UTC".
 export function localOffsetLabel(at: Date = new Date()): string {
   const minutes = -at.getTimezoneOffset();
   if (minutes === 0) return 'UTC';
@@ -62,7 +62,7 @@ export function localOffsetLabel(at: Date = new Date()): string {
   return `UTC${sign}${String(Math.floor(abs / 60)).padStart(2, '0')}:${String(abs % 60).padStart(2, '0')}`;
 }
 
-/** "UTC" or "UTC+05:30 · Asia/Colombo". */
+// "UTC" or "UTC+05:30 · Asia/Colombo".
 export function zoneLabel(zone: TimeZonePreference = current): string {
   if (zone === 'utc') return 'UTC';
   const name = localZoneName();
@@ -71,11 +71,11 @@ export function zoneLabel(zone: TimeZonePreference = current): string {
 }
 
 export interface DateTimeFormatOptions {
-  /** Include seconds (default true). */
+  // Include seconds (default true).
   seconds?: boolean;
-  /** Include milliseconds (implies seconds). */
+  // Include milliseconds (implies seconds).
   ms?: boolean;
-  /** Override the chosen zone for this value. */
+  // Override the chosen zone for this value.
   zone?: TimeZonePreference;
 }
 
@@ -111,7 +111,7 @@ function clock(d: Date, p: Record<string, string>, opts: DateTimeFormatOptions):
   return time;
 }
 
-/** `2026-09-09 14:32:05`; "—" for nothing, the raw input for an unparseable string. */
+// `2026-09-09 14:32:05`; "—" for nothing, the raw input for an unparseable string.
 export function formatDateTime(value: DateInput, opts: DateTimeFormatOptions = {}): string {
   const d = parse(value);
   if (!d) return value === undefined || value === null || value === '' ? '—' : String(value);
@@ -119,7 +119,7 @@ export function formatDateTime(value: DateInput, opts: DateTimeFormatOptions = {
   return `${p.year}-${p.month}-${p.day} ${clock(d, p, opts)}`;
 }
 
-/** `2026-09-09` alone. */
+// `2026-09-09` alone.
 export function formatDate(value: DateInput, zone: TimeZonePreference = current): string {
   const d = parse(value);
   if (!d) return '—';
@@ -127,20 +127,20 @@ export function formatDate(value: DateInput, zone: TimeZonePreference = current)
   return `${p.year}-${p.month}-${p.day}`;
 }
 
-/** `14:32:05` alone. */
+// `14:32:05` alone.
 export function formatClock(value: DateInput, opts: DateTimeFormatOptions = {}): string {
   const d = parse(value);
   if (!d) return '—';
   return clock(d, parts(d, opts.zone ?? current), opts);
 }
 
-/** The instant as ISO-8601 UTC. */
+// The instant as ISO-8601 UTC.
 export function toIsoUtc(value: DateInput): string {
   const d = parse(value);
   return d ? d.toISOString() : '—';
 }
 
-/** "just now", "3 min ago", "2 hours ago", "5 days ago". */
+// "just now", "3 min ago", "2 hours ago", "5 days ago".
 export function formatDistanceToNow(dateStr: string | number | Date): string {
   const d = parse(dateStr);
   if (!d) return '—';

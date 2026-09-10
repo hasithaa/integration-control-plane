@@ -29,24 +29,8 @@ import NodeDetailPanel from './NodeDetailPanel';
 import WorkflowTimeline from './WorkflowTimeline';
 import { buildTimeline, extractNodeExecutionDetail, extractWorkflowInput, flowUnavailable, jsonPretty, signalEventIds, type TimelineSpan, modelStepId, modelStepActivity } from './helpers';
 
-/**
- * The instance's Overview: everything an operator reads first, on one page.
- *
- *   summary cards (start input · execution summary)
- *   [ flow / agent rail ] [ timeline — or the execution graph, one toggle away ]
- *
- * The rail is the program as the compiler described it — structure. The timeline is the run as it
- * happened — time. Between them they answer both dimensions without repeating each other, which is
- * why the timeline (not the execution graph) sits in the hero position: duration, order and gaps
- * are what the graph could never say. The join is navigation in both directions: clicking a rail
- * step dims every timeline span but that step's own executions; clicking a span's name opens its
- * details and names its step back on the rail.
- *
- * Agents join by the same step ids — the runtime stamps every agent call with its star node
- * (model, tool:<name>, task:<name>) — with two client-side refinements: data events are signals
- * (matched here by name), and the model's calls split into one rail row per built-in activity
- * (`model#<activity>`), because Thinking and Generate Result mean different things to a reader.
- */
+// The instance's Overview: everything an operator reads first, on one page. summary cards (start input · execution
+// summary) [ flow / agent rail ] [ timeline — or the execution graph, one toggle away ] The rail is the program as the.
 
 export default function WorkflowFlowTab({
   instanceGraph,
@@ -149,11 +133,8 @@ export default function WorkflowFlowTab({
     setRailHighlight(span?.eventId ? (stepOfEvent.get(span.eventId) ?? null) : null);
   };
 
-  // A rail click filters the timeline AND opens the clicked step's details — always, not only
-  // when the overlay happened to be open. The FIRST matching span is selected deliberately: one
-  // step can execute several times (retries, resets, loops), and the timeline is chronological,
-  // so the first span is the step's first run — a stable answer to an ambiguous click, with the
-  // rest one row away in the already-filtered lane.
+  // A rail click filters the timeline AND opens the clicked step's details — always, not only when the overlay happened to
+  // be open.
   const selectStep = (stepId: string | null) => {
     setSelectedStepId(stepId);
     if (stepId) {
@@ -258,8 +239,8 @@ export default function WorkflowFlowTab({
           <Box sx={{ width: 3, height: 44, borderRadius: 1.5, bgcolor: 'divider', transition: 'background-color 0.15s' }} />
         </Box>
         <Box sx={{ flex: 1, minWidth: 0, display: 'flex' }}>{timelinePane}</Box>
-        {/* The details ride over the whole split, not over the timeline alone: a short timeline
-            would otherwise crop them. Rows never reflow either way. */}
+        {/* The details ride over the whole split, not over the timeline alone: a short timeline would otherwise crop them. Rows
+            never reflow either way. */}
         {spanDetail && (
           <Box
             sx={{
@@ -274,9 +255,8 @@ export default function WorkflowFlowTab({
               zIndex: 2,
               display: 'flex',
               borderRadius: 1,
-              // The theme's paper is translucent (#ffffffe1) — invisible on the page ground, but
-              // floating over the timeline it let the tick rows bleed through the panel. Ground
-              // the overlay the way normal flow would, so the panel's paper reads opaque.
+              // The theme's paper is translucent (#ffffffe1) — invisible on the page ground, but floating over the timeline it let the
+              // tick rows bleed through the panel. Ground the overlay the way normal flow would, so the panel's paper reads opaque.
               bgcolor: 'background.default',
             }}>
             <NodeDetailPanel node={spanDetail.node} detail={spanDetail.detail} hasHistory={events.length > 0} onClose={() => selectSpan(null)} fullWidth environmentId={environmentId} />

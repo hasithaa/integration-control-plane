@@ -21,13 +21,8 @@ import { useMemo, type ReactElement } from 'react';
 import type { InstanceGraph, ModelGraphNode } from '../../api/workflows';
 import { diagramColors, paletteColor, softPrimary, statusColorName } from './graphVisuals';
 
-/**
- * The agent's star, drawn compactly: channels in on the left (events, human tasks), the agent in
- * the middle, capabilities out on the right (the model, tools, activities). An agent has no
- * lexical control flow — the model decides what runs — so this is the whole static story, and its
- * job here is the same as the flow rail's: clicking a node filters the execution graph to the
- * events that node produced.
- */
+// The agent's star, drawn compactly: channels in on the left (events, human tasks), the agent in the middle,
+// capabilities out on the right (the model, tools, activities).
 
 const clip = (text: string, maxChars: number): string => (text.length <= maxChars ? text : `${text.slice(0, Math.max(1, maxChars - 1))}…`);
 
@@ -115,9 +110,8 @@ export default function AgentStarRail({ data, selectedStepId, onSelect }: { data
                 width={NODE_W}
                 height={NODE_H}
                 rx={isAgent ? NODE_H / 2 : 6}
-                // softPrimary, not alpha(): under CSS-variables theming the accent is the
-                // string `var(--oxygen-palette-primary-main)`, which alpha() cannot parse —
-                // toggling to the agent map crashed the whole page on it (MUI error #9).
+                // softPrimary, not alpha(): under CSS-variables theming the accent is the string `var(--oxygen-palette-primary-main)`,
+                // which alpha() cannot parse — toggling to the agent map crashed the whole page on it (MUI error #9).
                 fill={selected ? softPrimary(theme, 0.12) : isAgent ? softPrimary(theme, 0.08) : c.paper}
                 stroke={selected ? accent : isAgent ? accent : (statusColor ?? c.divider)}
                 strokeWidth={selected ? 1.75 : statusColor ? 1.5 : 1}

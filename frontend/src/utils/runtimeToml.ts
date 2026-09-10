@@ -16,7 +16,7 @@
  * under the License.
  */
 
-/** The `main.bal` import a BI runtime needs; the bridge's compiler plugin does the rest. */
+// The `main.bal` import a BI runtime needs; the bridge's compiler plugin does the rest.
 export function runtimeImports(): string {
   return 'import wso2/icp.runtime.bridge as _;';
 }

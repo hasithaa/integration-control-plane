@@ -69,14 +69,14 @@ const emptySx = { py: 4, textAlign: 'center', color: 'text.secondary' } as const
 
 const statusLabel = (s: string) => (s === 'All' ? 'All' : s.charAt(0) + s.slice(1).toLowerCase().replace(/_/g, ' '));
 
-/** Converts a `datetime-local` input value to an ISO-8601 string, or undefined when empty/invalid. */
+// Converts a `datetime-local` input value to an ISO-8601 string, or undefined when empty/invalid.
 const localToIso = (v: string): string | undefined => {
   if (!v) return undefined;
   const d = new Date(v);
   return isNaN(d.getTime()) ? undefined : d.toISOString();
 };
 
-/** Formats a Date as a `datetime-local` input value (YYYY-MM-DDTHH:MM). */
+// Formats a Date as a `datetime-local` input value (YYYY-MM-DDTHH:MM).
 const toLocalInput = (d: Date): string => {
   const pad = (n: number) => String(n).padStart(2, '0');
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
@@ -96,7 +96,7 @@ export type Toast = { severity: 'success' | 'error'; message: string } | null;
 
 export type { PortalScope };
 
-/** Integration filter, offered only when the portal spans more than one. */
+// Integration filter, offered only when the portal spans more than one.
 export function IntegrationFilter({ targets, value, onChange }: { targets: WorkflowTarget[]; value: WorkflowTarget | null; onChange: (v: WorkflowTarget | null) => void }) {
   return (
     <Autocomplete
@@ -112,12 +112,8 @@ export function IntegrationFilter({ targets, value, onChange }: { targets: Workf
   );
 }
 
-/**
- * Warns that some integrations did not return their workflow definitions, so the workflow names on
- * offer — for filtering and for starting — may be short a few. Listing rows are unaffected: they
- * come from one runtime that answers for the whole project. Integrations with no workflow runtime
- * are not failures and never appear here.
- */
+// Warns that some integrations did not return their workflow definitions, so the workflow names on offer — for filtering
+// and for starting — may be short a few.
 function DefinitionsUnavailableNotice({ failed }: { failed: { componentName: string; message: string }[] }) {
   if (failed.length === 0) return null;
   return (
@@ -148,7 +144,7 @@ export function WorkflowNameFilter({ definitions, value, onChange }: { definitio
   );
 }
 
-/** Owns the time-range dropdown (relative presets + custom bounds) and resolves it to ISO bounds. */
+// Owns the time-range dropdown (relative presets + custom bounds) and resolves it to ISO bounds.
 export function useTimeRangeFilter() {
   const [timeRange, setTimeRange] = useState(ANY_TIME);
   const [customStart, setCustomStart] = useState(() => toLocalInput(new Date(Date.now() - 24 * 3600_000)));
@@ -273,9 +269,8 @@ function WorkflowsAdmin({
   };
   // Paged the way Temporal's visibility API pages — forward-only tokens — so "Load more" appends.
   const { data, isLoading, error, refetch, isFetching, hasNextPage, fetchNextPage, isFetchingNextPage } = useWorkflowInstancesInfinite(gatewayScope(scope), filters);
-  // Each page is a Fetchable, so only the ready ones contribute rows. A page still being
-  // prepared is announced instead of being flattened to nothing, which would read as "no
-  // instances" while the answer is on its way.
+  // Each page is a Fetchable, so only the ready ones contribute rows. A page still being prepared is announced instead of
+  // being flattened to nothing, which would read as "no instances" while the answer is on its way.
   const pages = (data?.pages ?? []).map((page) => valueOf(page)).filter((page) => page !== undefined);
   const items = sortByStartTimeDesc(pages.flatMap((page) => page?.items ?? []));
   const preparing = (data?.pages ?? []).some((page) => isPreparing(page));
@@ -382,9 +377,7 @@ function WorkflowsAdmin({
 }
 
 export function StartWorkflowDialog({ scope, initialWorkflowType, onClose, onToast }: { scope: PortalScope; initialWorkflowType?: string; onClose: () => void; onToast: (t: Toast) => void }) {
-  // `/definitions` is runtime-local, so each definition already names the runtime hosting it. That
-  // makes the chosen workflow the choice of integration too — no separate target picker needed, and
-  // at project scope the dropdown is the union over every integration.
+  // `/definitions` is runtime-local, so each definition already names the runtime hosting it.
   const definitions = useWorkflowDefinitionsAcross(scope.targets, scope.environmentId);
   const multi = scope.targets.length > 1;
   const [selected, setSelected] = useState<Owned<WorkflowDefinition> | null>(null);
@@ -568,23 +561,21 @@ export function StartWorkflowDialog({ scope, initialWorkflowType, onClose, onToa
 
 // ── Review activity detail (opened from the unified Human Tasks queue) ──────────
 
-/** Why a review exists, in words: an approval gate before the run, or a decision after a failure. */
+// Why a review exists, in words: an approval gate before the run, or a decision after a failure.
 export function reviewTriggerLabel(trigger?: string): string {
   if (trigger === 'PRE_RUN') return 'Approval gate — review before the activity runs';
   if (trigger === 'ON_FAILURE') return 'Review failure — decide the failed activity\u2019s retry';
   return trigger || '—';
 }
 
-/**
- * Display name for a review activity: the task part of its qualified name
- * (e.g. `placeOrderWorkflow.validatePayment` → `validatePayment`), else the task ID.
- */
+// Display name for a review activity: the task part of its qualified name (e.g. `placeOrderWorkflow.validatePayment` →
+// `validatePayment`), else the task ID.
 function reviewActivityDisplayName(taskName?: string, activityName?: string, fallback = ''): string {
   const { task } = splitQualifiedName(taskName ?? activityName);
   return task ?? fallback;
 }
 
-/** The reviewer's decision, in words — the three ways a review can end. */
+// The reviewer's decision, in words — the three ways a review can end.
 function reviewDecisionLabel(action: unknown): string | undefined {
   switch (action) {
     case 'proceed':
@@ -598,14 +589,7 @@ function reviewDecisionLabel(action: unknown): string | undefined {
   }
 }
 
-/**
- * The review-activity drawer. A review is a decision about an activity the workflow gated or that
- * failed, so the three decisions get three visibly different paths: Proceed runs (or, for a
- * failed activity, retries) with the original arguments, which therefore stay read-only; Proceed
- * with changes opens an editable copy and states exactly which fields were changed before anything
- * runs; Reject warns that the activity is recorded as failed and the workflow is told. Every path
- * confirms in a second step.
- */
+// The review-activity drawer.
 export function ReviewActivityDetailDialog({ scope, taskId, onClose, onToast }: { scope: WorkflowScope; taskId: string; onClose: () => void; onToast: (t: Toast) => void }) {
   const [pausePolling, setPausePolling] = useState(false);
   const { data: activityResult, isLoading, error: loadError } = useReviewActivity(scope, taskId, pausePolling);
@@ -642,11 +626,8 @@ export function ReviewActivityDetailDialog({ scope, taskId, onClose, onToast }: 
   const heading = activity?.title || reviewActivityDisplayName(activity?.taskName, activity?.activityName, taskId);
   const argsJson = activity?.activityArgs ? jsonPretty(activity.activityArgs) : null;
 
-  // A review's decision — the action taken and any input the reviewer submitted — is not part of
-  // the review-activity detail; it lives in the review's own workflow result (a review IS a
-  // workflow, and its taskId is that workflow's id). Fetch its history only once the review is
-  // decided: a pending review has no decision to show, and a history read has a cost. The
-  // terminal result is the decision object: { action, input, feedback?, decidedBy, decidedAt }.
+  // A review's decision — the action taken and any input the reviewer submitted — is not part of the review-activity
+  // detail; it lives in the review's own workflow result (a review IS a workflow, and its taskId is that workflow's id).
   const isCompleted = (activity?.status ?? '').toUpperCase() === 'COMPLETED';
   const { data: decisionHistory } = useWorkflowHistory(scope, isCompleted ? taskId : null);
   const decision = useMemo<Record<string, unknown> | null>(() => {
@@ -775,13 +756,12 @@ export function ReviewActivityDetailDialog({ scope, taskId, onClose, onToast }: 
             </Stack>
           </SectionCard>
 
-          {/* The arguments as the workflow recorded them: context to decide with. Editing happens
-              only on the explicit "Proceed with changes" path, never here. */}
+          {/* The arguments as the workflow recorded them: context to decide with. Editing happens only on the explicit "Proceed
+              with changes" path, never here. */}
           {mode !== 'edit' && argsJson && <StructuredValue title="Activity Arguments" readOnly raw={argsJson} environmentId={scope.environmentId} collapsible />}
 
-          {/* The decision, once one has been made: what the reviewer decided, who decided, when,
-              and — for a "proceed with changes" — the input they supplied. Read from the review's
-              own workflow result, so a completed review no longer reads as if nothing was decided. */}
+          {/* The decision, once one has been made: what the reviewer decided, who decided, when, and — for a "proceed with changes"
+              — the input they supplied. */}
           {isCompleted && (activity.decidedBy || activity.decidedAt || decision) && (
             <SectionCard title="Decision">
               <Stack gap={1.25}>
@@ -794,15 +774,14 @@ export function ReviewActivityDetailDialog({ scope, taskId, onClose, onToast }: 
           )}
           {isCompleted && decision?.['input'] != null && <StructuredValue title="Submitted Input" raw={jsonPretty(decision['input']) || ''} environmentId={scope.environmentId} collapsible />}
 
-          {/* Deciding a review is human-task work as much as workflow management: either
-              manage permission offers the decision (the proxy accepts both). */}
+          {/* Deciding a review is human-task work as much as workflow management: either manage permission offers the decision (the
+              proxy accepts both). */}
           {canDecide && (
             <Authorized permissions={[Permissions.WORKFLOW_MANAGE_WORKFLOWS, Permissions.WORKFLOW_MANAGE_HUMAN_TASKS]}>
               <SectionCard title="Decisions">
                 <Stack gap={2}>
-                  {/* Every way the review can end, side by side and scannable: proceed as-is,
-                      proceed with edits, or reject. Reject is a decision the reviewer makes here,
-                      so it belongs beside the others — not tucked in an overflow menu. */}
+                  {/* Every way the review can end, side by side and scannable: proceed as-is, proceed with edits, or reject. Reject is a
+                      decision the reviewer makes here, so it belongs beside the others — not tucked in an overflow menu. */}
                   <Stack direction="row" flexWrap="wrap" gap={1.5}>
                     <ActionCard
                       title="Proceed"
@@ -814,9 +793,8 @@ export function ReviewActivityDetailDialog({ scope, taskId, onClose, onToast }: 
                       }
                       disabled={busy}
                       onClick={() => {
-                        // Opening one decision closes the other. Without this, Proceed's modal
-                        // rose over the still-open edit form — two half-taken decisions at once,
-                        // and Back landed the user on an editor they never meant to keep.
+                        // Opening one decision closes the other. Without this, Proceed's modal rose over the still-open edit form — two
+                        // half-taken decisions at once, and Back landed the user on an editor they never meant to keep.
                         closeEdit();
                         setConfirmProceedOpen(true);
                       }}
@@ -883,8 +861,8 @@ export function ReviewActivityDetailDialog({ scope, taskId, onClose, onToast }: 
             </Authorized>
           )}
 
-          {/* Confirmations overlay the review instead of replacing it: the arguments and the
-              error that triggered it stay on screen behind the decision. */}
+          {/* Confirmations overlay the review instead of replacing it: the arguments and the error that triggered it stay on screen
+              behind the decision. */}
           <Dialog open={confirmProceedOpen} onClose={() => !busy && setConfirmProceedOpen(false)} maxWidth="sm" fullWidth>
             <DialogTitle>Confirm Proceed</DialogTitle>
             <DialogContent>

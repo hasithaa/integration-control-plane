@@ -109,11 +109,7 @@ function SpanBar({ span, total, rangeStart, now }: { span: TimelineSpan; total: 
   );
 }
 
-/**
- * Renders a workflow's history as a Gantt timeline: one duration bar per activity / human task /
- * timer. Spans are keyed by their scheduled-event id — the same id the instance-graph endpoint
- * reports per step — which is what lets a flow rail filter this view and a click here name a step.
- */
+// Renders a workflow's history as a Gantt timeline: one duration bar per activity / human task / timer.
 export default function WorkflowTimeline({
   events,
   graph,
@@ -123,20 +119,18 @@ export default function WorkflowTimeline({
 }: {
   events: ReadonlyArray<Record<string, unknown>>;
   graph?: ExecutionGraph;
-  /** When set, spans whose opening EVENT id is outside the set are dimmed — the flow rail's filter. */
+  // When set, spans whose opening EVENT id is outside the set are dimmed — the flow rail's filter.
   visibleIds?: ReadonlySet<string> | null;
-  /** The selected span's opening event id. */
+  // The selected span's opening event id.
   selectedKey?: string | null;
-  /** Clicking a span row reports it; clicking the selected one again reports null. */
+  // Clicking a span row reports it; clicking the selected one again reports null.
   onSelectSpan?: (span: TimelineSpan | null) => void;
 }) {
   const built = buildTimeline(events);
   const { start, end } = built;
 
-  // The execution graph carries authoritative node types. Use them to correct categories the
-  // history-based inference gets wrong — e.g. a human task implemented as a child workflow — so the
-  // timeline's icon/colour match the execution graph. Graph and history label the same step
-  // differently (prefixes/qualifiers differ), so match on the normalized task name, not the raw label.
+  // The execution graph carries authoritative node types. Use them to correct categories the history-based inference gets
+  // wrong — e.g. a human task implemented as a child workflow — so the timeline's icon/colour match the execution graph.
   const taskKey = (label: string) => (splitQualifiedName(label).task ?? label).trim().toLowerCase();
   const typeByTask = new Map<string, SpanCategory>();
   for (const n of graph?.nodes ?? []) {

@@ -362,11 +362,8 @@ function handleWorkflowRequest(string componentId, string environmentId, string[
 
     // 2. Authorize with the dedicated workflow permissions (scoped to the integration).
     //    - human-tasks: browsing needs view_human_tasks; acting needs manage_human_tasks.
-    //    - review-activities: a review is a human decision about a gated or failed activity,
-    //      so the human-task permissions cover it alongside the workflow ones — a task worker
-    //      must be able to see and decide an approval gate without holding manage_workflows,
-    //      which would also hand them suspend/terminate/reset over every execution.
-    //    - everything else (workflows lifecycle, definitions):
+    // - review-activities: a review is a human decision about a gated or failed activity, so the
+    // human-task permissions cover it alongside the workflow ones — a task worker must be able to see and.
     //      browsing needs view_workflows; any mutation needs manage_workflows.
     string|error projectId = storage:getProjectIdByComponentId(componentId);
     if projectId is error {
@@ -425,9 +422,8 @@ function handleWorkflowRequest(string componentId, string environmentId, string[
         escapedRoles.push("admin");
     }
 
-    // The task-queue map is served from stored metadata alone, so it is answered before a tunnel
-    // target is even looked for: the console needs it to scope every other request, and it must not
-    // fail just because no runtime is currently reachable.
+    // The task-queue map is served from stored metadata alone, so it is answered before a tunnel target is
+    // even looked for: the console needs it to scope every other request, and it must not fail just.
     if method == http:GET && wfPath.length() == 1 && wfPath[0] == "task-queues" {
         return handleTaskQueuesRequest(componentId, environmentId);
     }
@@ -456,16 +452,8 @@ function handleWorkflowRequest(string componentId, string environmentId, string[
     // refreshing the one everyone reads.
     boolean forceRefresh = queryParams.removeIfHasKey("refresh") == "true";
 
-    // `all` is likewise this layer's instruction — stripped whatever the path, so it never
-    // reaches the cache key or the operation — and honoured on two reads: the pending-task
-    // count, and the work-items listing (which the integration overview reads one page of, per
-    // workflow definition, to count what that definition is waiting on). A dashboard needs the
-    // TOTAL of pending tasks, not the caller's slice: the runtime lists a task only when its
-    // roles intersect the caller's, and an empty role set sees nothing, so the total is asked
-    // with every role the organization defines — the union intersects every task any role could
-    // claim. Gated on the workflow-view permissions the dashboards themselves require, which
-    // already let the caller read every instance's history; a caller without them keeps the
-    // per-user view.
+    // `all` is likewise this layer's instruction — stripped whatever the path, so it never reaches the
+    // cache key or the operation — and honoured on two reads: the pending-task count, and the work-items.
     boolean wantTotal = queryParams.removeIfHasKey("all") == "true";
     boolean totalCapablePath = (wfPath.length() == 2 && wfPath[0] == "human-tasks" && wfPath[1] == "pending-count")
             || (wfPath.length() == 1 && wfPath[0] == "work-items");
@@ -512,9 +500,8 @@ function handleWorkflowRequest(string componentId, string environmentId, string[
     // Mutates the map declared above rather than re-reading the query: that one has already had
     // `refresh` stripped, and a second copy would carry it into the cache key.
     if firstSeg == "work-items" {
-        // Narrow the queue to the kinds this caller's permissions cover, intersected with any
-        // kind they asked for. Asking only for a kind they may not see is a plain denial, not
-        // an empty page that reads as "no work".
+        // Narrow the queue to the kinds this caller's permissions cover, intersected with any kind they asked
+        // for.
         string?|http:Response kinds = resolveWorkItemKinds(userContext.userId, scope,
                 queryParams["kind"]);
         if kinds is http:Response {

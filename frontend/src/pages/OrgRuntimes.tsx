@@ -158,11 +158,7 @@ secret = "${secret}"
 #icp_url = "https://<hostname>:9445"`;
 }
 
-// This dialog is org-scoped: the project and integration are fill-in placeholders. One snippet
-// serves every BI runtime, with workflow management on: when the integration uses
-// ballerina/workflow, the bridge advertises the tunnel capability and the ICP delivers management
-// commands over the heartbeat channel — no workflow block is dictated from this side. The flag is
-// the deployment's opt-out: set it false to run headless. A non-workflow runtime ignores it.
+// This dialog is org-scoped: the project and integration are fill-in placeholders.
 function biToml(envName: string, secret: string): string {
   return `[wso2.icp.runtime.bridge]
 environment = "${envName}"

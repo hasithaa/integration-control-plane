@@ -28,12 +28,7 @@ import { gatewayScope } from '../components/workflow/helpers';
 import { valueOf, useWorkflowInfo } from '../api/workflows';
 import { resourceUrl, broaden, hasComponent, type ComponentScope, type ProjectScope } from '../nav';
 
-/**
- * Workflow executions: the operator's view of what ran and is running. A person's own work — tasks
- * to complete, reviews to decide — is a different activity with a different rhythm, so it lives on
- * its own page (My Tasks) rather than behind a tab here; links written when the two shared this
- * page (`?tab=tasks|reviews`) are redirected there.
- */
+// Workflow executions: the operator's view of what ran and is running.
 export default function Workflows(scope: ComponentScope | ProjectScope): JSX.Element {
   const componentLevel = hasComponent(scope);
   const [searchParams, setSearchParams] = useSearchParams();
@@ -47,10 +42,8 @@ export default function Workflows(scope: ComponentScope | ProjectScope): JSX.Ele
     return typeof state?.toast === 'string' ? state.toast : null;
   });
 
-  // Deep-link params (from the Overview page's "View Workflows", the start-workflow success dialog,
-  // or a task's workflow link). Held in state rather than read from the URL on every render: the
-  // portal re-seeds its filters from these on mount, so leaving them live in the URL would reapply
-  // a search the user had since cleared.
+  // Deep-link params (from the Overview page's "View Workflows", the start-workflow success dialog, or a task's workflow
+  // link).
   const [deepLink, setDeepLink] = useState<{ workflowType?: string; workflowId?: string }>(() => ({
     workflowType: searchParams.get('type') ?? undefined,
     workflowId: searchParams.get('workflowId') ?? undefined,
@@ -79,9 +72,7 @@ export default function Workflows(scope: ComponentScope | ProjectScope): JSX.Ele
   // dashboard; exactly one makes the page behave as that integration.
   const dashboard = !componentLevel && !soleWorkflowIntegration;
 
-  // A deep-linked id might not be a workflow at all — a human task and a review are their own
-  // instances. Ask the instance what it is (its starter stamped the kind in its memo) and load
-  // the respective UI, rather than parsing the id's prefix here.
+  // A deep-linked id might not be a workflow at all — a human task and a review are their own instances.
   const gatewayForResolve = gatewayScope({ targets, environmentId: activeEnvId });
   const { data: linkedInfo } = useWorkflowInfo(gatewayForResolve, deepLink.workflowId ?? null);
   const navigate = useNavigate();

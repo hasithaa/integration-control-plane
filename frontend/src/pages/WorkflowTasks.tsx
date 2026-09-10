@@ -25,12 +25,7 @@ import WorkflowPageFrame from '../components/workflow/WorkflowPageFrame';
 import { useWorkflowPageScope } from '../components/workflow/useWorkflowPageScope';
 import { resourceUrl, broaden, hasComponent, type ComponentScope, type ProjectScope } from '../nav';
 
-/**
- * The person's own workflow work: human tasks assigned to their roles, and review activities
- * awaiting their decision. Split out of the executions page so someone working through their queue
- * is not one navigation away from losing their place — the two views are different activities done
- * at different rhythms, and each now survives leaving and coming back on its own.
- */
+// The person's own workflow work: human tasks assigned to their roles, and review activities awaiting their decision.
 export default function WorkflowTasks(scope: ComponentScope | ProjectScope): JSX.Element {
   const componentLevel = hasComponent(scope);
   const [searchParams, setSearchParams] = useSearchParams();
@@ -43,9 +38,6 @@ export default function WorkflowTasks(scope: ComponentScope | ProjectScope): JSX
   const dashboard = !componentLevel && !soleWorkflowIntegration;
 
   // One queue now holds both kinds of work; an old ?tab=reviews link presets the type filter.
-  // Tasks are gated on the human-task permissions; reviews are human decisions too, so either
-  // domain shows them (the proxy authorizes /review-activities for both) — each source shows
-  // only to those allowed.
   const initialKind = searchParams.get('tab') === 'reviews' ? ('reviews' as const) : undefined;
   void setSearchParams;
   const permitted = canViewHumanTasks || canViewWorkflows;

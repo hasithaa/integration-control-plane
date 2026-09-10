@@ -23,38 +23,34 @@ import { targetForTaskQueue, type InstanceGraph, type WorkflowTarget } from '../
 import { formatDateTime } from '../../utils/time';
 
 // ── Portal scope ──
-//
-// A project shares one Temporal engine: every runtime in it is bound to the same namespace and
-// differs only by task queue. So one runtime answers for the whole project, and a listing is
-// narrowed by `taskQueue` rather than by which runtime is called. Shared by both portals.
+// A project shares one Temporal engine: every runtime in it is bound to the same namespace and differs only by task
+// queue.
 
 export interface PortalScope {
-  /** Every integration in view: the read gateway is the first, and rows route back by task queue. */
+  // Every integration in view: the read gateway is the first, and rows route back by task queue.
   targets: WorkflowTarget[];
   environmentId: string;
-  /** Integration scope: that integration's task queue. Project scope: undefined (whole namespace). */
+  // Integration scope: that integration's task queue. Project scope: undefined (whole namespace).
   taskQueue?: string;
 }
 
-/** Structurally a `WorkflowScope`; spelled out here to keep this module free of component imports. */
+// Structurally a `WorkflowScope`; spelled out here to keep this module free of component imports.
 type TargetScope = { componentId: string; environmentId: string };
 
-/** The runtime every read goes through — any runtime in the project serves the whole namespace. */
+// The runtime every read goes through — any runtime in the project serves the whole namespace.
 export const gatewayScope = (scope: PortalScope): TargetScope => ({ componentId: scope.targets[0]?.componentId ?? '', environmentId: scope.environmentId });
 
-/**
- * Scope for acting on one row: the integration whose task queue owns it, falling back to the
- * gateway when the task queue is absent or is not one of this project's integrations.
- */
+// Scope for acting on one row: the integration whose task queue owns it, falling back to the gateway when the task queue
+// is absent or is not one of this project's integrations.
 export function ownerScope(scope: PortalScope, taskQueue?: string): TargetScope {
   const owner = targetForTaskQueue(scope.targets, taskQueue);
   return owner ? { componentId: owner.componentId, environmentId: scope.environmentId } : gatewayScope(scope);
 }
 
-/** How a row's owning integration is labelled: its display name when known, else the raw task queue. */
+// How a row's owning integration is labelled: its display name when known, else the raw task queue.
 export const ownerLabel = (scope: PortalScope, taskQueue?: string): string => targetForTaskQueue(scope.targets, taskQueue)?.componentName ?? taskQueue ?? '—';
 
-/** Pretty-prints any value as JSON for display; returns '' for nullish. */
+// Pretty-prints any value as JSON for display; returns '' for nullish.
 export function jsonPretty(value: unknown): string {
   if (value === undefined || value === null) return '';
   if (typeof value === 'string') {
@@ -71,23 +67,18 @@ export function jsonPretty(value: unknown): string {
   }
 }
 
-/**
- * Reverses the ICP proxy's role-name escaping for display (`%2C` → `,`).
- * The proxy escapes commas in each role name before comma-joining the `x-user-roles`
- * header (see escapeRoleName in icp_server/workflow_proxy_service.bal), and the runtime
- * echoes the escaped names back in task role lists.
- */
+// Reverses the ICP proxy's role-name escaping for display (`%2C` → `,`).
 export function unescapeRoleName(role: string): string {
   return role.replace(/%2C/gi, ',');
 }
 
-/** Shared heading style for workflow cards, sections, and form/dialog titles: bold, muted gray. */
+// Shared heading style for workflow cards, sections, and form/dialog titles: bold, muted gray.
 export const sectionTitleSx = { fontWeight: 700, color: 'text.secondary' } as const;
 
-/** Oxygen chip/palette colour names used to convey workflow & task status. */
+// Oxygen chip/palette colour names used to convey workflow & task status.
 export type ChipColor = 'default' | 'primary' | 'success' | 'error' | 'warning' | 'info';
 
-/** Maps a normalized (upper-case) workflow/task status to an Oxygen chip/palette colour. */
+// Maps a normalized (upper-case) workflow/task status to an Oxygen chip/palette colour.
 export const STATUS_COLORS: Record<string, ChipColor> = {
   RUNNING: 'info',
   COMPLETED: 'success',
@@ -101,15 +92,10 @@ export const STATUS_COLORS: Record<string, ChipColor> = {
   PENDING: 'info',
 };
 
-/**
- * An instance id as a person reads it: without the kind prefix the runtime bakes in.
- * The prefix (`workflow-`, `humantask-`, `childwf-`, `reviewactivity-`) is machinery — the kind
- * now travels in the instance's own memo — so displays drop it, while every API call, copy, and
- * search keeps the full id, which is the only identity the runtime answers to.
- */
-/** The rail row for an agent's model calls on one activity: `model#<activity>`. */
+// An instance id as a person reads it: without the kind prefix the runtime bakes in.
+// The rail row for an agent's model calls on one activity: `model#<activity>`.
 export const modelStepId = (activity: string): string => `model#${activity}`;
-/** The activity behind a `model#<activity>` step id, or null for any other id. */
+// The activity behind a `model#<activity>` step id, or null for any other id.
 export const modelStepActivity = (stepId: string): string | null => (stepId.startsWith('model#') ? stepId.slice('model#'.length) : null);
 
 export function displayWorkflowId(id?: string): string {
@@ -117,11 +103,8 @@ export function displayWorkflowId(id?: string): string {
   return id.replace(/^(workflow|humantask|childwf|childagent|reviewactivity)-/i, '');
 }
 
-/**
- * Splits a qualified task/activity name like `placeOrderWorkflow.approveOrder` (optionally
- * prefixed `workflow-`) into its workflow and task parts. Names without a qualifier map to
- * `{ task: name }`.
- */
+// Splits a qualified task/activity name like `placeOrderWorkflow.approveOrder` (optionally prefixed `workflow-`) into
+// its workflow and task parts. Names without a qualifier map to `{ task: name }`.
 export function splitQualifiedName(name?: string): { workflow?: string; task?: string } {
   if (!name) return {};
   const clean = name.replace(/^workflow-/, '');
@@ -130,7 +113,7 @@ export function splitQualifiedName(name?: string): { workflow?: string; task?: s
   return { workflow: clean.slice(0, idx), task: clean.slice(idx + 1) };
 }
 
-/** Converts a key like `orderId` or `error_code` to a display label like `Order Id`. */
+// Converts a key like `orderId` or `error_code` to a display label like `Order Id`.
 export function humanizeKey(key: string): string {
   return key
     .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
@@ -140,11 +123,8 @@ export function humanizeKey(key: string): string {
     .replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
-/**
- * A form field derived from a JSON schema property. Object properties that themselves declare
- * `properties` become groups (`fields` set, rendered as a nested set of inputs) rather than a
- * single JSON textarea. Leaf-field values are keyed by their dotted path (e.g. `orderInfo.id`).
- */
+// A form field derived from a JSON schema property. Object properties that themselves declare `properties` become groups
+// (`fields` set, rendered as a nested set of inputs) rather than a single JSON textarea.
 export interface FormField {
   name: string;
   type: string;
@@ -155,15 +135,11 @@ export interface FormField {
   fields?: FormField[];
 }
 
-/** Joins a parent path and a field name into the dotted key used for a leaf field's value. */
+// Joins a parent path and a field name into the dotted key used for a leaf field's value.
 export const fieldPath = (prefix: string, name: string): string => (prefix ? `${prefix}.${name}` : name);
 
-/**
- * The type and value set of one leaf schema, read defensively: `type` may be a string, an array
- * (nullable unions spell `["string","null"]`), or absent; an enum may be a plain `enum`, or an
- * `anyOf`/`oneOf` of `const`/`enum` members (how some generators spell unions of literals). A
- * schema this can't place still renders — as a JSON textarea — rather than breaking the form.
- */
+// The type and value set of one leaf schema, read defensively: `type` may be a string, an array (nullable unions spell
+// `["string","null"]`), or absent; an enum may be a plain `enum`, or an `anyOf`/`oneOf` of `const`/`enum` members (how.
 function normalizeLeafSchema(d: Record<string, unknown>): { type: string; enumValues?: string[] } {
   let type: string | undefined;
   if (typeof d.type === 'string') type = d.type;
@@ -201,7 +177,7 @@ function normalizeLeafSchema(d: Record<string, unknown>): { type: string; enumVa
   return { type, ...(enumValues ? { enumValues } : {}) };
 }
 
-/** Parses a JSON-schema object (already-parsed) into a field list, recursing into nested objects. */
+// Parses a JSON-schema object (already-parsed) into a field list, recursing into nested objects.
 function parseObjectSchema(s: unknown): FormField[] | null {
   if (s === null || typeof s !== 'object' || Array.isArray(s)) return null;
   const obj = s as Record<string, unknown>;
@@ -226,11 +202,8 @@ function parseObjectSchema(s: unknown): FormField[] | null {
   return fields.length > 0 ? fields : null;
 }
 
-/**
- * Parses a JSON schema (an object, or a JSON string of one) into a field list for form rendering.
- * Nested object schemas are expanded into nested field groups. Returns null when absent or not an
- * object schema with properties.
- */
+// Parses a JSON schema (an object, or a JSON string of one) into a field list for form rendering. Nested object schemas
+// are expanded into nested field groups.
 export function parseFormSchema(schema: unknown): FormField[] | null {
   let s: unknown = schema;
   if (typeof s === 'string') {
@@ -243,7 +216,7 @@ export function parseFormSchema(schema: unknown): FormField[] | null {
   return parseObjectSchema(s);
 }
 
-/** Coerces one leaf field's entered value to its schema type, recording any error by dotted path. */
+// Coerces one leaf field's entered value to its schema type, recording any error by dotted path.
 function coerceLeaf(f: FormField, path: string, values: Record<string, string | boolean>, result: Record<string, unknown>, errors: Record<string, string>): void {
   if (f.type === 'boolean') {
     const v = values[path];
@@ -275,7 +248,7 @@ function coerceLeaf(f: FormField, path: string, values: Record<string, string | 
   }
 }
 
-/** True when any leaf under `fields` has a value entered (a boolean choice, or non-blank text). */
+// True when any leaf under `fields` has a value entered (a boolean choice, or non-blank text).
 function hasAnyValue(fields: FormField[], values: Record<string, string | boolean>, prefix: string): boolean {
   return fields.some((f) => {
     const path = fieldPath(prefix, f.name);
@@ -290,9 +263,7 @@ function buildLevel(fields: FormField[], values: Record<string, string | boolean
   for (const f of fields) {
     const path = fieldPath(prefix, f.name);
     if (f.fields) {
-      // A nested object's own `required` list only applies when that object is present. So an optional
-      // group left entirely blank is omitted rather than walked — otherwise its children each report
-      // "is required", which reads as a validation failure for input the schema never asked for.
+      // A nested object's own `required` list only applies when that object is present.
       if (!f.required && !hasAnyValue(f.fields, values, path)) continue;
       result[f.name] = buildLevel(f.fields, values, path, errors);
     } else {
@@ -302,11 +273,8 @@ function buildLevel(fields: FormField[], values: Record<string, string | boolean
   return result;
 }
 
-/**
- * Validates generated-form values against their fields and coerces them to schema types, rebuilding
- * nested objects for grouped fields. Returns the coerced result object plus per-field error messages
- * (keyed by dotted path, empty when valid).
- */
+// Validates generated-form values against their fields and coerces them to schema types, rebuilding nested objects for
+// grouped fields.
 export function buildFormResult(fields: FormField[], values: Record<string, string | boolean>): { result: Record<string, unknown>; errors: Record<string, string> } {
   const errors: Record<string, string> = {};
   const result = buildLevel(fields, values, '', errors);
@@ -332,19 +300,15 @@ function fillValues(fields: FormField[], source: Record<string, unknown>, prefix
   }
 }
 
-/**
- * Builds generated-form values (the shape `SchemaFormFields` expects, keyed by dotted path) from a
- * source object — the inverse of `buildFormResult`. Used to pre-populate a form from existing
- * arguments (e.g. a review activity's `activityArgs`). Object/array leaf fields are stringified to
- * JSON; numbers become their string form; booleans pass through. Keys absent from the source are skipped.
- */
+// Builds generated-form values (the shape `SchemaFormFields` expects, keyed by dotted path) from a source object — the
+// inverse of `buildFormResult`.
 export function formValuesFromObject(fields: FormField[], source: Record<string, unknown>): Record<string, string | boolean> {
   const values: Record<string, string | boolean> = {};
   fillValues(fields, source, '', values);
   return values;
 }
 
-/** One field a person edited away from its original value — what a review confirms before acting. */
+// One field a person edited away from its original value — what a review confirms before acting.
 export interface FieldChange {
   path: string;
   label: string;
@@ -352,10 +316,8 @@ export interface FieldChange {
   to: string;
 }
 
-/**
- * Which leaf fields differ from their seeded values, with display labels — the evidence an
- * edited-rerun confirmation shows, so what changed is stated rather than remembered.
- */
+// Which leaf fields differ from their seeded values, with display labels — the evidence an edited-rerun confirmation
+// shows, so what changed is stated rather than remembered.
 export function diffFormValues(fields: FormField[], original: Record<string, string | boolean>, current: Record<string, string | boolean>): FieldChange[] {
   const changes: FieldChange[] = [];
   const asText = (v: string | boolean | undefined): string => (v === undefined ? '' : typeof v === 'boolean' ? (v ? 'Yes' : 'No') : v);
@@ -376,7 +338,7 @@ export function diffFormValues(fields: FormField[], original: Record<string, str
   return changes;
 }
 
-/** Returns a copy of `items` sorted by their `startTime`, newest first (missing/invalid times last). */
+// Returns a copy of `items` sorted by their `startTime`, newest first (missing/invalid times last).
 export function sortByStartTimeDesc<T extends { startTime?: string }>(items: T[]): T[] {
   const ts = (v?: string) => {
     const t = v ? Date.parse(v) : NaN;
@@ -385,17 +347,13 @@ export function sortByStartTimeDesc<T extends { startTime?: string }>(items: T[]
   return [...items].sort((a, b) => ts(b.startTime) - ts(a.startTime));
 }
 
-/** Formats an ISO-8601 timestamp for compact display; passes through on failure. */
-/**
- * A timestamp as text, on the console's clock — `2026-09-09 14:32:05`. Prefer the `DateTime`
- * component in JSX (it re-renders on a zone switch and carries the UTC instant in its tooltip);
- * this is for places that need a plain string.
- */
+// Formats an ISO-8601 timestamp for compact display; passes through on failure. A timestamp as text, on the console's
+// clock — `2026-09-09 14:32:05`.
 export function formatTime(value?: string): string {
   return formatDateTime(value);
 }
 
-/** Formats a millisecond duration compactly: `840ms`, `4.2s`, `1m 8s`, `2h 5m`. */
+// Formats a millisecond duration compactly: `840ms`, `4.2s`, `1m 8s`, `2h 5m`.
 export function formatDuration(ms: number): string {
   if (!Number.isFinite(ms) || ms < 0) return '—';
   if (ms < 1000) return `${Math.round(ms)}ms`;
@@ -412,7 +370,7 @@ export function formatDuration(ms: number): string {
   return mm ? `${h}h ${mm}m` : `${h}h`;
 }
 
-/** Formats a duration as a stopwatch that always shows seconds: `0:04`, `1:08`, `1:05:08`. */
+// Formats a duration as a stopwatch that always shows seconds: `0:04`, `1:08`, `1:05:08`.
 export function formatStopwatch(ms: number): string {
   if (!Number.isFinite(ms) || ms < 0) return '0:00';
   const totalSec = Math.floor(ms / 1000);
@@ -424,36 +382,25 @@ export function formatStopwatch(ms: number): string {
 }
 
 // ── Timeline reconstruction from workflow history events ──
-//
-// History events are Temporal-shaped (see extractWorkflowInput): each carries a short-form
-// `eventType` (e.g. WORKFLOW_EXECUTION_STARTED, ACTIVITY_TASK_SCHEDULED), an `eventId`, an event
-// time, and a generic `attributes` object holding the type-specific fields. The runtime's exact
-// timestamp key can vary, so parsing tries several. Duration bars are reconstructed by pairing each
-// lifecycle group by its id references: activities by the SCHEDULED event's id (echoed as
-// `scheduledEventId` on later events), timers by `timerId`, child workflows by the INITIATED event's
-// id (echoed as `initiatedEventId`). Anything that can't be paired still renders as an open bar
-// running to the last known event.
+// History events are Temporal-shaped (see extractWorkflowInput): each carries a short-form `eventType` (e.g.
 
 export type SpanCategory = 'WORKFLOW' | 'ACTIVITY' | 'HUMAN_TASK' | 'TIMER' | 'CHILD_WORKFLOW' | 'SIGNAL';
 
 // ── The agent's vocabulary ──
-//
-// The module's built-in model activities keep their precise wire names (llmChat, generate,
-// generateResult) in history and in Temporal tooling; everywhere a person reads, the renderer
-// speaks plainly instead. llmChat is the agent deciding its next move — Thinking — while
-// generate/generateResult carry the business payload and keep their own identity.
+// The module's built-in model activities keep their precise wire names (llmChat, generate, generateResult) in history
+// and in Temporal tooling; everywhere a person reads, the renderer speaks plainly instead. llmChat is the agent deciding.
 
-/** Display names for the built-in model activities. */
+// Display names for the built-in model activities.
 export const MODEL_ACTIVITY_LABELS: Record<string, string> = {
   llmChat: 'Thinking',
   generate: 'Generate',
   generateResult: 'Generate Result',
 };
 
-/** The wrapper activity an AI-function tool runs inside; its lane is named by the tool, not by it. */
+// The wrapper activity an AI-function tool runs inside; its lane is named by the tool, not by it.
 const EXECUTE_AGENT_TOOL = 'executeAgentTool';
 
-/** The tool name buried in an executeAgentTool call's arguments, or null. */
+// The tool name buried in an executeAgentTool call's arguments, or null.
 function wrappedToolName(attrs: Record<string, unknown>): string | null {
   const input = decodePayloads(attrs['input']);
   const first = Array.isArray(input) ? input[0] : input;
@@ -464,14 +411,14 @@ function wrappedToolName(attrs: Record<string, unknown>): string | null {
 
 export interface TimelineSpan {
   key: string;
-  /** The open (scheduled/initiated/started) history event's id — what joins this span to a step's
-   * eventIds and to the detail extractor. Absent only where no single event opens the span. */
+  // The open (scheduled/initiated/started) history event's id — what joins this span to a step's eventIds and to the
+  // detail extractor. Absent only where no single event opens the span.
   eventId?: string;
   label: string;
   category: SpanCategory;
-  /** Normalized upper-case status (COMPLETED, FAILED, RUNNING, …), shared with StatusChip colours. */
+  // Normalized upper-case status (COMPLETED, FAILED, RUNNING, …), shared with StatusChip colours.
   status: string;
-  /** Epoch milliseconds. */
+  // Epoch milliseconds.
   start: number;
   end: number;
   running: boolean;
@@ -486,14 +433,14 @@ export interface Timeline {
 const asRecord = (v: unknown): Record<string, unknown> => (v !== null && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : {});
 const asStr = (v: unknown): string | undefined => (typeof v === 'string' ? v : typeof v === 'number' ? String(v) : undefined);
 
-/** Normalizes an epoch number of unknown unit (ms/µs/ns) to milliseconds using magnitude heuristics. */
+// Normalizes an epoch number of unknown unit (ms/µs/ns) to milliseconds using magnitude heuristics.
 function numberToMs(n: number): number {
   if (n > 1e17) return Math.round(n / 1e6); // nanoseconds
   if (n > 1e14) return Math.round(n / 1e3); // microseconds
   return n; // already milliseconds
 }
 
-/** Reads an event's timestamp (trying common key names / formats) as epoch milliseconds, or null. */
+// Reads an event's timestamp (trying common key names / formats) as epoch milliseconds, or null.
 function eventTimeMs(e: Record<string, unknown>): number | null {
   const raw = e['eventTime'] ?? e['timestamp'] ?? e['eventTimestamp'] ?? e['time'];
   if (raw === null || raw === undefined) return null;
@@ -549,15 +496,11 @@ interface Group {
   start: number;
   end?: number;
   status?: string;
-  /** The opening event's id, carried through to the span for joins with per-step eventIds. */
+  // The opening event's id, carried through to the span for joins with per-step eventIds.
   eventId?: string;
 }
 
-/**
- * Pairs each "open" event with its matching "close" event into duration groups. `openKey` is the
- * key an open event is stored under; `closeKey` is what a close event references (equal for timers,
- * the open event's id for activities/child workflows). Open events without a key are skipped.
- */
+// Pairs each "open" event with its matching "close" event into duration groups.
 function collectDurationGroups(parsed: ParsedEvent[], openType: string, closeStatus: Record<string, string>, openKey: (p: ParsedEvent) => string, closeKey: (p: ParsedEvent) => string, make: (p: ParsedEvent, time: number) => Group): Map<string, Group> {
   const groups = new Map<string, Group>();
   for (const p of parsed) {
@@ -576,23 +519,15 @@ function collectDurationGroups(parsed: ParsedEvent[], openType: string, closeSta
   return groups;
 }
 
-/**
- * Display label for a review activity's span. A review runs as a child workflow whose type is the
- * gated activity's qualified name prefixed `reviewactivity-`, e.g.
- * `reviewactivity-workflow-placeOrder.validatePayment`. Views render only the task part of a qualified
- * name, so the marker has to go on the task itself — `placeOrder.review-validatePayment` — which keeps
- * the workflow qualifier available for tooltips while the row reads `review-validatePayment`,
- * distinguishing the review gate from the activity's own span.
- * Takes the name with the `reviewactivity-` prefix already removed; falls back to a bare `Review`
- * rather than an empty row if that leaves nothing to qualify.
- */
+// Display label for a review activity's span. A review runs as a child workflow whose type is the gated activity's
+// qualified name prefixed `reviewactivity-`, e.g.
 function reviewSpanLabel(bareName: string): string {
   const { workflow, task } = splitQualifiedName(bareName);
   if (!task) return bareName || 'Review';
   return workflow ? `${workflow}.review-${task}` : `review-${task}`;
 }
 
-/** Reconstructs a set of duration spans (a Gantt timeline) from a workflow's history events. */
+// Reconstructs a set of duration spans (a Gantt timeline) from a workflow's history events.
 export function buildTimeline(events: ReadonlyArray<Record<string, unknown>>): Timeline {
   const parsed: ParsedEvent[] = events.map((e, i) => ({
     id: asStr(e['eventId']) ?? String(i),
@@ -679,20 +614,20 @@ export function buildTimeline(events: ReadonlyArray<Record<string, unknown>>): T
   return { spans, start: overallStart, end: overallEnd };
 }
 
-/** Decodes a base64 string to UTF-8 text (handles multi-byte characters). */
+// Decodes a base64 string to UTF-8 text (handles multi-byte characters).
 function base64ToUtf8(b64: string): string {
   const binary = atob(b64);
   const bytes = Uint8Array.from(binary, (c) => c.charCodeAt(0));
   return new TextDecoder().decode(bytes);
 }
 
-/** One Temporal payload: base64 `data` with a base64 `metadata.encoding` describing its type. */
+// One Temporal payload: base64 `data` with a base64 `metadata.encoding` describing its type.
 interface Payload {
   data?: unknown;
   metadata?: { encoding?: unknown };
 }
 
-/** Decodes one payload's base64 `data`, parsing `json/plain` payloads into objects. */
+// Decodes one payload's base64 `data`, parsing `json/plain` payloads into objects.
 function decodePayload(p: Payload): unknown {
   if (typeof p?.data !== 'string') return p?.data === undefined ? null : p.data;
   try {
@@ -713,10 +648,8 @@ function decodePayload(p: Payload): unknown {
   }
 }
 
-/**
- * Decodes a Temporal payload container (`{ payloads: [...] }`) into a single value (one payload) or
- * an array (many). Returns null when there are no payloads. Used for start/activity inputs and results.
- */
+// Decodes a Temporal payload container (`{ payloads: [...] }`) into a single value (one payload) or an array (many).
+// Returns null when there are no payloads.
 export function decodePayloads(container: unknown): unknown {
   const payloads = asRecord(container)['payloads'];
   if (!Array.isArray(payloads) || payloads.length === 0) return null;
@@ -724,12 +657,8 @@ export function decodePayloads(container: unknown): unknown {
   return decoded.length === 1 ? decoded[0] : decoded;
 }
 
-/**
- * Extracts the start input from a workflow history's WORKFLOW_EXECUTION_STARTED event.
- * Temporal carries inputs as payloads with base64 `data` (and a base64 `metadata.encoding`);
- * `json/plain` payloads are parsed into objects. Returns a pretty-printed JSON string for
- * display, or null when no input was recorded.
- */
+// Extracts the start input from a workflow history's WORKFLOW_EXECUTION_STARTED event. Temporal carries inputs as
+// payloads with base64 `data` (and a base64 `metadata.encoding`); `json/plain` payloads are parsed into objects.
 export function extractWorkflowInput(events: ReadonlyArray<Record<string, unknown>>): string | null {
   const started = events.find((e) => e['eventType'] === 'WORKFLOW_EXECUTION_STARTED');
   if (!started) return null;
@@ -738,50 +667,39 @@ export function extractWorkflowInput(events: ReadonlyArray<Record<string, unknow
 }
 
 // ── Execution-graph node → history mapping ──
-//
-// A graph node's `id` is the history `eventId` of the event that OPENED that step:
-//   ACTIVITY      → ACTIVITY_TASK_SCHEDULED               (input in attributes.input)
-//   HUMAN_TASK    → START_CHILD_WORKFLOW_EXECUTION_INITIATED (input in attributes.input)
-//   WORKFLOW root → WORKFLOW_EXECUTION_STARTED
-// The matching CLOSE event carries the result and echoes the open event's id — activities via
-// `scheduledEventId`, child workflows / human tasks via `initiatedEventId`. From those two events we
-// recover the step's input, result, final status and any failure message.
+// A graph node's `id` is the history `eventId` of the event that opened that step (activity scheduled,
+// child workflow initiated, sleep/signal started); the input lives in that event's attributes.
 
 export interface NodeExecutionDetail {
-  /** Pretty-printed JSON of the step's input, or null when none was recorded. */
+  // Pretty-printed JSON of the step's input, or null when none was recorded.
   input: string | null;
-  /** Pretty-printed JSON of the step's result, or null when none/not finished. */
+  // Pretty-printed JSON of the step's result, or null when none/not finished.
   result: string | null;
-  /** Normalized upper-case status derived from the close event (falls back to the node's status). */
+  // Normalized upper-case status derived from the close event (falls back to the node's status).
   status?: string;
-  /** Failure message when the step failed, else null. */
+  // Failure message when the step failed, else null.
   error: string | null;
-  /** Wall-clock duration open→close in milliseconds, or null when the step hasn't closed / has no times. */
+  // Wall-clock duration open→close in milliseconds, or null when the step hasn't closed / has no times.
   durationMs: number | null;
-  /** Epoch ms of the open (scheduled/initiated/started) event, or null. */
+  // Epoch ms of the open (scheduled/initiated/started) event, or null.
   startTimeMs: number | null;
-  /** Epoch ms of the close event, or null when still running. */
+  // Epoch ms of the close event, or null when still running.
   endTimeMs: number | null;
-  /** The module's call configuration, separated from the input: stepId, retryOnError, and
-   * whatever future keys ride in the __callConfig__ envelope. Null when the input carried none. */
+  // The module's call configuration, separated from the input: stepId, retryOnError, and whatever future keys ride in the
+  // __callConfig__ envelope. Null when the input carried none.
   callConfig: Record<string, unknown> | null;
-  /** For a child-workflow span — a human task, a review, a spawned workflow — the child's own
-   * instance id, from the initiated event. The handle every management operation needs. */
+  // For a child-workflow span — a human task, a review, a spawned workflow — the child's own instance id, from the
+  // initiated event. The handle every management operation needs.
   childWorkflowId: string | null;
 }
 
 const eventTypeOf = (e: Record<string, unknown>): string => (asStr(e['eventType']) ?? '').replace(/^EVENT_TYPE_/, '').toUpperCase();
 
-/** Reduces a close-event type to a bare status token, e.g. ACTIVITY_TASK_COMPLETED → COMPLETED. */
+// Reduces a close-event type to a bare status token, e.g. ACTIVITY_TASK_COMPLETED → COMPLETED.
 const statusFromCloseType = (type: string): string => type.replace(/^(ACTIVITY_TASK_|CHILD_WORKFLOW_EXECUTION_|WORKFLOW_EXECUTION_)/, '');
 
-/**
- * Maps one execution-graph node to its input / result / status / duration by pairing the open event
- * (eventId === node.id) with its matching CLOSE event in the workflow history. `events` is the raw
- * history array. Only terminal event types count as the close event — a step's `*_STARTED` event also
- * echoes the open event's id, so matching on the id alone would wrongly pick STARTED (which carries no
- * result) over COMPLETED/FAILED.
- */
+// Maps one execution-graph node to its input / result / status / duration by pairing the open event (eventId ===
+// node.id) with its matching CLOSE event in the workflow history. `events` is the raw history array.
 export function extractNodeExecutionDetail(node: { id: string; type: string; status?: string }, events: ReadonlyArray<Record<string, unknown>>): NodeExecutionDetail {
   const nodeType = (node.type ?? '').toUpperCase();
   let open = events.find((e) => asStr(e['eventId']) === node.id);
@@ -789,10 +707,8 @@ export function extractNodeExecutionDetail(node: { id: string; type: string; sta
   let inputDecoded = open ? decodePayloads(asRecord(open['attributes'])['input']) : null;
   const childWorkflowId = open && eventTypeOf(open) === 'START_CHILD_WORKFLOW_EXECUTION_INITIATED' ? (asStr(asRecord(open['attributes'])['workflowId']) ?? null) : null;
 
-  // The module appends its call configuration as the input's last element, marked __callConfig__ —
-  // runtime metadata (stepId, retryOnError), not data the activity was called with. Separate the
-  // two: the reader gets the arguments as the author passed them, and the metadata gets its own
-  // section instead of masquerading as an argument.
+  // The module appends its call configuration as the input's last element, marked __callConfig__ — runtime metadata
+  // (stepId, retryOnError), not data the activity was called with.
   let callConfig: Record<string, unknown> | null = null;
   const isCallConfig = (v: unknown): v is Record<string, unknown> => v !== null && typeof v === 'object' && !Array.isArray(v) && (v as Record<string, unknown>)['__callConfig__'] === true;
   const stripMarker = (v: Record<string, unknown>) => Object.fromEntries(Object.entries(v).filter(([k]) => k !== '__callConfig__'));
@@ -846,30 +762,27 @@ export function extractNodeExecutionDetail(node: { id: string; type: string; sta
 }
 
 // ── Model-call rendering ──
-//
-// A model call's raw envelope is the whole conversation plus every tool definition — noise for a
-// reader who asked "what did the agent think?". This view keeps what matters: the newest message
-// the model was answering, what it replied, and which tools it reached for. The full envelope
-// stays one raw-toggle away.
+// A model call's raw envelope is the whole conversation plus every tool definition — noise for a reader who asked "what
+// did the agent think?".
 
-/** One tool invocation the model requested, with its arguments as compact JSON. */
+// One tool invocation the model requested, with its arguments as compact JSON.
 export interface ModelToolCall {
   name: string;
   args: string;
 }
 
 export interface ModelCallView {
-  /** The newest conversation message the model was answering, or null when none was recorded. */
+  // The newest conversation message the model was answering, or null when none was recorded.
   lastMessage: { role: string; text: string } | null;
-  /** Messages before the newest one. */
+  // Messages before the newest one.
   earlierCount: number;
-  /** Tool definitions offered alongside the conversation. */
+  // Tool definitions offered alongside the conversation.
   toolsOffered: number;
-  /** The assistant's text reply, when it replied in prose. */
+  // The assistant's text reply, when it replied in prose.
   assistantText: string | null;
-  /** Tool calls the model requested instead of (or beside) prose. */
+  // Tool calls the model requested instead of (or beside) prose.
   toolCalls: ModelToolCall[];
-  /** True when the result is a typed business value (generate/generateResult), not a chat turn. */
+  // True when the result is a typed business value (generate/generateResult), not a chat turn.
   structuredResult: boolean;
 }
 
@@ -882,7 +795,7 @@ const parseJson = (text: string | null): unknown => {
   }
 };
 
-/** Interprets a model call's input/result, or returns null when the detail is not a model call. */
+// Interprets a model call's input/result, or returns null when the detail is not a model call.
 export function parseModelCall(detail: NodeExecutionDetail): ModelCallView | null {
   if (detail.callConfig?.['stepId'] !== 'model') return null;
 
@@ -921,7 +834,7 @@ export function parseModelCall(detail: NodeExecutionDetail): ModelCallView | nul
   };
 }
 
-/** Event ids of the WORKFLOW_EXECUTION_SIGNALED events carrying one named data event. */
+// Event ids of the WORKFLOW_EXECUTION_SIGNALED events carrying one named data event.
 export function signalEventIds(events: ReadonlyArray<Record<string, unknown>>, name: string): Set<string> {
   const ids = new Set<string>();
   for (const e of events) {
@@ -934,7 +847,7 @@ export function signalEventIds(events: ReadonlyArray<Record<string, unknown>>, n
   return ids;
 }
 
-/** Why the structural view can't be drawn — null when it can. */
+// Why the structural view can't be drawn — null when it can.
 export function flowUnavailable(data: InstanceGraph | undefined): string | null {
   if (!data) return "The workflow's structure could not be loaded, so this run is shown as its history.";
   if (!data.graph) {

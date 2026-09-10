@@ -68,10 +68,8 @@ import { ENTRY_POINT_CONFIG, ENTRY_POINT_DETAIL_TABS, type SelectedArtifact, typ
 import SyncSwitch from './SyncSwitch';
 import CopyButton from './CopyButton';
 
-// Stable reference for useArtifacts' `data` fallback — a fresh `[]` literal on every render (the
-// default in `const { data: x = [] } = ...`) changes identity even when the query is disabled and
-// data is genuinely unchanged, which cascades through downstream useMemo/useEffect chains and can
-// trigger a render loop (e.g. EntryPointsList's onSelectionChange effect).
+// Stable reference for useArtifacts' `data` fallback — a fresh `[]` literal on every render (the default in `const {
+// data: x = [] } = ...`) changes identity even when the query is disabled and data is genuinely unchanged, which.
 const EMPTY_ARTIFACTS: GqlArtifact[] = [];
 
 function toEnabled(value: unknown) {
@@ -91,12 +89,8 @@ function EntryTypeChip({ cfg }: { cfg?: { label: string; color: string; bgColor:
 // needed when a user actually opens the API docs drawer for a BI service.
 const OpenApiDefinitionsDrawer = lazy(() => import('./OpenApiDefinitionsDrawer').then((m) => ({ default: m.OpenApiDefinitionsDrawer })));
 
-/**
- * View Workflows / Start New Workflow, with the start dialog and its toast.
- *
- * Rendered beside the definition selector, which only a Workflow integration has - workflow
- * definitions are not listed for any other integration type.
- */
+// View Workflows / Start New Workflow, with the start dialog and its toast. Rendered beside the definition selector,
+// which only a Workflow integration has - workflow definitions are not listed for any other integration type.
 function WorkflowActions({ componentId, envId, workflowType }: { componentId: string; envId: string; workflowType: string }) {
   const [startOpen, setStartOpen] = useState(false);
   const [toast, setToast] = useState<WorkflowToast>(null);
@@ -167,9 +161,8 @@ function EntryPointDetail({ selected, onOpenDrawerTab }: { selected: SelectedArt
   const hasRuntimes = artifact.runtimes && Array.isArray(artifact.runtimes) && artifact.runtimes.length > 0;
   const artifactRuntimes = (artifact.runtimes as Array<{ runtimeId: string; status: string }> | undefined) ?? [];
   const showApiDocsButton = artifactType === 'Service' && Boolean(hasRuntimes);
-  // A Service can have multiple runtime instances (e.g. one per environment/replica); they all
-  // run the same deployed code, so any instance's packed OpenAPI docs are representative. Prefer
-  // a RUNNING one so the "Try it out" requests in the drawer have somewhere to actually land.
+  // A Service can have multiple runtime instances (e.g. one per environment/replica); they all run the same deployed code,
+  // so any instance's packed OpenAPI docs are representative.
   const apiDocsRuntimeId = artifactRuntimes.find((r) => r.status === 'RUNNING')?.runtimeId ?? artifactRuntimes[0]?.runtimeId;
   const [viewingApiDocs, setViewingApiDocs] = useState(false);
 
@@ -291,10 +284,8 @@ function EntryPointDetail({ selected, onOpenDrawerTab }: { selected: SelectedArt
     const action = pendingListenerToggle.checked ? 'START' : 'STOP';
     const artifactQueryKey = ['artifacts', artifactType, envId, componentId];
 
-    // Don't optimistically flip listenerEnabled here — that would swap which button is
-    // visible before the backend has confirmed anything. The clicked button stays put
-    // and shows its own busy label until the sync effect above updates listenerEnabled
-    // from the real (confirmed) artifact state once pendingListenerAction clears.
+    // Don't optimistically flip listenerEnabled here — that would swap which button is visible before the backend has
+    // confirmed anything.
     setPendingListenerAction(action);
     setListenerToggleError(null);
 
@@ -507,9 +498,8 @@ function EntryPointDetail({ selected, onOpenDrawerTab }: { selected: SelectedArt
             <DefinitionStatsStrip scope={scope} componentId={componentId} environmentId={envId} workflowType={artifactName} canViewReviews canViewTasks={canViewTasks} />
           </Authorized>
         )}
-        {/* pt: 0 for Service — it's the first block rendered (no header/overview above it here), so
-            the grid's own mb above already provides the gap; adding padding-top on top of that
-            margin doesn't collapse the way devant's stacked margins do, and reads as too much space. */}
+        {/* pt: 0 for Service — it's the first block rendered (no header/overview above it here), so the grid's own mb above
+            already provides the gap; adding padding-top on top of that margin doesn't collapse the way devant's stacked margins. */}
         {(ENTRY_POINT_DETAIL_TABS[artifactType] ?? []).includes('Resources') && (
           <Box sx={{ px: 2, pt: artifactType === 'Service' ? 0 : 1.5, pb: 1.5 }}>{artifactType === 'RestApi' ? <ArtifactApiDefinition {...tabProps} /> : <ServiceResources {...tabProps} />}</Box>
         )}
@@ -571,10 +561,7 @@ function EntryPointsList({
   const navigate = useNavigate();
   const scope = useScope();
   const isMI = componentType === 'MI';
-  // Workflow definitions are shown for a Workflow integration and no other type. Its BI runtime also
-  // reports the service and listener artifacts that host the workflow engine, but those are
-  // implementation detail rather than something the integration exposes - so the two sets do not mix
-  // in either direction.
+  // Workflow definitions are shown for a Workflow integration and no other type.
   const workflowOnly = isWorkflowIntegration(displayType);
 
   const { data: apis = EMPTY_ARTIFACTS, isLoading: loadingApis } = useArtifacts('RestApi', envId, componentId, { enabled: isMI, active: isOnline });
@@ -639,16 +626,13 @@ function EntryPointsList({
   const isProxy = selectedEntry?.type === 'ProxyService';
   const primaryLabel = isProxy ? '' : isTask ? 'Class' : isMI ? 'URL' : 'Package';
   const secondaryLabel = isProxy ? '' : isTask ? 'Group' : isMI ? 'Context' : 'API';
-  // A workflow integration lists workflow definitions, and the management API reports no package or
-  // API for them - Package read as an em dash and API only repeated the name in the selector - so
-  // the selector is named for what it holds and those two columns are dropped.
+  // A workflow integration lists workflow definitions, and the management API reports no package or API for them - Package
+  // read as an em dash and API only repeated the name in the selector - so the selector is named for what it holds and.
   const selectorLabel = workflowOnly ? 'Workflow Definitions' : 'Endpoint';
 
   return (
     <>
-      {/* Selector / Package / API grid — mirrors devant's endpoint panel layout. MI components
-          don't have a package/API concept, so they show URL/Context instead (or group/class for Tasks);
-          workflow integrations have neither and show the selector alone. */}
+      {/* Selector / Package / API grid — mirrors devant's endpoint panel layout. */}
       <Box sx={{ display: 'grid', gridTemplateColumns: workflowOnly ? 'minmax(220px, 360px) 1fr' : '220px 1fr 1fr', columnGap: 2, rowGap: 0.75, alignItems: 'start', mb: 2 }}>
         <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 500 }}>
           {selectorLabel}

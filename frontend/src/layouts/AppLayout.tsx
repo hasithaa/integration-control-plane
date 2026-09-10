@@ -131,7 +131,7 @@ export default function AppLayout(): JSX.Element {
   const currentComponent = hasComponent(scope) ? components.find((c) => c.handler === scope.component) : undefined;
   const componentId = currentComponent?.id;
 
-  /** Returns the resource if the user has permission at the target scope, or 'overview' as fallback. */
+  // Returns the resource if the user has permission at the target scope, or 'overview' as fallback.
   const canAccessResource = (targetScope: Parameters<typeof hasProject>[0], target: Resource, targetProjectId: string | undefined = projectId || undefined, targetComponentId: string | undefined = componentId): Resource => {
     switch (target) {
       case 'overview':
@@ -170,12 +170,8 @@ export default function AppLayout(): JSX.Element {
     accessControlPerms.push(Permissions.INTEGRATION_EDIT, Permissions.INTEGRATION_MANAGE);
   }
   const canSeeAccessControl = hasAnyPermission(accessControlPerms, projectId || undefined, componentId);
-  // Two integration-level entries depend on the integration's type, and each stays hidden until
-  // `currentComponent` resolves — the same way access control waits on its permissions — so neither is
-  // offered and then withdrawn once the type is known.
-  //
-  // Workflows applies only to a workflow integration. Project level is unaffected: a project's
-  // workflow data is namespace-wide, not tied to one integration.
+  // Two integration-level entries depend on the integration's type, and each stays hidden until `currentComponent`
+  // resolves — the same way access control waits on its permissions — so neither is offered and then withdrawn once the.
   const showWorkflows = !hasComponent(scope) || isWorkflowIntegration(currentComponent?.displayType);
   // The Test Console drives a service's packed OpenAPI definition, so it applies to every type except
   // workflow, which exposes workflows rather than services.

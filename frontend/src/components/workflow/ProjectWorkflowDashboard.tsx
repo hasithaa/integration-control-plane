@@ -32,7 +32,7 @@ import { HeaderCell, ListFooter, rowOpenProps } from './shared';
 import type { WorkflowIntegrationEntry } from './useWorkflowPageScope';
 import { countText, numberText, sumOf, totalOf, useIntegrationStats, useSinceWindow, type IntegrationStats } from './WorkflowStats';
 
-/** The project level: one row (or one queue) per integration, since no single runtime can list a project's work. */
+// The project level: one row (or one queue) per integration, since no single runtime can list a project's work.
 export default function ProjectWorkflowDashboard({
   scope,
   projectId,
@@ -61,7 +61,7 @@ export default function ProjectWorkflowDashboard({
   return resource === 'workflows' ? <WorkflowStatsTable {...common} /> : <ProjectInbox {...common} />;
 }
 
-/** One runtime per component — the most recently heard from, when an integration has several. */
+// One runtime per component — the most recently heard from, when an integration has several.
 function latestRuntimeByComponent(runtimes: GqlRuntime[] | undefined): Map<string, GqlRuntime> {
   const byComponent = new Map<string, GqlRuntime>();
   for (const r of runtimes ?? []) {
@@ -78,18 +78,18 @@ interface TableProps {
   environmentId: string;
   integrations: WorkflowIntegrationEntry[];
   runtimeByComponent: Map<string, GqlRuntime>;
-  /** Undefined while the environment's runtimes are still resolving. */
+  // Undefined while the environment's runtimes are still resolving.
   deployedIds: Set<string> | undefined;
   canViewHumanTasks: boolean;
   canViewWorkflows: boolean;
 }
 
-/** Deployed integrations whose runtime is not heartbeating. */
+// Deployed integrations whose runtime is not heartbeating.
 const offlineCount = (deployed: WorkflowIntegrationEntry[], runtimeByComponent: Map<string, GqlRuntime>): number => deployed.filter((d) => (runtimeByComponent.get(d.componentId)?.status ?? '').toUpperCase() !== 'RUNNING').length;
 
 const plural = (n: number, word: string): string => `${word}${n === 1 ? '' : 's'}`;
 
-/** A count that links; the click does not also open the row. */
+// A count that links; the click does not also open the row.
 function LinkedCount({ text, onClick }: { text: string; onClick: () => void }): JSX.Element {
   return (
     <Typography
@@ -105,7 +105,8 @@ function LinkedCount({ text, onClick }: { text: string; onClick: () => void }): 
   );
 }
 
-/** A table row: the integration's name, then its figures or one note spanning them (resolving, not deployed, runtime offline). */
+// A table row: the integration's name, then its figures or one note spanning them (resolving, not deployed, runtime
+// offline).
 function IntegrationRow({
   integration,
   isDeployed,
@@ -117,7 +118,7 @@ function IntegrationRow({
   integration: WorkflowIntegrationEntry;
   isDeployed: boolean | undefined;
   runtime: GqlRuntime | undefined;
-  /** How many columns the note covers: every figure. */
+  // How many columns the note covers: every figure.
   span: number;
   onOpen: () => void;
   children: ReactNode;
@@ -264,24 +265,25 @@ function WorkflowStatsTable({ scope, environmentId, integrations, runtimeByCompo
 
 // ── Human Tasks: the project inbox ──
 
-/** One integration's part of the inbox. */
+// One integration's part of the inbox.
 interface SourceState {
   integration: WorkflowIntegrationEntry;
   status: 'offline' | 'fetching' | 'refreshing' | 'ready' | 'failed';
   count: number;
   fetchedAt?: number;
-  /** The source reported more than the pages loaded so far. */
+  // The source reported more than the pages loaded so far.
   hasMore?: boolean;
   nextToken?: string;
   loadingMore?: boolean;
 }
 
-/** How long the list is held for slow sources before it is shown with what has arrived. */
+// How long the list is held for slow sources before it is shown with what has arrived.
 const HOLD_MS = 6000;
 
 const joinNames = (xs: string[]): string => (xs.length <= 1 ? xs.join('') : `${xs.slice(0, -1).join(', ')} and ${xs[xs.length - 1]}`);
 
-/** The caller's pending work from every integration in the environment, as one oldest-first queue; each source's state is shown, and no bulk actions. */
+// The caller's pending work from every integration in the environment, as one oldest-first queue; each source's state is
+// shown, and no bulk actions.
 function ProjectInbox({ scope, environmentId, integrations, runtimeByComponent, deployedIds }: TableProps): JSX.Element {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -417,9 +419,8 @@ function ProjectInbox({ scope, environmentId, integrations, runtimeByComponent, 
   const reviews = items.length - tasks;
   const holding = !resolving && !settled;
 
-  // The line that says what the list is: how much, from how many of the sources, what is still
-  // coming, and what is missing. Written from the states rather than assumed, so it is never more
-  // confident than the data behind it.
+  // The line that says what the list is: how much, from how many of the sources, what is still coming, and what is
+  // missing. Written from the states rather than assumed, so it is never more confident than the data behind it.
   const summary = (() => {
     if (resolving) return 'Finding the integrations deployed in this environment…';
     if (deployed.length === 0) return 'No workflow integration is deployed in this environment.';

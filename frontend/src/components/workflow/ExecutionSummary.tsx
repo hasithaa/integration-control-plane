@@ -25,13 +25,8 @@ import { displayWorkflowId, formatDuration, jsonPretty } from './helpers';
 import { DebugInfoIcon, DetailRow, SectionCard, StatusChip } from './shared';
 import DateTime from '../DateTime';
 
-/**
- * What happened to this run, extracted: the raw instances.get payload is a debugging document —
- * per-activity invocation records, nulls for everything a closed run no longer carries — and
- * showing it verbatim made the reader do the extraction themselves. The per-activity truth lives
- * in the timeline below and the Flow tab's step details; this card keeps only what describes the
- * run as a whole. The raw payload stays one copy-click away.
- */
+// What happened to this run, extracted: the raw instances.get payload is a debugging document — per-activity invocation
+// records, nulls for everything a closed run no longer carries — and showing it verbatim made the reader do the.
 export default function ExecutionSummary({
   info,
   fallbackStartMs,
@@ -39,10 +34,10 @@ export default function ExecutionSummary({
   onOpenHistory,
 }: {
   info: WorkflowInstance;
-  /** From the run's history — the instances payload itself carries no times. */
+  // From the run's history — the instances payload itself carries no times.
   fallbackStartMs?: number | null;
   fallbackEndMs?: number | null;
-  /** Opens the raw event history — debugging material, so it lives behind this rather than a tab. */
+  // Opens the raw event history — debugging material, so it lives behind this rather than a tab.
   onOpenHistory?: () => void;
 }): ReactElement {
   const status = (info.status ?? '').toUpperCase();

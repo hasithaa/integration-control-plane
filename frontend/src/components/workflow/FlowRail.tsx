@@ -23,23 +23,15 @@ import type { InstanceGraph, ModelGraphNode, StepExecution } from '../../api/wor
 import { diagramColors, iconForType, paletteColor, softPrimary, statusColorName } from './graphVisuals';
 import { isContainer, layoutFloorPlan, type PlacedArm, type PlacedNode } from './floorPlan';
 
-/**
- * The flow rail: the workflow as written, rendered the way it is written — a left-aligned list,
- * one element per row, nesting as indentation, keywords lowercase, `else` on the same level as its
- * `if`, exactly like reading the source. A list cannot be clipped the way a two-dimensional
- * drawing can, which is what makes it fit beside the execution graph without hiding anything.
- *
- * The execution path is painted in the execution graph's own vocabulary — the same status→colour
- * mapping, so green is completed, blue running, red failed on both sides of the split. Everything
- * else the rail says is static; clicking a step filters the execution graph to that step's events.
- */
+// The flow rail: the workflow as written, rendered the way it is written — a left-aligned list, one element per row,
+// nesting as indentation, keywords lowercase, `else` on the same level as its `if`, exactly like reading the source.
 
 interface TreeNode {
   node: ModelGraphNode;
   arms: { name: string; children: TreeNode[] }[];
 }
 
-/** The nodes (already in source order) as a tree, arms in first-appearance order. */
+// The nodes (already in source order) as a tree, arms in first-appearance order.
 function buildTree(nodes: ModelGraphNode[]): TreeNode[] {
   const known = new Set(nodes.map((n) => n.stepId));
   const byId = new Map<string, TreeNode>();
@@ -66,7 +58,7 @@ function buildTree(nodes: ModelGraphNode[]): TreeNode[] {
 const CONTAINER_KINDS = new Set(['BRANCH', 'LOOP', 'TRY']);
 const MARK_KINDS = new Set(['CODE', 'EXIT']);
 
-/** The construct as written — `if`, `while`, `foreach`, `match`, `do` — from the ordinal id. */
+// The construct as written — `if`, `while`, `foreach`, `match`, `do` — from the ordinal id.
 const constructOf = (node: ModelGraphNode): string => node.stepId.split('#')[0];
 
 const CONSTRUCT_ICONS: Record<string, ComponentType<{ size?: number }>> = {
@@ -77,7 +69,7 @@ const CONSTRUCT_ICONS: Record<string, ComponentType<{ size?: number }>> = {
   do: Shield,
 };
 
-/** Lowercase, keyword-first, like the source: `if req.priority == "express"`. */
+// Lowercase, keyword-first, like the source: `if req.priority == "express"`.
 function containerTitle(node: ModelGraphNode, prefix = ''): string {
   const construct = constructOf(node);
   return `${prefix}${construct}${node.label ? ` ${node.label}` : ''}`;
@@ -98,13 +90,13 @@ function KeywordRow({
   icon?: ComponentType<{ size?: number }>;
   text: string;
   title?: string;
-  /** Present only on rows that can collapse; undefined renders a plain keyword row. */
+  // Present only on rows that can collapse; undefined renders a plain keyword row.
   collapsed?: boolean;
   onToggle?: () => void;
-  /** Aggregate colour of what a collapsed row hides, so folding never hides an outcome. */
+  // Aggregate colour of what a collapsed row hides, so folding never hides an outcome.
   collapsedStatusColor?: string;
   chart?: boolean;
-  /** Nothing under this keyword ran: render it quiet, so unexecuted structure stops shouting. */
+  // Nothing under this keyword ran: render it quiet, so unexecuted structure stops shouting.
   muted?: boolean;
 }): ReactElement {
   const toggle = onToggle !== undefined;
@@ -254,7 +246,7 @@ export default function FlowRail({
   selectedStepId: string | null;
   currentStepId: string | null;
   onSelect: (stepId: string | null) => void;
-  /** 'chart' boxes each row, one item per row; 'uml' draws the same rows as a UML activity diagram. */
+  // 'chart' boxes each row, one item per row; 'uml' draws the same rows as a UML activity diagram.
   variant?: 'chart' | 'uml';
 }): ReactElement | null {
   const theme = useTheme();
@@ -281,7 +273,7 @@ export default function FlowRail({
       return next;
     });
 
-  /** Aggregate status of everything under these nodes: the worst outcome wins, so folding hides nothing. */
+  // Aggregate status of everything under these nodes: the worst outcome wins, so folding hides nothing.
   const aggregateStatusColor = (children: TreeNode[]): string | undefined => {
     let best: string | undefined;
     const rank = (status: string): number => (['FAILED', 'TERMINATED', 'TIMED_OUT'].includes(status) ? 3 : status === 'RUNNING' ? 2 : 1);
@@ -302,7 +294,7 @@ export default function FlowRail({
     return best;
   };
 
-  /** One foldable group of rows: a keyword row and the children it hides when collapsed. */
+  // One foldable group of rows: a keyword row and the children it hides when collapsed.
   const foldableGroup = (key: string, children: TreeNode[], childDepth: number, keyword: (folded: boolean) => ReactNode): ReactNode => {
     const folded = collapsed.has(key);
     return (
@@ -330,13 +322,8 @@ export default function FlowRail({
     />
   );
 
-  /**
-   * A container the way the source spells it: the keyword row, then each arm by its own rule —
-   * `then`/`body`/`do` children sit directly under the keyword (the arm name adds nothing a reader
-   * of code expects to see), `else` returns to the keyword's own indent, an `else` holding only
-   * another `if` collapses to `else if`, `on fail` reads as its two words, and a match's patterns
-   * read as case labels one level in.
-   */
+  // A container the way the source spells it: the keyword row, then each arm by its own rule — `then`/`body`/`do` children
+  // sit directly under the keyword (the arm name adds nothing a reader of code expects to see), `else` returns to the.
   const renderContainer = (t: TreeNode, depth: number, prefix = ''): ReactNode => {
     const Icon = CONSTRUCT_ICONS[constructOf(t.node)] ?? Diamond;
     const isCollapsed = collapsed.has(t.node.stepId);
@@ -451,13 +438,8 @@ export default function FlowRail({
 
 // ── UML activity diagram ─────────────────────────────────────────────────────
 
-/**
- * A balanced UML activity diagram: sibling arms sit side by side under their decision diamond and
- * merge below it, laid out by the same recursive box-packing the floor plan used — a workflow body
- * is single-threaded, so its shape is always a tree of blocks and never needs general graph layout.
- * Guards ride the arm-entry edges; a loop's repetition returns up its left side; exits are final
- * nodes; code runs are dashed. The pane scrolls when a wide branch needs it.
- */
+// A balanced UML activity diagram: sibling arms sit side by side under their decision diamond and merge below it, laid
+// out by the same recursive box-packing the floor plan used — a workflow body is single-threaded, so its shape is always.
 function UmlActivityDiagram({
   data,
   steps,
@@ -497,7 +479,7 @@ function UmlActivityDiagram({
     );
   };
 
-  /** Draws one node; returns the x of its flow line and whether flow continues past it. */
+  // Draws one node; returns the x of its flow line and whether flow continues past it.
   const draw = (box: PlacedNode): { x: number; flows: boolean } => {
     const node = box.node;
     const kind = node.kind.toUpperCase();
@@ -558,9 +540,7 @@ function UmlActivityDiagram({
       return { x: cx, flows: true };
     }
 
-    // A container: arms side by side, flow merging below. An if or a loop decides, so it gets a
-    // diamond; a do/on-fail decides nothing — the do body always runs, and the handler is an
-    // error path off it — so it gets no diamond, no guard on the do arm, and no skip path.
+    // A container: arms side by side, flow merging below.
     const construct = constructOf(node);
     const isLoop = kind === 'LOOP';
     const isTry = kind === 'TRY';
