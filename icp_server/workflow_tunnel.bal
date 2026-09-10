@@ -392,10 +392,14 @@ isolated function decisionOperationId(string scopeKey, string taskId) returns st
 isolated function operationActor(types:CacheOperation row) returns string? {
     json|error document = row.data.fromJsonString();
     if document is map<json> {
+        json actorId = document["actorId"] ?: ();
+        if actorId is string {
+            return actorId;
+        }
         json identity = document["identity"] ?: ();
         if identity is map<json> {
-            json actorId = identity["actorId"] ?: identity["userId"];
-            return actorId is string ? actorId : ();
+            json userId = identity["userId"] ?: ();
+            return userId is string ? userId : ();
         }
     }
     return ();
@@ -474,7 +478,9 @@ isolated function workflowRequestDocument(string operation, map<json> params, st
     {
         operation: operation,
         params: params,
-        identity: {userId: userId, actorId: actorId ?: userId, roles: roles}
+        identity: {userId: userId, roles: roles},
+        // ICP-only: the stable user id for the audit trail and the same-caller test. Not tunneled.
+        actorId: actorId ?: userId
     }.toJsonString();
 
 # The identity of one cached answer: its scope, the operation, its parameters, and the
@@ -911,10 +917,12 @@ isolated function reportWorkflowOutcome(string operationId, boolean succeeded,
                 json? workflowId = params["workflowId"];
                 target = taskId is string ? taskId : (workflowId is string ? workflowId : "");
             }
+            json? actorId = request["actorId"];
             json? identity = request["identity"];
-            if identity is map<json> {
-                json actorId = identity["actorId"] ?: identity["userId"];
-                actor = actorId is string ? actorId : ();
+            if actorId is string {
+                actor = actorId;
+            } else if identity is map<json> && identity["userId"] is string {
+                actor = <string>identity["userId"];
             }
         }
     }
@@ -957,10 +965,12 @@ isolated function reportExpiredWorkflowOperations(types:CacheOperation[] expired
             if operationValue is string {
                 operation = operationValue;
             }
+            json? actorId = request["actorId"];
             json? identity = request["identity"];
-            if identity is map<json> {
-                json actorId = identity["actorId"] ?: identity["userId"];
-                actor = actorId is string ? actorId : ();
+            if actorId is string {
+                actor = actorId;
+            } else if identity is map<json> && identity["userId"] is string {
+                actor = <string>identity["userId"];
             }
         }
         storage:raiseSystemEvent("workflow_operation_unconfirmed", "ERROR",
