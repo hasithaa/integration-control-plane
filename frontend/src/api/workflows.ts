@@ -957,6 +957,22 @@ export function useTotalPendingTaskCount(s: Scope, enabled = true) {
 }
 
 /**
+ * The first page of one integration's PENDING work items — tasks and reviews together, as the
+ * runtime lists them, already scoped to what the caller may act on. The project inbox fans this
+ * out over every deployed integration and merges the pages client-side: a project-wide listing
+ * cannot be asked of any one runtime (integrations may run on different Temporal servers), but a
+ * page per integration can, and each page reports its own readiness so the inbox can say which
+ * sources it is showing.
+ */
+export function pendingWorkItemsQueryOptions(s: Scope, limit = 50) {
+  return {
+    queryKey: ['wf', 'pending-work-items', s.componentId, s.environmentId, limit] as const,
+    queryFn: (): Promise<Fetchable<Page<WorkItemRow>>> => fetchWorkItems(s.componentId, s.environmentId, { status: 'PENDING', limit }),
+    refetchInterval: ({ state }: { state: { data?: Fetchable<Page<WorkItemRow>> } }) => fetchableRefetch(state.data) || 30000,
+  };
+}
+
+/**
  * Pending work of one kind for one workflow definition, as a capped page count — the runtime
  * filters work items by parent workflow type, which the pending-count endpoint cannot. With
  * `allRoles` the ICP substitutes every organization role for the caller's (same gate as the

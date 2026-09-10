@@ -16,14 +16,18 @@
  * under the License.
  */
 
-import { Chip, ListingTable, Stack, Typography } from '@wso2/oxygen-ui';
+import { Alert, Chip, CircularProgress, ListingTable, Snackbar, Stack, Tooltip, Typography } from '@wso2/oxygen-ui';
 import { Workflow } from '@wso2/oxygen-ui-icons-react';
-import { useMemo, type JSX, type ReactNode } from 'react';
+import { useMemo, useState, type JSX, type ReactNode } from 'react';
+import { useQueries, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router';
 import { useProjectRuntimes, type GqlRuntime } from '../../api/queries';
-import { useWorkflowDefinitionsAcross } from '../../api/workflows';
+import { fetchedAtOf, invalidateWorkflowQueries, isPreparing, isRefreshing, pendingWorkItemsQueryOptions, useWorkflowDefinitionsAcross, valueOf } from '../../api/workflows';
 import { narrow, resourceUrl, type ProjectScope } from '../../nav';
-import { formatDistanceToNow } from '../../utils/time';
+import { formatClock, formatDistanceToNow } from '../../utils/time';
+import { useTimeZone } from '../../contexts/TimeZoneContext';
+import { ReviewActivityDetailDialog, type Toast } from './AdminPortal';
+import { TaskDetailDialog, toWorkItem, WorkItemTable, type WorkItem } from './UserPortal';
 import { HeaderCell } from './shared';
 import type { WorkflowIntegrationEntry } from './useWorkflowPageScope';
 import { countText, numberText, sumOf, totalOf, useIntegrationStats, useSinceWindow, type IntegrationStats } from './WorkflowStats';
@@ -38,10 +42,10 @@ import { countText, numberText, sumOf, totalOf, useIntegrationStats, useSinceWin
  * Executions: how is each integration's workflow doing right now — running, suspended, finished
  * how in the last day, and how much is waiting on a person.
  *
- * Human Tasks: how much is waiting for ME in each integration, and where to go to decide it. A
- * merged inbox was tried and dropped: it needed every integration's runtime to answer before the
- * list was whole, so one missing heartbeat left a list that looked complete and was not. Rows
- * fail one at a time; a summary table can say "—" for one integration and stay honest.
+ * Human Tasks: everything waiting for ME across the project, as one queue. It is assembled from
+ * one page per integration, so it says plainly which integrations it currently reflects and
+ * which are still answering, offline or unreachable — a list built from several sources must
+ * never look more complete than it is.
  */
 export default function ProjectWorkflowDashboard({
   scope,
@@ -70,7 +74,7 @@ export default function ProjectWorkflowDashboard({
     return <Typography sx={{ py: 4, textAlign: 'center', color: 'text.secondary' }}>No workflow integrations in this project yet. An integration that declares workflows appears here after its first heartbeat.</Typography>;
   }
   const common = { scope, environmentId, integrations, runtimeByComponent, deployedIds, canViewHumanTasks, canViewWorkflows };
-  return resource === 'workflows' ? <WorkflowStatsTable {...common} /> : <TaskStatsTable {...common} />;
+  return resource === 'workflows' ? <WorkflowStatsTable {...common} /> : <ProjectInbox {...common} />;
 }
 
 /** One runtime per component — the most recently heard from, when an integration has several. */
@@ -280,105 +284,193 @@ function WorkflowStatsTable({ scope, environmentId, integrations, runtimeByCompo
   );
 }
 
-// ── Human Tasks ──
+// ── Human Tasks: the project inbox ──
+
+/** One integration's contribution to the inbox, and how far along it is. */
+interface SourceState {
+  integration: WorkflowIntegrationEntry;
+  status: 'offline' | 'fetching' | 'refreshing' | 'ready' | 'failed';
+  count: number;
+  fetchedAt?: number;
+}
+
+const joinNames = (xs: string[]): string => (xs.length <= 1 ? xs.join('') : `${xs.slice(0, -1).join(', ')} and ${xs[xs.length - 1]}`);
 
 /**
- * The caller's queue, integration by integration. Human Tasks is always the person's own view —
- * the runtime scopes every task count to their roles, and the reviews are the ones their queue
- * lists — so the table does not say "for you", and it does not carry anyone else's total (that is
- * the Workflow Executions table's job). One figure per row, Task Count, split into the two kinds
- * of work the queue holds: review tasks and human tasks. A row opens that queue, where the
- * deciding happens.
+ * Every pending task and review the caller can act on, from every integration in the
+ * environment, as one queue — oldest first, because the item someone has waited longest on is
+ * the one to open next. No single runtime can list this: each integration answers for itself,
+ * so the inbox asks each one for a page and merges them here.
+ *
+ * That is also why it has to be honest about itself. The sources answer at different moments —
+ * one integration's runtime may be offline, another still preparing its page — so the queue can
+ * grow while it is being read. The strip above the list names each integration with its state
+ * (how many it contributed, still answering, offline, unreachable) and the line under the title
+ * says how many sources the list currently reflects. Oldest-first keeps the changes calm: an
+ * integration answering late adds rows at the bottom, and a decided item simply leaves.
+ *
+ * No bulk actions here: a decision is made one item at a time, in the drawer of the integration
+ * that owns it.
  */
-function TaskStatsTable({ scope, environmentId, integrations, runtimeByComponent, deployedIds, canViewHumanTasks }: TableProps): JSX.Element {
+function ProjectInbox({ scope, environmentId, integrations, runtimeByComponent, deployedIds }: TableProps): JSX.Element {
   const navigate = useNavigate();
-  const since = useSinceWindow();
+  const queryClient = useQueryClient();
+  const { zone } = useTimeZone();
+  const [toast, setToast] = useState<Toast>(null);
+  const [openTask, setOpenTask] = useState<WorkItem | null>(null);
+  const [openReview, setOpenReview] = useState<WorkItem | null>(null);
+
   const deployed = useMemo(() => integrations.filter((i) => deployedIds?.has(i.componentId)), [integrations, deployedIds]);
-  // Someone without the human-task permission still sees reviews (their queue shows them), so the
-  // human-task figure is simply absent for them and Task Count is the reviews alone.
-  const rows = useIntegrationStats(
-    deployed.map((d) => ({ componentId: d.componentId, environmentId })),
-    since,
-    { instances: false, reviews: true, tasks: false, myTasks: canViewHumanTasks },
-  );
-  const statsByComponent = new Map<string, IntegrationStats>(deployed.map((d, i) => [d.componentId, rows[i]]));
+  // An offline runtime cannot answer; asking it only produces an error to explain. Its row in the
+  // strip says why it is missing instead.
+  const online = (d: WorkflowIntegrationEntry) => (runtimeByComponent.get(d.componentId)?.status ?? '').toUpperCase() === 'RUNNING';
+  const results = useQueries({
+    queries: deployed.map((d) => ({ ...pendingWorkItemsQueryOptions({ componentId: d.componentId, environmentId }), enabled: online(d) })),
+  });
 
-  const offline = offlineCount(deployed, runtimeByComponent);
-  const reviewsTotal = totalOf(rows, (s) => s.reviews);
-  const humanTotal = sumOf(rows, (s) => s.myTasks);
-  const allTotal = canViewHumanTasks ? sumOf(rows, (s) => taskCount(s, true).value) : { text: reviewsTotal.text, count: reviewsTotal.count };
-  const undeployed = deployedIds === undefined ? 0 : integrations.length - deployed.length;
-  // Columns after the name, for the note rows to span.
-  const figures = 2 + (canViewHumanTasks ? 1 : 0);
+  const { items, labels, sources } = useMemo(() => {
+    const merged: WorkItem[] = [];
+    const labels = new Map<string, string>();
+    const sources: SourceState[] = [];
+    deployed.forEach((d, i) => {
+      const r = results[i];
+      labels.set(d.componentId, d.name);
+      const rows = valueOf(r?.data)?.items ?? [];
+      let status: SourceState['status'] = 'ready';
+      if (!online(d)) status = 'offline';
+      else if (r?.error) status = 'failed';
+      else if (r?.isPending || isPreparing(r?.data)) status = 'fetching';
+      else if (isRefreshing(r?.data)) status = 'refreshing';
+      sources.push({ integration: d, status, count: rows.length, fetchedAt: fetchedAtOf(r?.data) });
+      if (status === 'offline' || status === 'failed') return;
+      for (const row of rows) {
+        const item = toWorkItem(row);
+        item.componentId = d.componentId;
+        if (item.taskQueue) labels.set(item.taskQueue, d.name);
+        else item.taskQueue = d.componentId;
+        merged.push(item);
+      }
+    });
+    // Oldest first — ISO-8601 sorts lexicographically. Items without a time sink to the end.
+    merged.sort((a, b) => (a.startTime ?? '\uffff').localeCompare(b.startTime ?? '\uffff'));
+    return { items: merged, labels, sources };
+    // `results` is a fresh array each render; recomputing is cheap and keeps the list current.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [deployed, runtimeByComponent, ...results.map((r) => r.data), ...results.map((r) => r.error), ...results.map((r) => r.isPending)]);
 
-  const openQueue = (integration: WorkflowIntegrationEntry, tab?: 'reviews') => navigate(`${resourceUrl(narrow(scope, integration.routeHandler), 'tasks')}${tab ? `?tab=${tab}&` : '?'}env=${encodeURIComponent(environmentId)}`);
+  const answered = sources.filter((s) => s.status === 'ready' || s.status === 'refreshing');
+  const answering = sources.filter((s) => s.status === 'fetching');
+  const offline = sources.filter((s) => s.status === 'offline');
+  const failed = sources.filter((s) => s.status === 'failed');
+  const resolving = deployedIds === undefined;
+  const undeployed = resolving ? 0 : integrations.length - deployed.length;
+  const tasks = items.filter((w) => w.kind === 'task').length;
+  const reviews = items.length - tasks;
+
+  // The line that says what the list is: how much, from how many of the sources, and what is
+  // missing. Written from the states rather than assumed, so it is never more confident than
+  // the data behind it.
+  const summary = (() => {
+    if (resolving) return 'Finding the integrations deployed in this environment…';
+    if (deployed.length === 0) return 'No workflow integration is deployed in this environment.';
+    const parts: string[] = [];
+    parts.push(`Showing ${items.length} item${items.length === 1 ? '' : 's'} — ${tasks} task${tasks === 1 ? '' : 's'}, ${reviews} review${reviews === 1 ? '' : 's'} — from ${answered.length} of ${deployed.length} integration${deployed.length === 1 ? '' : 's'}.`);
+    if (answering.length) parts.push(`${joinNames(answering.map((s) => s.integration.name))} ${answering.length === 1 ? 'is' : 'are'} still answering; ${answering.length === 1 ? 'its' : 'their'} work joins the list as it arrives.`);
+    if (offline.length) parts.push(`${joinNames(offline.map((s) => s.integration.name))} ${offline.length === 1 ? 'is' : 'are'} offline — ${offline.length === 1 ? 'its' : 'their'} tasks are not included.`);
+    if (failed.length) parts.push(`${joinNames(failed.map((s) => s.integration.name))} could not be reached — ${failed.length === 1 ? 'its' : 'their'} tasks are not included.`);
+    return parts.join(' ');
+  })();
+
+  const refresh = () => invalidateWorkflowQueries(queryClient, environmentId);
+  const openQueue = (integration: WorkflowIntegrationEntry) => navigate(`${resourceUrl(narrow(scope, integration.routeHandler), 'tasks')}?env=${encodeURIComponent(environmentId)}`);
+
+  const sourceChip = (s: SourceState) => {
+    const name = s.integration.name;
+    const updated = s.fetchedAt ? `updated ${formatClock(s.fetchedAt * 1000, { zone })}` : '';
+    switch (s.status) {
+      case 'ready':
+        return { label: `${name} · ${s.count}`, color: 'default' as const, variant: 'outlined' as const, tip: `${s.count} pending from ${name}${updated ? ` — ${updated}` : ''}. Open its queue.` };
+      case 'refreshing':
+        return { label: `${name} · ${s.count} · updating…`, color: 'default' as const, variant: 'outlined' as const, tip: `${name} answered ${updated}; a fresh copy is on its way after a change.` };
+      case 'fetching':
+        return { label: `${name} · answering…`, color: 'default' as const, variant: 'outlined' as const, tip: `${name}'s runtime is preparing its list. Its items join the queue when it answers.` };
+      case 'offline':
+        return { label: `${name} · offline`, color: 'warning' as const, variant: 'filled' as const, tip: `${name}'s runtime is not heartbeating. Its tasks are not in this list until it is back.` };
+      case 'failed':
+        return { label: `${name} · unreachable`, color: 'error' as const, variant: 'filled' as const, tip: `${name} did not answer. Its tasks are not in this list.` };
+    }
+  };
 
   return (
     <Stack gap={2}>
-      <Typography variant="body2" color="text.secondary">
-        Review tasks are decisions a workflow is paused at; human tasks are assigned to the roles you hold. Open a row for that integration's queue to work through them.
-      </Typography>
+      <Stack direction="row" alignItems="center" gap={1} flexWrap="wrap">
+        {answering.length > 0 && <CircularProgress size={14} />}
+        <Typography variant="body2" color="text.secondary">
+          {summary}
+          {undeployed > 0 ? ` ${undeployed} integration${undeployed === 1 ? ' is' : 's are'} not deployed in this environment.` : ''}
+        </Typography>
+      </Stack>
 
-      {deployedIds !== undefined && deployed.length > 0 && (
+      {/* The sources: one chip per integration, its state in words, its queue one click away. */}
+      {sources.length > 0 && (
         <Stack direction="row" flexWrap="wrap" gap={1} alignItems="center">
-          <Chip size="small" variant={offline > 0 ? 'filled' : 'outlined'} color={offline > 0 ? 'warning' : 'default'} label={`${offline} ${plural(offline, 'runtime')} offline`} />
-          <Chip size="small" variant={allTotal.count > 0 ? 'filled' : 'outlined'} color={allTotal.count > 0 ? 'primary' : 'default'} label={`${allTotal.text} ${plural(allTotal.count, 'task')} waiting`} />
-          <Chip size="small" variant="outlined" label={`${reviewsTotal.text} review`} />
-          {canViewHumanTasks && <Chip size="small" variant="outlined" label={`${humanTotal.text} human`} />}
-          {undeployed > 0 && (
-            <Typography variant="caption" color="text.disabled">
-              {undeployed} {plural(undeployed, 'integration')} not deployed in this environment.
-            </Typography>
-          )}
+          <Typography variant="caption" sx={{ color: 'text.secondary', mr: 0.5 }}>
+            Sources:
+          </Typography>
+          {sources.map((s) => {
+            const c = sourceChip(s);
+            return (
+              <Tooltip key={s.integration.componentId} title={c.tip}>
+                <Chip size="small" variant={c.variant} color={c.color} label={c.label} onClick={() => openQueue(s.integration)} sx={{ cursor: 'pointer' }} />
+              </Tooltip>
+            );
+          })}
         </Stack>
       )}
 
-      <ListingTable>
-        <ListingTable.Head>
-          <ListingTable.Row>
-            <HeaderCell label="Integration" help="A workflow integration in this project. Open it for its queue. A row whose runtime is offline says so in place of its figures." />
-            <HeaderCell label="Task Count" help="Everything waiting in this integration's queue: review tasks plus human tasks. A '+' means more than the first page of reviews." />
-            <HeaderCell label="Review Tasks" help="Review activities waiting for a decision — approval gates a workflow paused at, and failed activities waiting to be retried or failed. Decided in the queue's Reviews tab." />
-            {canViewHumanTasks && <HeaderCell label="Human Tasks" help="Human tasks assigned to a role you hold, waiting to be completed or failed." />}
-          </ListingTable.Row>
-        </ListingTable.Head>
-        <ListingTable.Body>
-          {integrations.map((integration) => {
-            const s = statsByComponent.get(integration.componentId) ?? {};
-            const total = taskCount(s, canViewHumanTasks);
-            return (
-              <IntegrationRow key={integration.componentId} integration={integration} isDeployed={deployedIds?.has(integration.componentId)} runtime={runtimeByComponent.get(integration.componentId)} span={figures} onOpen={() => openQueue(integration)}>
-                <ListingTable.Cell>
-                  <Typography variant="body2" component="span" sx={{ fontWeight: (total.value ?? 0) > 0 ? 600 : 400, fontVariantNumeric: 'tabular-nums' }}>
-                    {total.text}
-                  </Typography>
-                </ListingTable.Cell>
-                <ListingTable.Cell>
-                  <LinkedCount text={countText(s.reviews)} onClick={() => openQueue(integration, 'reviews')} />
-                </ListingTable.Cell>
-                {canViewHumanTasks && (
-                  <ListingTable.Cell>
-                    <LinkedCount text={numberText(s.myTasks)} onClick={() => openQueue(integration)} />
-                  </ListingTable.Cell>
-                )}
-              </IntegrationRow>
-            );
-          })}
-        </ListingTable.Body>
-      </ListingTable>
+      {resolving || (items.length === 0 && answering.length > 0) ? (
+        <CircularProgress size={24} sx={{ display: 'block', mx: 'auto', py: 4 }} />
+      ) : items.length === 0 ? (
+        <Typography sx={{ py: 4, textAlign: 'center', color: 'text.secondary' }}>
+          {answered.length === 0 ? 'No integration could be asked for its tasks right now.' : `Nothing is waiting for you across ${answered.length === 1 ? 'this integration' : `these ${answered.length} integrations`}.`}
+        </Typography>
+      ) : (
+        <WorkItemTable items={items} onOpen={(w) => (w.kind === 'review' ? setOpenReview(w) : setOpenTask(w))} environmentId={environmentId} integrationLabel={(q) => labels.get(q ?? '') ?? q ?? '—'} />
+      )}
+
+      {/* Each item opens the drawer its own integration would — decisions go to the runtime that
+          owns the item, and a decision refreshes every view of this environment. */}
+      {openTask?.componentId && (
+        <TaskDetailDialog
+          scope={{ componentId: openTask.componentId, environmentId }}
+          taskId={openTask.id}
+          actionable={!openTask.readOnly}
+          onClose={() => {
+            setOpenTask(null);
+            refresh();
+          }}
+          onToast={setToast}
+        />
+      )}
+      {openReview?.componentId && (
+        <ReviewActivityDetailDialog
+          scope={{ componentId: openReview.componentId, environmentId }}
+          taskId={openReview.id}
+          onClose={() => {
+            setOpenReview(null);
+            refresh();
+          }}
+          onToast={setToast}
+        />
+      )}
+
+      <Snackbar open={toast !== null} autoHideDuration={4000} onClose={() => setToast(null)} anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}>
+        {toast ? (
+          <Alert severity={toast.severity} onClose={() => setToast(null)} sx={{ width: '100%' }}>
+            {toast.message}
+          </Alert>
+        ) : undefined}
+      </Snackbar>
     </Stack>
   );
-}
-
-/**
- * Reviews plus human tasks as one figure. Loading while either part is; unavailable if either
- * failed; "+" when the review page filled. `value` is the plain number for sums and emphasis.
- */
-function taskCount(s: IntegrationStats, withHuman: boolean): { text: string; value: number | null | undefined } {
-  const parts: (number | null | undefined)[] = [s.reviews === undefined ? undefined : s.reviews === null ? null : s.reviews.count];
-  if (withHuman) parts.push(s.myTasks);
-  if (parts.some((p) => p === undefined)) return { text: '…', value: undefined };
-  if (parts.some((p) => p === null)) return { text: '—', value: null };
-  const value = parts.reduce<number>((n, p) => n + (p as number), 0);
-  return { text: `${value}${s.reviews?.capped ? '+' : ''}`, value };
 }
