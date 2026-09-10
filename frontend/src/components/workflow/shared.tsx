@@ -274,29 +274,47 @@ export function DetailDrawer({ title, status, onClose, actions, menu, children }
   );
 }
 
-/** A titled section card used through the task and review drawers. */
-export function SectionCard({ title, collapsible, defaultOpen = true, children }: { title: string; collapsible?: boolean; defaultOpen?: boolean; children: ReactNode }): JSX.Element {
+/**
+ * The one card every section of the task and review drawers is made of — facts, inputs,
+ * arguments, decisions alike. A reader does not distinguish "the task's fields" from "the task's
+ * input" by importance, so nothing here may look like a different kind of container: same tint,
+ * same header, same padding. `badge` sits beside the title (a "Read-only" mark); `actions` are
+ * small controls at the header's right edge, kept outside the clickable title so a button never
+ * nests inside a button.
+ */
+export function SectionCard({ title, badge, actions, collapsible, defaultOpen = true, children }: { title: string; badge?: ReactNode; actions?: ReactNode; collapsible?: boolean; defaultOpen?: boolean; children: ReactNode }): JSX.Element {
   // Open by default: the context is why the reader is here. Collapsing is for the second visit,
   // once the facts are absorbed and the actions are what is left. A section that starts closed
   // is one most readers never need — advanced settings whose defaults are right.
   const [open, setOpen] = useState(defaultOpen);
-  const header = (
-    <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ px: 2, py: 1.5 }}>
+  const titleBlock = (
+    <Stack direction="row" alignItems="center" gap={1} sx={{ flex: 1, minWidth: 0, px: 2, py: 1.5 }}>
       <Typography variant="subtitle2" sx={sectionTitleSx}>
         {title}
       </Typography>
+      {badge}
       {collapsible && <ChevronDown size={14} style={{ transform: open ? 'none' : 'rotate(-90deg)', transition: 'transform 0.15s', opacity: 0.6 }} />}
+    </Stack>
+  );
+  const header = (
+    <Stack direction="row" alignItems="center">
+      {collapsible ? (
+        <CardActionArea onClick={() => setOpen((v) => !v)} aria-expanded={open} sx={{ flex: 1, minWidth: 0 }}>
+          {titleBlock}
+        </CardActionArea>
+      ) : (
+        titleBlock
+      )}
+      {actions && (
+        <Stack direction="row" alignItems="center" gap={0.25} sx={{ pr: 1.5, flexShrink: 0 }}>
+          {actions}
+        </Stack>
+      )}
     </Stack>
   );
   return (
     <Card variant="outlined" sx={{ bgcolor: 'action.hover' }}>
-      {collapsible ? (
-        <CardActionArea onClick={() => setOpen((v) => !v)} aria-expanded={open}>
-          {header}
-        </CardActionArea>
-      ) : (
-        header
-      )}
+      {header}
       {collapsible ? (
         <Collapse in={open}>
           <Divider />

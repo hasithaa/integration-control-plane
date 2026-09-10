@@ -515,7 +515,7 @@ function WorkQueue({
       )}
 
       <Dialog open={bulkOpen} onClose={() => !bulkBusy && setBulkOpen(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>{bulkAction === 'retry' ? 'Retry selected reviews' : 'Fail selected reviews'}</DialogTitle>
+        <DialogTitle>{bulkAction === 'retry' ? 'Retry Selected Reviews' : 'Fail Selected Reviews'}</DialogTitle>
         <DialogContent>
           <Stack gap={2} sx={{ pt: 0.5 }}>
             <Alert severity={bulkAction === 'retry' ? 'info' : 'warning'}>
@@ -717,7 +717,7 @@ export function TaskDetailDialog({ scope, taskId, actionable, onClose, onToast }
           </SectionCard>
 
           {/* What the workflow handed this task — context to decide with, never something to edit. */}
-          {taskInputJson && <StructuredValue title="Task input (read-only)" raw={taskInputJson} environmentId={scope.environmentId} collapsible />}
+          {taskInputJson && <StructuredValue title="Task Input" readOnly raw={taskInputJson} environmentId={scope.environmentId} collapsible />}
 
           {/* The decision, once there is one: who completed or rejected the task, when, and the
               result the workflow resumed with. Present on the execution but previously shown
@@ -731,7 +731,7 @@ export function TaskDetailDialog({ scope, taskId, actionable, onClose, onToast }
               </Stack>
             </SectionCard>
           )}
-          {task.result !== undefined && task.result !== null && <StructuredValue title="Result submitted" raw={jsonPretty(task.result) || 'null'} environmentId={scope.environmentId} collapsible />}
+          {task.result !== undefined && task.result !== null && <StructuredValue title="Result Submitted" raw={jsonPretty(task.result) || 'null'} environmentId={scope.environmentId} collapsible />}
 
           {actionable && (
             <Authorized permissions={[Permissions.WORKFLOW_MANAGE_HUMAN_TASKS]}>
@@ -742,7 +742,7 @@ export function TaskDetailDialog({ scope, taskId, actionable, onClose, onToast }
                       reviewer makes here, next to Complete, not an action hidden in a menu. */}
                   <Stack direction="row" flexWrap="wrap" gap={1.5}>
                     <ActionCard
-                      title="Complete task"
+                      title="Complete Task"
                       subtitle="Submit a result; the waiting workflow resumes with it."
                       selected={mode === 'complete'}
                       disabled={busy || !canComplete}
@@ -750,7 +750,7 @@ export function TaskDetailDialog({ scope, taskId, actionable, onClose, onToast }
                       onClick={() => (mode === 'complete' ? closeComplete() : setMode('complete'))}
                     />
                     <ActionCard
-                      title="Mark as failed"
+                      title="Mark as Failed"
                       subtitle="Fail the task instead."
                       info="Records the task as FAILED and propagates the failure to the workflow, which decides what happens next. This cannot be undone."
                       selected={failOpen}
@@ -826,11 +826,11 @@ export function TaskDetailDialog({ scope, taskId, actionable, onClose, onToast }
           {/* Confirmation overlays the task instead of replacing it: the payload and the metadata
               stay on screen behind the decision. */}
           <Dialog open={confirmOpen} onClose={() => !busy && setConfirmOpen(false)} maxWidth="sm" fullWidth>
-            <DialogTitle>Confirm completion</DialogTitle>
+            <DialogTitle>Confirm Completion</DialogTitle>
             <DialogContent>
               <Stack gap={2} sx={{ pt: 0.5 }}>
                 <Alert severity="info">The task completes with the result below, and the waiting workflow resumes with it. This cannot be undone.</Alert>
-                <StructuredValue title="Result to submit" raw={jsonPretty(pendingResult) || '{}'} environmentId={scope.environmentId} />
+                <StructuredValue title="Result to Submit" raw={jsonPretty(pendingResult) || '{}'} environmentId={scope.environmentId} />
               </Stack>
             </DialogContent>
             <DialogActions>
@@ -844,7 +844,7 @@ export function TaskDetailDialog({ scope, taskId, actionable, onClose, onToast }
           </Dialog>
 
           <Dialog open={failOpen} onClose={() => !busy && setFailOpen(false)} maxWidth="sm" fullWidth>
-            <DialogTitle>Mark task as failed</DialogTitle>
+            <DialogTitle>Mark Task as Failed</DialogTitle>
             <DialogContent>
               <Stack gap={2} sx={{ pt: 0.5 }}>
                 <Alert severity="warning">Failing is a fail operation: the task is recorded as FAILED and the failure is propagated to the workflow — the workflow decides what happens next. This cannot be undone.</Alert>

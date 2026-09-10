@@ -780,7 +780,7 @@ export function ReviewActivityDetailDialog({ scope, taskId, onClose, onToast }: 
 
           {/* The arguments as the workflow recorded them: context to decide with. Editing happens
               only on the explicit "Proceed with changes" path, never here. */}
-          {mode !== 'edit' && argsJson && <StructuredValue title="Activity arguments (read-only)" raw={argsJson} environmentId={scope.environmentId} collapsible />}
+          {mode !== 'edit' && argsJson && <StructuredValue title="Activity Arguments" readOnly raw={argsJson} environmentId={scope.environmentId} collapsible />}
 
           {/* The decision, once one has been made: what the reviewer decided, who decided, when,
               and — for a "proceed with changes" — the input they supplied. Read from the review's
@@ -795,7 +795,7 @@ export function ReviewActivityDetailDialog({ scope, taskId, onClose, onToast }: 
               </Stack>
             </SectionCard>
           )}
-          {isCompleted && decision?.['input'] != null && <StructuredValue title="Input the reviewer submitted" raw={jsonPretty(decision['input']) || ''} environmentId={scope.environmentId} collapsible />}
+          {isCompleted && decision?.['input'] != null && <StructuredValue title="Submitted Input" raw={jsonPretty(decision['input']) || ''} environmentId={scope.environmentId} collapsible />}
 
           {/* Deciding a review is human-task work as much as workflow management: either
               manage permission offers the decision (the proxy accepts both). */}
@@ -825,7 +825,7 @@ export function ReviewActivityDetailDialog({ scope, taskId, onClose, onToast }: 
                       }}
                     />
                     <ActionCard
-                      title="Proceed with changes"
+                      title="Proceed with Changes"
                       subtitle="Edit the arguments first."
                       info="Opens the arguments for editing; what changed is shown side by side before the retry is confirmed."
                       selected={mode === 'edit'}
@@ -889,7 +889,7 @@ export function ReviewActivityDetailDialog({ scope, taskId, onClose, onToast }: 
           {/* Confirmations overlay the review instead of replacing it: the arguments and the
               error that triggered it stay on screen behind the decision. */}
           <Dialog open={confirmProceedOpen} onClose={() => !busy && setConfirmProceedOpen(false)} maxWidth="sm" fullWidth>
-            <DialogTitle>Confirm proceed</DialogTitle>
+            <DialogTitle>Confirm Proceed</DialogTitle>
             <DialogContent>
               <Stack gap={2} sx={{ pt: 0.5 }}>
                 <Alert severity="info">The activity {activity.trigger === 'ON_FAILURE' ? 'retries' : 'runs'} with the original arguments below. This cannot be undone.</Alert>
@@ -907,7 +907,7 @@ export function ReviewActivityDetailDialog({ scope, taskId, onClose, onToast }: 
           </Dialog>
 
           <Dialog open={reviewChangesOpen} onClose={() => !busy && setReviewChangesOpen(false)} maxWidth="sm" fullWidth>
-            <DialogTitle>Review changes</DialogTitle>
+            <DialogTitle>Review Changes</DialogTitle>
             <DialogContent>
               <Stack gap={2} sx={{ pt: 0.5 }}>
                 <Alert severity="info">The activity {activity.trigger === 'ON_FAILURE' ? 'retries' : 'runs'} with the edited arguments below. This cannot be undone.</Alert>
@@ -934,7 +934,7 @@ export function ReviewActivityDetailDialog({ scope, taskId, onClose, onToast }: 
                     </Stack>
                   )
                 ) : (
-                  <StructuredValue title="Arguments to submit" raw={jsonPretty(pendingInput) || '{}'} environmentId={scope.environmentId} />
+                  <StructuredValue title="Arguments to Submit" raw={jsonPretty(pendingInput) || '{}'} environmentId={scope.environmentId} />
                 )}
               </Stack>
             </DialogContent>
@@ -949,7 +949,7 @@ export function ReviewActivityDetailDialog({ scope, taskId, onClose, onToast }: 
           </Dialog>
 
           <Dialog open={rejectOpen} onClose={() => !busy && setRejectOpen(false)} maxWidth="sm" fullWidth>
-            <DialogTitle>Reject activity</DialogTitle>
+            <DialogTitle>Reject Activity</DialogTitle>
             <DialogContent>
               <Stack gap={2} sx={{ pt: 0.5 }}>
                 <Alert severity="warning">Rejecting is a fail operation: the review completes, and the failure is propagated to the workflow — the workflow decides what happens next. This cannot be undone.</Alert>

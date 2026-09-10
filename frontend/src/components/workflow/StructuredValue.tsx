@@ -16,12 +16,12 @@
  * under the License.
  */
 
-import { Box, Collapse, IconButton, Stack, Tooltip, Typography } from '@wso2/oxygen-ui';
-import { Braces, ChevronDown, Copy } from '@wso2/oxygen-ui-icons-react';
+import { Box, Chip, IconButton, Stack, Tooltip, Typography } from '@wso2/oxygen-ui';
+import { Braces, Copy } from '@wso2/oxygen-ui-icons-react';
 import { useState, type ReactElement } from 'react';
 import CodeViewer from '../CodeViewer';
 import { humanizeKey } from './helpers';
-import { IdText, WorkflowIdLink } from './shared';
+import { IdText, SectionCard, WorkflowIdLink } from './shared';
 import DateTime from '../DateTime';
 
 /**
@@ -46,11 +46,21 @@ const BARE_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}
 // value kept in the tooltip — `2026-08-25T15:55:56.106171571Z` is for logs, not for people.
 const ISO_TIMESTAMP = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}:?\d{2})$/;
 
-export default function StructuredValue({ title, raw, environmentId, collapsible }: { title: string; raw: string; environmentId?: string; collapsible?: boolean }): ReactElement {
+export default function StructuredValue({
+  title,
+  raw,
+  environmentId,
+  collapsible,
+  readOnly,
+}: {
+  title: string;
+  raw: string;
+  environmentId?: string;
+  collapsible?: boolean;
+  /** Marks the value as context the reader cannot change here — shown as a badge beside the title. */
+  readOnly?: boolean;
+}): ReactElement {
   const [showRaw, setShowRaw] = useState(false);
-  // Context panels start open — the payload is why the reader is here — and collapse once read,
-  // so the actions below stop competing with a screenful of JSON.
-  const [open, setOpen] = useState(true);
 
   let parsed: unknown;
   let parseFailed = false;
@@ -63,72 +73,44 @@ export default function StructuredValue({ title, raw, environmentId, collapsible
   const isFormable = !parseFailed && parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed);
   const isBare = !parseFailed && !isFormable && (parsed === null || typeof parsed !== 'object');
 
-  const header = (
-    <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ px: 1.5, py: 0.75, borderBottom: open ? '1px solid' : 'none', borderColor: 'divider' }}>
-      <Stack
-        direction="row"
-        alignItems="center"
-        gap={0.5}
-        onClick={collapsible ? () => setOpen((v) => !v) : undefined}
-        sx={collapsible ? { cursor: 'pointer', flex: 1, minWidth: 0 } : { flex: 1, minWidth: 0 }}
-        role={collapsible ? 'button' : undefined}
-        aria-expanded={collapsible ? open : undefined}>
-        <Typography variant="caption" sx={{ fontWeight: 700 }}>
-          {title}
-        </Typography>
-        {collapsible && <ChevronDown size={12} style={{ transform: open ? 'none' : 'rotate(-90deg)', transition: 'transform 0.15s', opacity: 0.6 }} />}
-      </Stack>
-      <Stack direction="row" alignItems="center" gap={0.25}>
-        <Tooltip title={showRaw ? 'Show as a form' : 'Show the raw JSON'}>
-          <IconButton size="small" aria-label={`toggle raw ${title.toLowerCase()}`} onClick={() => setShowRaw((v) => !v)} sx={{ p: 0.25, color: showRaw ? 'primary.main' : 'inherit' }}>
-            <Braces size={12} />
-          </IconButton>
-        </Tooltip>
-        <Tooltip title={`Copy ${title.toLowerCase()}`}>
-          <IconButton size="small" aria-label={`copy ${title.toLowerCase()}`} onClick={() => navigator.clipboard.writeText(raw)} sx={{ p: 0.25 }}>
-            <Copy size={12} />
-          </IconButton>
-        </Tooltip>
-      </Stack>
-    </Stack>
+  // The same SectionCard as every other section of the drawer: a payload is not a lesser kind of
+  // fact than the fields around it, so it must not look like a different kind of box.
+  const actions = (
+    <>
+      <Tooltip title={showRaw ? 'Show as a form' : 'Show the raw JSON'}>
+        <IconButton size="small" aria-label={`toggle raw ${title.toLowerCase()}`} onClick={() => setShowRaw((v) => !v)} sx={{ p: 0.25, color: showRaw ? 'primary.main' : 'inherit' }}>
+          <Braces size={14} />
+        </IconButton>
+      </Tooltip>
+      <Tooltip title={`Copy ${title.toLowerCase()}`}>
+        <IconButton size="small" aria-label={`copy ${title.toLowerCase()}`} onClick={() => navigator.clipboard.writeText(raw)} sx={{ p: 0.25 }}>
+          <Copy size={14} />
+        </IconButton>
+      </Tooltip>
+    </>
   );
+  const badge = readOnly ? <Chip label="Read-only" size="small" variant="outlined" sx={{ height: 18, fontSize: 10 }} /> : undefined;
 
-  // Raw on demand, and raw whenever the value defies structure — unparseable text stays visible.
+  let body: ReactElement;
   if (showRaw || parseFailed || (!isFormable && !isBare)) {
-    return (
-      <Box sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 1, minWidth: 0 }}>
-        {header}
-        <Collapse in={open}>
-          <Box sx={{ p: 1, minWidth: 0, overflow: 'auto', maxHeight: '32vh' }}>
-            <Box component="pre" sx={{ m: 0, fontFamily: 'monospace', fontSize: 12, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
-              {raw}
-            </Box>
-          </Box>
-        </Collapse>
+    // Raw on demand, and raw whenever the value defies structure — unparseable text stays visible.
+    body = (
+      <Box sx={{ minWidth: 0, overflow: 'auto', maxHeight: '32vh' }}>
+        <Box component="pre" sx={{ m: 0, fontFamily: 'monospace', fontSize: 12, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+          {raw}
+        </Box>
       </Box>
     );
-  }
-
-  if (isBare) {
-    return (
-      <Box sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 1, minWidth: 0 }}>
-        {header}
-        <Collapse in={open}>
-          <Typography sx={{ px: 1.5, py: 1, fontFamily: 'monospace', fontSize: 12.5, wordBreak: 'break-word' }}>{parsed === null ? '—' : String(parsed)}</Typography>
-        </Collapse>
-      </Box>
-    );
+  } else if (isBare) {
+    body = <Typography sx={{ fontFamily: 'monospace', fontSize: 12.5, wordBreak: 'break-word' }}>{parsed === null ? '—' : String(parsed)}</Typography>;
+  } else {
+    body = <ObjectRows value={parsed as Record<string, unknown>} depth={0} environmentId={environmentId} />;
   }
 
   return (
-    <Box sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 1, minWidth: 0 }}>
-      {header}
-      <Collapse in={open}>
-        <Box sx={{ px: 1.5, py: 1, minWidth: 0 }}>
-          <ObjectRows value={parsed as Record<string, unknown>} depth={0} environmentId={environmentId} />
-        </Box>
-      </Collapse>
-    </Box>
+    <SectionCard title={title} badge={badge} actions={actions} collapsible={collapsible}>
+      {body}
+    </SectionCard>
   );
 }
 
