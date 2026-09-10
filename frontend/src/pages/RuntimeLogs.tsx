@@ -16,16 +16,25 @@
  * under the License.
  */
 
-import { Button, Checkbox, Chip, CircularProgress, FormControlLabel, IconButton, ListItemText, MenuItem, PageContent, Select, Stack, TextField, Tooltip, Typography } from '@wso2/oxygen-ui';
+import { Alert, Button, Checkbox, Chip, CircularProgress, Divider, FormControlLabel, IconButton, ListItemText, MenuItem, PageContent, Select, Stack, TextField, Tooltip, Typography } from '@wso2/oxygen-ui';
 import { ChevronDown, ChevronRight, Copy, Download, RefreshCw, ScrollText, X } from '@wso2/oxygen-ui-icons-react';
 import { useCallback, useEffect, useMemo, useRef, useState, type JSX } from 'react';
 import { Link } from 'react-router';
-import { useProjectByHandler, useComponentByHandler, useComponents, useEnvironments, useRuntimes } from '../api/queries';
+import { useProjectByHandler, useComponentByHandler, useComponents, useEnvironments, useRuntimes, useComponentRuntimes, useComponentRuntimesByEnvironments, useProjectRuntimes } from '../api/queries';
 import { useInfiniteLogs, type LogRow, type LogsRequest } from '../api/logs';
+import { useMoesifLogsConfig, useCreateMoesifLogsDashboards, useMoesifLogsEmbed } from '../api/logsMoesif';
+import { isMoesifEnabled } from '../config/api';
+import { downloadMoesifBiLogsFluentBitFiles } from '../assets/moesifBiLogs';
+import { downloadMoesifMiLogsOtelFiles } from '../assets/moesifMiLogs';
+import { getMoesifLogsCanvasTemplate } from '../assets/moesifLogsCanvasTemplate';
+import CodeBoxWithCopy from '../components/CodeBoxWithCopy';
+import MoesifCanvas from '../components/MoesifCanvas';
+import { runtimeOptionLabel } from '../utils/moesifRuntimeOptions';
 import EmptyListing from '../components/EmptyListing';
 import NotFound from '../components/NotFound';
 import SearchField from '../components/SearchField';
 import { resourceUrl, broaden, hasComponent, type ProjectScope, type ComponentScope } from '../nav';
+import { MOESIF_DESCRIPTION, MOESIF_SETUP_GUIDE, OPENSEARCH_SETUP_GUIDE_DEFAULT, OPENSEARCH_SETUP_GUIDE_MI, MoesifStep } from '../components/MoesifSetup';
 
 const LOG_LEVELS = ['INFO', 'WARN', 'ERROR', 'DEBUG'] as const;
 
@@ -43,6 +52,376 @@ const AUTO_FETCH_INTERVAL = 10_000;
 const PAGE_SIZE = 500;
 
 const LEVEL_COLORS: Record<string, string> = { ERROR: '#e53935', WARN: '#f9a825', INFO: '#1e88e5', DEBUG: '#78909c' };
+
+// WSO2 MI Moesif logs setup guide, linked from the MI logs setup instructions
+// for further guidance (the MI flow uses an OpenTelemetry Collector to ship
+// wso2carbon.log to Moesif's OTLP endpoint).
+const MI_MOESIF_LOGS_GUIDE = 'https://mi.docs.wso2.com/en/latest/observe-and-manage/classic-observability-logs/moesif-logs/';
+
+// BI (Ballerina) log-to-file configuration. The BI application reads logs from
+// this file for observability, so the runtime is configured to emit JSON logs to
+// a file destination.
+const BI_LOG_FILE_CONFIG_TOML = `[ballerina.log]
+format = "json"
+
+[[ballerina.log.destinations]]
+# Replace /path/to/your/bi/logs with the absolute path to the BI application's log directory
+path = "/path/to/your/bi/logs/app.log"`;
+
+// BI (Ballerina) "publish logs" instructions: write JSON logs to a file via
+// Config.toml, then run the Fluent Bit sidecar that tails that file and ships
+// the entries to Moesif's OTLP endpoint.
+function BiLogsPublishInstructions(): JSX.Element {
+  return (
+    <>
+      <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+        Write JSON logs to a file by adding this to your runtime's <strong>Config.toml</strong>:
+      </Typography>
+      <CodeBoxWithCopy code={BI_LOG_FILE_CONFIG_TOML} />
+      <Alert severity="info" sx={{ mt: 2, mb: 2 }}>
+        <strong>Restart the runtime</strong> after applying this configuration.
+      </Alert>
+      <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+        Download the Fluent Bit bundle, set the Collector Application ID, runtime id, service name, environment and BI log directory in <strong>.env</strong>, then run <strong>docker compose up -d</strong>. Run one sidecar per runtime and set{' '}
+        <strong>ICP_RUNTIME_ID</strong> to that runtime's id so its logs can be filtered by runtime on the dashboard. On Windows, use a Windows-style path and enable the drive under Docker Desktop file sharing.
+      </Typography>
+      <Button size="small" variant="outlined" startIcon={<Download size={14} />} onClick={() => downloadMoesifBiLogsFluentBitFiles('<MOESIF_COLLECTOR_APPLICATION_ID>')} sx={{ mt: 1, alignSelf: 'flex-start', py: 0.25, px: 1, fontSize: 12 }}>
+        Download Fluent Bit config
+      </Button>
+    </>
+  );
+}
+
+// MI (Micro Integrator) "publish logs" instructions. MI already writes its
+// server logs to <MI_HOME>/repository/logs/wso2carbon.log by default, so no
+// MI-side configuration change is needed. An OpenTelemetry Collector sidecar
+// tails that file and ships the entries to Moesif's OTLP logs endpoint. The user
+// downloads the Collector bundle, sets the Collector Application ID + MI_HOME in
+// .env, then runs docker compose up -d. See the WSO2 MI Moesif logs guide for
+// further details.
+function MiLogsPublishInstructions(): JSX.Element {
+  return (
+    <>
+      <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+        MI writes its server logs to <strong>&lt;MI_HOME&gt;/repository/logs/wso2carbon.log</strong> by default, so no runtime configuration change is needed. An <strong>OpenTelemetry Collector</strong> sidecar tails that file and ships the entries to Moesif.
+      </Typography>
+      <Typography variant="body2" color="text.secondary" sx={{ mb: 1, mt: 2 }}>
+        Download the OpenTelemetry Collector bundle, set the Collector Application ID, <strong>ICP_RUNTIME_ID</strong> (the runtime whose logs this sidecar ships — the logs dashboard filters by it) and <strong>MI_HOME</strong> in <strong>.env</strong>, then
+        run <strong>docker compose up -d</strong> to publish logs to Moesif. On Windows, use a Windows-style path and enable the drive under Docker Desktop file sharing.
+      </Typography>
+      <Button size="small" variant="outlined" startIcon={<Download size={14} />} onClick={() => downloadMoesifMiLogsOtelFiles('<MOESIF_COLLECTOR_APPLICATION_ID>')} sx={{ mt: 1, alignSelf: 'flex-start', py: 0.25, px: 1, fontSize: 12 }}>
+        Download OpenTelemetry Collector config
+      </Button>
+      <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>
+        For further guidance, refer the{' '}
+        <a href={MI_MOESIF_LOGS_GUIDE} target="_blank" rel="noreferrer">
+          WSO2 MI Moesif logs documentation
+        </a>
+        .
+      </Typography>
+    </>
+  );
+}
+
+// Setup instructions shown when no logs observability backend is configured.
+// Mirrors the metrics setup structure: Moesif is offered first (when enabled)
+// with the main steps from the observability user story rendered as collapsible
+// sections, followed by OpenSearch as an alternative. When Moesif is disabled
+// only the OpenSearch section is shown. Step 02 differs by runtime technology:
+// BI writes JSON logs to a file that a Fluent Bit sidecar ships to Moesif, while
+// MI ships its default wso2carbon.log via an OpenTelemetry Collector sidecar.
+function LogsSetupInstructions({
+  isMI,
+  showBothTechnologies,
+  showBackendNotice,
+  moesifFormSlot,
+}: {
+  isMI?: boolean;
+  showBothTechnologies?: boolean;
+  // Whether it is already established that no backend is configured. Suppressed
+  // while the Moesif config query is still in flight so the notice never flashes
+  // on a linked integration on its way to the canvas.
+  showBackendNotice?: boolean;
+  moesifFormSlot?: JSX.Element;
+}): JSX.Element {
+  const moesifEnabled = isMoesifEnabled();
+  const opensearchGuide = isMI ? OPENSEARCH_SETUP_GUIDE_MI : OPENSEARCH_SETUP_GUIDE_DEFAULT;
+
+  return (
+    <Stack sx={{ width: '100%', textAlign: 'left' }}>
+      {/* Neither backend is usable yet (OpenSearch unreachable and no linked
+          Moesif canvas), so say what has to be set up before the logs view
+          works. Lives here rather than on the page so it disappears as soon as
+          the Moesif canvas is linked — matching the metrics view, which shows
+          the same notice only while its dashboard is unlinked. */}
+      {showBackendNotice && (
+        <Typography color="text.secondary" sx={{ mb: 2 }}>
+          To enable the logs view you need to setup observability with either Moesif or OpenSearch. Refer the documentation{' '}
+          <a href={OPENSEARCH_SETUP_GUIDE_DEFAULT} target="_blank" rel="noreferrer">
+            {OPENSEARCH_SETUP_GUIDE_DEFAULT}
+          </a>{' '}
+          for details.
+        </Typography>
+      )}
+      {moesifEnabled && (
+        <>
+          <Typography variant="h4" sx={{ mb: 1, color: 'warning.main' }}>
+            Configure logs with Moesif
+          </Typography>
+          <Typography color="text.secondary" sx={{ mb: 2 }}>
+            <strong>Moesif</strong>
+            {MOESIF_DESCRIPTION}{' '}
+            <a href={MOESIF_SETUP_GUIDE} target="_blank" rel="noreferrer">
+              View the setup guide
+            </a>
+            .
+          </Typography>
+
+          {/* Step 1: prepare Moesif for the environment. */}
+          <MoesifStep title="Step 01: Prepare Moesif" defaultExpanded>
+            <Typography variant="body2" color="text.secondary">
+              Using{' '}
+              <a href="https://www.moesif.com/wrap/basic" target="_blank" rel="noreferrer">
+                Moesif Basic
+              </a>
+              , create one application per ICP environment you want to track and copy its <strong>Collector Application ID</strong>.
+            </Typography>
+          </MoesifStep>
+
+          {/* Step 2: configure the runtime to write + publish logs to Moesif.
+              BI writes JSON logs to a file shipped by Fluent Bit; MI ships its
+              default wso2carbon.log via an OpenTelemetry Collector. */}
+          <MoesifStep title="Step 02: Publish logs from your runtime">
+            {showBothTechnologies ? (
+              /* All integrations in view and the project mixes technologies, so
+                 both sidecar flows are shown rather than guessing one. */
+              <>
+                <Typography variant="subtitle2" sx={{ mb: 1 }}>
+                  WSO2 Integrator: BI runtimes
+                </Typography>
+                <BiLogsPublishInstructions />
+                <Divider sx={{ my: 3 }} />
+                <Typography variant="subtitle2" sx={{ mb: 1 }}>
+                  WSO2 Integrator: MI runtimes
+                </Typography>
+                <MiLogsPublishInstructions />
+              </>
+            ) : isMI ? (
+              <MiLogsPublishInstructions />
+            ) : (
+              <BiLogsPublishInstructions />
+            )}
+          </MoesifStep>
+
+          {/* Step 3: link the canvas with a Management API Key (rendered only when
+              an integration + environment are resolved so the mutation has a target). */}
+          {moesifFormSlot && <MoesifStep title="Step 03: Load the dashboard">{moesifFormSlot}</MoesifStep>}
+        </>
+      )}
+
+      <Typography variant="h4" sx={{ mt: moesifEnabled ? 4 : 0, mb: 2, color: 'warning.main' }}>
+        Configure logs with OpenSearch
+      </Typography>
+      <Typography color="text.secondary">
+        Follow the guide to setup observability with OpenSearch :{' '}
+        <a href={opensearchGuide} target="_blank" rel="noreferrer">
+          {opensearchGuide}
+        </a>
+      </Typography>
+    </Stack>
+  );
+}
+
+// Credential form to link an integration's Moesif logs canvas. Mirrors the
+// metrics MoesifDashboardCard: the user supplies a Moesif Management API Key
+// (a JWT the backend derives the org + app ids from), then the backend persists
+// the shared canvas credentials and flips the `logsConfigured` flag. The canvas
+// auth token is minted on demand by the backend from this key, so no separate
+// canvas token is entered here. The Management API Key is treated as a secret.
+function MoesifLogsCredentialForm({ onCreate, creating, error }: { onCreate: (managementApiKey: string) => void; creating: boolean; error: unknown }): JSX.Element {
+  const [managementApiKey, setManagementApiKey] = useState('');
+  const trimmedManagementApiKey = managementApiKey.trim();
+
+  return (
+    <Stack>
+      <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+        Once logs are flowing to Moesif, create a <strong>Management API Key</strong> with the <strong>access_tokens: create</strong> and <strong>events: read</strong> scopes, then paste it below to load the logs dashboard. The Organization ID, Application ID
+        and a short-lived canvas token are derived from it. Treated as a secret; never stored in the browser.
+      </Typography>
+      <Stack sx={{ maxWidth: 640 }}>
+        <TextField label="Management API Key" placeholder="Paste your Moesif Management API Key" value={managementApiKey} onChange={(e) => setManagementApiKey(e.target.value)} type="password" fullWidth size="small" sx={{ mb: 2 }} autoComplete="off" />
+        {!!error && (
+          <Alert severity="error" sx={{ mb: 2 }}>
+            {(error as Error).message || 'Failed to link the Moesif logs canvas.'}
+          </Alert>
+        )}
+        <Button variant="contained" sx={{ alignSelf: 'flex-start' }} disabled={!trimmedManagementApiKey || creating} onClick={() => onCreate(trimmedManagementApiKey)}>
+          {creating ? 'Linking…' : 'Link canvas'}
+        </Button>
+      </Stack>
+    </Stack>
+  );
+}
+
+// Renders the embedded Moesif logs canvas for a linked integration. Fetches the
+// canvas embed URL + auth token from the backend and drives the same iframe
+// postMessage handshake as the metrics canvas, but posts the application logs
+// canvas template (getMoesifLogsCanvasTemplate) instead of the metrics one. The
+// canvas is scoped to this integration's runtimes via the `runtimeId` context
+// filter. An Edit action lets the user re-link with new credentials.
+function MoesifLogsCanvasView({
+  componentId,
+  environmentId,
+  projectId,
+  isMI,
+  allIntegrations,
+  onEdit,
+}: {
+  componentId: string;
+  environmentId: string;
+  projectId: string;
+  isMI: boolean;
+  // Project scope with "All Integrations" selected: the canvas covers every
+  // integration in the project, so the runtime filter is built from all of the
+  // project's runtimes rather than one integration's.
+  allIntegrations: boolean;
+  onEdit: () => void;
+}): JSX.Element {
+  const { data: embed, isLoading: loadingEmbed, isFetching: fetchingEmbed, error: embedError, refetch: refetchEmbed } = useMoesifLogsEmbed(componentId || undefined, environmentId || undefined, true);
+  const { data: runtimes = [] } = useComponentRuntimes(environmentId, projectId, componentId, !allIntegrations);
+  const { data: projectRuntimes = [] } = useProjectRuntimes(environmentId, projectId, allIntegrations);
+  // Runtime filter options for the canvas' `runtimeId` context filter. Labels are
+  // prefixed with the owning integration — "integration1 (runtime1)" — in both
+  // scopes, so a runtime reads the same whether the list covers one integration
+  // or every integration in the project.
+  const runtimeOptions = useMemo(() => (allIntegrations ? projectRuntimes : runtimes).map((r) => ({ label: runtimeOptionLabel(r), value: r.runtimeId })), [allIntegrations, projectRuntimes, runtimes]);
+  const logsTemplate = useMemo(() => getMoesifLogsCanvasTemplate(), []);
+
+  return (
+    <Stack sx={{ width: '100%' }}>
+      <Stack direction="row" gap={2} sx={{ mb: 2 }} justifyContent="flex-end" alignItems="center">
+        <Tooltip title="Refresh">
+          <span>
+            <IconButton size="small" aria-label="Refresh logs canvas" onClick={() => refetchEmbed()} disabled={fetchingEmbed}>
+              <RefreshCw size={18} />
+            </IconButton>
+          </span>
+        </Tooltip>
+        <Button variant="outlined" size="small" onClick={onEdit}>
+          Edit canvas credentials
+        </Button>
+      </Stack>
+      {loadingEmbed ? (
+        <CircularProgress size={28} sx={{ display: 'block', mx: 'auto', my: 6 }} />
+      ) : embedError ? (
+        <Stack alignItems="center" gap={2} sx={{ py: 6 }}>
+          <Alert
+            severity="error"
+            sx={{ width: '100%', maxWidth: 720 }}
+            action={
+              <Button color="inherit" size="small" onClick={() => refetchEmbed()} disabled={fetchingEmbed}>
+                Retry
+              </Button>
+            }>
+            {(embedError as Error).message || 'Failed to load the Moesif logs dashboard.'}
+          </Alert>
+        </Stack>
+      ) : embed ? (
+        <MoesifCanvas key={`${environmentId}:${embed.embedUrl}`} embedUrl={embed.embedUrl} token={embed.token} isMI={isMI} runtimeIds={runtimeOptions} onRefreshToken={() => refetchEmbed()} template={logsTemplate} />
+      ) : (
+        <CircularProgress size={28} sx={{ display: 'block', mx: 'auto', my: 6 }} />
+      )}
+    </Stack>
+  );
+}
+
+// Moesif logs experience for the "observability unavailable" state of the logs
+// view. Reads whether the integration's Moesif logs canvas is linked and either
+// (a) shows the embedded logs canvas, or (b) shows the logs setup instructions
+// with the credential form. Falls back to the plain instructions (no form) when
+// an integration/environment isn't resolved or Moesif is disabled.
+function MoesifLogsSection({
+  componentId,
+  environmentId,
+  projectId,
+  isMI,
+  allIntegrations,
+  showBothTechnologies,
+  perRuntimeLogsHint,
+}: {
+  componentId: string | undefined;
+  environmentId: string | undefined;
+  projectId: string;
+  isMI: boolean;
+  // True at project scope with "All Integrations" selected: `componentId` is then
+  // only a stand-in used to authorize the config/embed requests (the Moesif
+  // credentials are stored per environment and shared by every integration in
+  // it), and the canvas is filtered by every project runtime instead.
+  allIntegrations: boolean;
+  // Render both the BI and MI "publish logs" instructions instead of picking one
+  // (all integrations in view and the project mixes technologies).
+  showBothTechnologies: boolean;
+  // Link to the per-runtime log downloads, shown with the setup instructions as
+  // an interim way to read MI logs. Deliberately not rendered above the canvas:
+  // once the canvas is linked the logs are right there.
+  perRuntimeLogsHint?: JSX.Element;
+}): JSX.Element {
+  const [editing, setEditing] = useState(false);
+  const moesifEnabled = isMoesifEnabled();
+  const canQuery = moesifEnabled && !!componentId && !!environmentId;
+  const { data: logsConfig, isLoading: loadingConfig } = useMoesifLogsConfig(canQuery ? componentId : undefined, canQuery ? environmentId : undefined);
+  const createLogs = useCreateMoesifLogsDashboards();
+  const logsConfigured = !!logsConfig?.logsConfigured;
+
+  // The credential form is wired whenever we have a concrete target
+  // (integration + environment) for the mutation, independent of the config
+  // query state. This keeps step 4 visible while the config is still loading
+  // and when Moesif is enabled but the integration is not yet linked.
+  const formSlot =
+    moesifEnabled && componentId && environmentId ? <MoesifLogsCredentialForm creating={createLogs.isPending} error={createLogs.error} onCreate={(managementApiKey) => createLogs.mutate({ componentId, environmentId, managementApiKey })} /> : undefined;
+
+  // Resolving the logs config: show the instructions (with the credential form
+  // when a target is available) while it loads so the page isn't blank and
+  // step 4 doesn't disappear (the config only gates the embedded-canvas vs.
+  // form choice).
+  if (canQuery && loadingConfig) {
+    return (
+      <>
+        {perRuntimeLogsHint}
+        <LogsSetupInstructions isMI={isMI} showBothTechnologies={showBothTechnologies} moesifFormSlot={formSlot} />
+      </>
+    );
+  }
+
+  // Linked, but the user chose to re-link with new credentials.
+  if (logsConfigured && editing && componentId && environmentId) {
+    return (
+      <Stack sx={{ width: '100%', textAlign: 'left' }}>
+        <Typography variant="h4" sx={{ mb: 2, color: 'warning.main' }}>
+          Update logs canvas credentials
+        </Typography>
+        <MoesifLogsCredentialForm creating={createLogs.isPending} error={createLogs.error} onCreate={(managementApiKey) => createLogs.mutate({ componentId, environmentId, managementApiKey }, { onSuccess: () => setEditing(false) })} />
+        <Button variant="text" sx={{ alignSelf: 'flex-start', mt: 1 }} onClick={() => setEditing(false)} disabled={createLogs.isPending}>
+          Cancel
+        </Button>
+      </Stack>
+    );
+  }
+
+  // Linked: render the embedded logs canvas.
+  if (logsConfigured && componentId && environmentId) {
+    return <MoesifLogsCanvasView componentId={componentId} environmentId={environmentId} projectId={projectId} isMI={isMI} allIntegrations={allIntegrations} onEdit={() => setEditing(true)} />;
+  }
+
+  // Not linked (or no target resolved): show the setup instructions, with the
+  // credential form embedded when a target is available.
+  return (
+    <>
+      {perRuntimeLogsHint}
+      <LogsSetupInstructions isMI={isMI} showBothTechnologies={showBothTechnologies} showBackendNotice moesifFormSlot={formSlot} />
+    </>
+  );
+}
 
 const DISPLAY_FIELDS: { key: keyof LogRow; label: string }[] = [
   { key: 'timestamp', label: 'Timestamp' },
@@ -193,8 +572,29 @@ export default function RuntimeLogs(scope: ProjectScope | ComponentScope): JSX.E
 
   const componentIds = !hasComponent(scope) && integrationFilter !== 'all' ? [integrationFilter] : allComponentIds;
 
+  // Only offer environments where the targeted integration actually has runtimes,
+  // matching the metrics view: it is misleading to query logs (or load the Moesif
+  // logs canvas) for an environment the integration isn't deployed to. This
+  // filtering applies when a specific integration is targeted (component scope or
+  // a chosen integration); the aggregate "All Integrations" view keeps all
+  // environments since runtimes may span several integrations.
+  const runtimeCheckComponentId = hasComponent(scope) ? (singleComponent?.id ?? '') : integrationFilter !== 'all' ? integrationFilter : '';
+  const environmentIds = useMemo(() => environments.map((e) => e.id), [environments]);
+  const { envsWithRuntimes, isLoading: loadingEnvRuntimes, isError: envRuntimesError, refetch: refetchEnvRuntimes } = useComponentRuntimesByEnvironments(projectId, runtimeCheckComponentId, environmentIds, !!runtimeCheckComponentId);
+  // Only narrow the environment list once the runtime lookup has resolved with a
+  // result. While the lookup is pending (loadingEnvRuntimes) or if it failed
+  // (envsWithRuntimes stays empty), keep all environments so we don't hide every
+  // environment — a failed lookup should not masquerade as "no runtimes".
+  const availableEnvironments = runtimeCheckComponentId && !loadingEnvRuntimes && envsWithRuntimes.size > 0 ? environments.filter((e) => envsWithRuntimes.has(e.id)) : environments;
+  const availableEnvIds = availableEnvironments.map((e) => e.id);
+
+  // Drop any selected environments that are no longer available (e.g. after
+  // switching to an integration that isn't deployed to them) so requests never
+  // target an environment without runtimes.
+  const effectiveEnvFilter = envFilter.filter((id) => availableEnvIds.includes(id));
+
   // Calculate selected environments for request logic
-  const selectedEnvIds = envFilter.length > 0 ? envFilter : environments.map((e) => e.id);
+  const selectedEnvIds = effectiveEnvFilter.length > 0 ? effectiveEnvFilter : availableEnvIds;
   const selectedEnvs = environments.filter((e) => selectedEnvIds.includes(e.id));
   const primaryEnv = selectedEnvs[0];
 
@@ -206,11 +606,26 @@ export default function RuntimeLogs(scope: ProjectScope | ComponentScope): JSX.E
     return allComponentIds[0] ?? '';
   }, [scope, singleComponent, integrationFilter, allComponentIds]);
 
+  // Project scope showing every integration ("All Integrations"), which the
+  // Moesif logs canvas covers by filtering on all of the project's runtime ids
+  // rather than one integration's — mirroring the OpenSearch view, which queries
+  // every integration in the project.
+  const allIntegrationsSelected = !hasComponent(scope) && integrationFilter === 'all';
+
+  // The integration id the Moesif logs config/embed requests are made against.
+  // Those resolvers authorize per integration, while the credentials themselves
+  // are stored per environment and shared by every integration in it, so with all
+  // integrations in view the first one stands in for the whole project.
+  const moesifTargetComponentId = selectedComponentId;
+
+  // The runtime technologies present in the project. With all integrations in
+  // view a mixed project needs both sets of "publish logs" instructions, since
+  // BI ships logs with a Fluent Bit sidecar and MI with an OpenTelemetry
+  // Collector.
+  const projectTechnologies = useMemo(() => ['BI', 'MI'].filter((technology) => allComponents.some((component) => component.componentType === technology)), [allComponents]);
+
   // Derive selected environment id from current selection (matching request logic)
-  const selectedEnvId = useMemo(() => {
-    if (envFilter.length > 0) return envFilter[0];
-    return primaryEnv?.id ?? '';
-  }, [envFilter, primaryEnv]);
+  const selectedEnvId = (effectiveEnvFilter.length > 0 ? effectiveEnvFilter[0] : primaryEnv?.id) ?? '';
 
   // Fetch runtimes to check if they are MI type (for per-runtime log download link)
   const { data: runtimes = [] } = useRuntimes(selectedEnvId, projectId, selectedComponentId);
@@ -280,7 +695,49 @@ export default function RuntimeLogs(scope: ProjectScope | ComponentScope): JSX.E
   }, [error]);
 
   const logs = useMemo(() => data?.pages.flat() ?? [], [data]);
+  // OpenSearch queries are dead in this state, so its own filters (time range,
+  // level, search) are disabled. The integration selector is the exception: it
+  // also scopes the Moesif logs canvas rendered in this state, so it stays
+  // enabled whenever the Moesif backend is available (see the header below).
   const filtersDisabled = isUnavailable(error);
+  const moesifEnabled = isMoesifEnabled();
+
+  // A Moesif application maps to a specific environment, so the user picks which
+  // environment's logs canvas is viewed/linked. Mirrors the metrics view (see
+  // MetricsMoesif): a single-select rendered above the page title, offered
+  // whenever an integration and at least one environment are resolved. Only used
+  // in the observability-unavailable (Moesif) state — when the logs backend is
+  // reachable the filter toolbar carries its own multi-select environment filter,
+  // so rendering this one there too would duplicate it. Writes the single choice
+  // back into the shared `envFilter` so both surfaces stay in sync.
+  const moesifEnvSelector =
+    selectedComponentId && availableEnvironments.length > 0 ? (
+      <Select value={selectedEnvId} onChange={(e) => setEnvFilter([e.target.value as string])} size="small" sx={{ minWidth: 140 }} inputProps={{ 'aria-label': 'Environment' }}>
+        {availableEnvironments.map((e) => (
+          <MenuItem key={e.id} value={e.id}>
+            {e.name}
+          </MenuItem>
+        ))}
+      </Select>
+    ) : null;
+
+  // Project-scope integration filter, laid out like the metrics views: a
+  // left-aligned control under the page title in the Moesif state, and the first
+  // control of the filter toolbar in the OpenSearch state (mirroring
+  // MetricsMoesif and MetricsOpenSearch respectively). "All Integrations" or one
+  // integration; it scopes the OpenSearch log query and, when OpenSearch is
+  // unavailable, the Moesif logs canvas' runtime filter — so it is only disabled
+  // when neither backend can use it.
+  const integrationSelector = !hasComponent(scope) ? (
+    <Select value={integrationFilter} onChange={(e) => setIntegrationFilter(e.target.value as string)} size="small" sx={{ minWidth: 200 }} inputProps={{ 'aria-label': 'Integration' }} disabled={filtersDisabled && !moesifEnabled}>
+      <MenuItem value="all">All Integrations</MenuItem>
+      {allComponents.map((c) => (
+        <MenuItem key={c.id} value={c.id}>
+          {c.displayName || c.name}
+        </MenuItem>
+      ))}
+    </Select>
+  ) : null;
 
   const filteredLogs = logs;
 
@@ -338,124 +795,150 @@ export default function RuntimeLogs(scope: ProjectScope | ComponentScope): JSX.E
 
   return (
     <PageContent>
+      {filtersDisabled && moesifEnvSelector && (
+        <Stack direction="row" sx={{ mt: 2, mb: 4 }}>
+          {moesifEnvSelector}
+        </Stack>
+      )}
       <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 2 }}>
         <Typography variant="h1">Runtime Logs</Typography>
-        {!hasComponent(scope) && (
-          <Select value={integrationFilter} onChange={(e) => setIntegrationFilter(e.target.value as string)} size="small" sx={{ minWidth: 200 }} inputProps={{ 'aria-label': 'Integration' }} disabled={filtersDisabled}>
-            <MenuItem value="all">All Integrations</MenuItem>
-            {allComponents.map((c) => (
-              <MenuItem key={c.id} value={c.id}>
-                {c.displayName || c.name}
-              </MenuItem>
-            ))}
-          </Select>
-        )}
       </Stack>
 
-      <Stack direction="row" gap={1.5} sx={{ mb: 1 }} flexWrap="wrap" alignItems="center">
-        {environments.length > 0 && (
+      {/* The per-environment runtime lookup failed, so we cannot tell which
+          environments this integration is actually deployed to. The selector
+          falls back to every environment (see availableEnvironments) and logs
+          are still queried, so this is a non-blocking warning rather than the
+          blocking error the metrics view shows: the results may include
+          environments the integration has no runtimes in. */}
+      {envRuntimesError && (
+        <Alert
+          severity="warning"
+          sx={{ mb: 2 }}
+          action={
+            <Button color="inherit" size="small" onClick={() => refetchEnvRuntimes()} disabled={loadingEnvRuntimes}>
+              Retry
+            </Button>
+          }>
+          Could not verify which environments have runtimes for this integration. Showing all environments — logs may cover environments it isn't deployed to.
+        </Alert>
+      )}
+
+      {/* Moesif state: the integration filter sits on its own row under the
+          title, as on the Moesif metrics view. With the OpenSearch backend
+          reachable it joins the filter toolbar below instead. */}
+      {filtersDisabled && integrationSelector && (
+        <Stack direction="row" gap={2} sx={{ mb: 3 }} flexWrap="wrap" alignItems="center">
+          {integrationSelector}
+        </Stack>
+      )}
+
+      {!filtersDisabled && (
+        <Stack direction="row" gap={1.5} sx={{ mb: 1 }} flexWrap="wrap" alignItems="center">
+          {integrationSelector}
+          {availableEnvironments.length > 0 && (
+            <Select
+              multiple
+              value={effectiveEnvFilter}
+              onChange={(e) => setEnvFilter(e.target.value as string[])}
+              displayEmpty
+              renderValue={(selected) => {
+                const sel = selected as string[];
+                if (sel.length === 0) return 'All Environments';
+                return availableEnvironments
+                  .filter((env) => sel.includes(env.id))
+                  .map((env) => env.name)
+                  .join(', ');
+              }}
+              size="small"
+              sx={{ minWidth: 160 }}
+              inputProps={{ 'aria-label': 'Environment' }}
+              disabled={filtersDisabled}>
+              {availableEnvironments.map((e) => (
+                <MenuItem key={e.id} value={e.id}>
+                  <Checkbox checked={effectiveEnvFilter.includes(e.id)} size="small" sx={{ p: 0, mr: 1 }} />
+                  <ListItemText primary={e.name} />
+                </MenuItem>
+              ))}
+            </Select>
+          )}
+
           <Select
             multiple
-            value={envFilter}
-            onChange={(e) => setEnvFilter(e.target.value as string[])}
+            value={levelFilter}
+            onChange={(e) => setLevelFilter(e.target.value as string[])}
             displayEmpty
             renderValue={(selected) => {
               const sel = selected as string[];
-              if (sel.length === 0) return 'All Environments';
-              return environments
-                .filter((env) => sel.includes(env.id))
-                .map((env) => env.name)
-                .join(', ');
+              if (sel.length === 0) return 'All Levels';
+              return sel.join(', ');
             }}
             size="small"
-            sx={{ minWidth: 160 }}
-            inputProps={{ 'aria-label': 'Environment' }}
+            sx={{ minWidth: 120 }}
+            inputProps={{ 'aria-label': 'Log level' }}
             disabled={filtersDisabled}>
-            {environments.map((e) => (
-              <MenuItem key={e.id} value={e.id}>
-                <Checkbox checked={envFilter.includes(e.id)} size="small" sx={{ p: 0, mr: 1 }} />
-                <ListItemText primary={e.name} />
+            {LOG_LEVELS.map((l) => (
+              <MenuItem key={l} value={l}>
+                <Checkbox checked={levelFilter.includes(l)} size="small" sx={{ p: 0, mr: 1 }} />
+                <ListItemText primary={l} />
               </MenuItem>
             ))}
           </Select>
-        )}
 
-        <Select
-          multiple
-          value={levelFilter}
-          onChange={(e) => setLevelFilter(e.target.value as string[])}
-          displayEmpty
-          renderValue={(selected) => {
-            const sel = selected as string[];
-            if (sel.length === 0) return 'All Levels';
-            return sel.join(', ');
-          }}
-          size="small"
-          sx={{ minWidth: 120 }}
-          inputProps={{ 'aria-label': 'Log level' }}
-          disabled={filtersDisabled}>
-          {LOG_LEVELS.map((l) => (
-            <MenuItem key={l} value={l}>
-              <Checkbox checked={levelFilter.includes(l)} size="small" sx={{ p: 0, mr: 1 }} />
-              <ListItemText primary={l} />
-            </MenuItem>
-          ))}
-        </Select>
+          <Stack direction="row" alignItems="center" gap={0.5}>
+            <Select
+              value={timePreset}
+              onChange={(e) => {
+                const v = e.target.value as string;
+                setTimePreset(v);
+                if (v === 'custom') {
+                  setCustomEnd(toLocalInput(new Date()));
+                  setCustomStart(toLocalInput(new Date(Date.now() - 24 * 3600_000)));
+                }
+              }}
+              size="small"
+              sx={{ minWidth: 160 }}
+              inputProps={{ 'aria-label': 'Time range' }}
+              disabled={filtersDisabled}>
+              {TIME_PRESETS.map((p) => (
+                <MenuItem key={p.label} value={p.label}>
+                  {p.label}
+                </MenuItem>
+              ))}
+              <MenuItem value="custom">Custom</MenuItem>
+            </Select>
+            {timePreset !== '' && (
+              <Tooltip title="Clear time filter (defaults to 30 days)">
+                <IconButton size="small" onClick={() => setTimePreset('')} disabled={filtersDisabled}>
+                  <X size={14} />
+                </IconButton>
+              </Tooltip>
+            )}
+          </Stack>
 
-        <Stack direction="row" alignItems="center" gap={0.5}>
-          <Select
-            value={timePreset}
-            onChange={(e) => {
-              const v = e.target.value as string;
-              setTimePreset(v);
-              if (v === 'custom') {
-                setCustomEnd(toLocalInput(new Date()));
-                setCustomStart(toLocalInput(new Date(Date.now() - 24 * 3600_000)));
-              }
-            }}
-            size="small"
-            sx={{ minWidth: 160 }}
-            inputProps={{ 'aria-label': 'Time range' }}
-            disabled={filtersDisabled}>
-            {TIME_PRESETS.map((p) => (
-              <MenuItem key={p.label} value={p.label}>
-                {p.label}
-              </MenuItem>
-            ))}
-            <MenuItem value="custom">Custom</MenuItem>
+          <Select value={sortDir} onChange={(e) => setSortDir(e.target.value as 'asc' | 'desc')} size="small" sx={{ minWidth: 120 }} inputProps={{ 'aria-label': 'Sort direction' }} disabled={filtersDisabled}>
+            <MenuItem value="desc">Newest first</MenuItem>
+            <MenuItem value="asc">Oldest first</MenuItem>
           </Select>
-          {timePreset !== '' && (
-            <Tooltip title="Clear time filter (defaults to 30 days)">
-              <IconButton size="small" onClick={() => setTimePreset('')} disabled={filtersDisabled}>
-                <X size={14} />
-              </IconButton>
-            </Tooltip>
-          )}
-        </Stack>
 
-        <Select value={sortDir} onChange={(e) => setSortDir(e.target.value as 'asc' | 'desc')} size="small" sx={{ minWidth: 120 }} inputProps={{ 'aria-label': 'Sort direction' }} disabled={filtersDisabled}>
-          <MenuItem value="desc">Newest first</MenuItem>
-          <MenuItem value="asc">Oldest first</MenuItem>
-        </Select>
+          <SearchField value={searchPhrase} onChange={setSearchPhrase} placeholder="Search logs..." sx={{ minWidth: 200, flex: 1 }} disabled={filtersDisabled} />
 
-        <SearchField value={searchPhrase} onChange={setSearchPhrase} placeholder="Search logs..." sx={{ minWidth: 200, flex: 1 }} disabled={filtersDisabled} />
-
-        <FormControlLabel control={<Checkbox checked={autoFetch} onChange={(_, c) => setAutoFetch(c)} size="small" disabled={filtersDisabled} />} label="Auto Fetch" sx={{ mr: 0, whiteSpace: 'nowrap' }} slotProps={{ typography: { variant: 'body2' } }} />
-        <Tooltip title="Download logs">
-          <IconButton size="small" aria-label="Download logs" onClick={() => downloadLogs(filteredLogs)} disabled={filtersDisabled || filteredLogs.length === 0}>
-            <Download size={18} />
-          </IconButton>
-        </Tooltip>
-        <Tooltip title="Refresh">
-          <span>
-            <IconButton size="small" aria-label="Refresh" onClick={() => refetch()} disabled={filtersDisabled || !logsRequest}>
-              <RefreshCw size={16} />
+          <FormControlLabel control={<Checkbox checked={autoFetch} onChange={(_, c) => setAutoFetch(c)} size="small" disabled={filtersDisabled} />} label="Auto Fetch" sx={{ mr: 0, whiteSpace: 'nowrap' }} slotProps={{ typography: { variant: 'body2' } }} />
+          <Tooltip title="Download logs">
+            <IconButton size="small" aria-label="Download logs" onClick={() => downloadLogs(filteredLogs)} disabled={filtersDisabled || filteredLogs.length === 0}>
+              <Download size={18} />
             </IconButton>
-          </span>
-        </Tooltip>
-      </Stack>
+          </Tooltip>
+          <Tooltip title="Refresh">
+            <span>
+              <IconButton size="small" aria-label="Refresh" onClick={() => refetch()} disabled={filtersDisabled || !logsRequest}>
+                <RefreshCw size={16} />
+              </IconButton>
+            </span>
+          </Tooltip>
+        </Stack>
+      )}
 
-      {timePreset === 'custom' && (
+      {!filtersDisabled && timePreset === 'custom' && (
         <Stack direction="row" gap={1.5} sx={{ mb: 2 }} alignItems="center">
           <TextField type="datetime-local" size="small" label="Start" value={customStart} onChange={(e) => setCustomStart(e.target.value)} slotProps={{ inputLabel: { shrink: true } }} disabled={filtersDisabled} />
           <TextField type="datetime-local" size="small" label="End" value={customEnd} onChange={(e) => setCustomEnd(e.target.value)} slotProps={{ inputLabel: { shrink: true } }} disabled={filtersDisabled} />
@@ -474,39 +957,40 @@ export default function RuntimeLogs(scope: ProjectScope | ComponentScope): JSX.E
       {isLoading ? (
         <CircularProgress size={28} sx={{ display: 'block', mx: 'auto', my: 6 }} />
       ) : error ? (
-        <Stack alignItems="center" gap={2} sx={{ py: 6 }}>
-          {isUnavailable(error) ? (
-            <>
-              <ScrollText size={48} style={{ color: '#78909c' }} />
-              <Typography variant="h6" textAlign="center">
-                Observability Service Not Configured
-              </Typography>
-              <Typography color="text.secondary" textAlign="center" sx={{ maxWidth: 600 }}>
-                Please ensure the Observability backend is configured and running to view logs.
-              </Typography>
-              {hasMIRuntimes && runtimeLinkComponent?.handler && (
-                <Typography color="text.secondary" textAlign="center" sx={{ maxWidth: 600 }}>
-                  You can still download{' '}
-                  <Link
-                    to={hasComponent(scope) ? resourceUrl(scope, 'runtimes') : resourceUrl({ level: 'components', org: scope.org, project: scope.project, component: runtimeLinkComponent.handler }, 'runtimes')}
-                    style={{ textDecoration: 'underline', cursor: 'pointer' }}>
-                    per-runtime logs
-                  </Link>
-                  .
-                </Typography>
-              )}
-            </>
-          ) : (
-            <>
-              <Typography color="error" textAlign="center">
-                Failed to fetch logs: {(error as Error).message ?? 'Service unavailable'}
-              </Typography>
-              <Button variant="contained" startIcon={<RefreshCw size={16} />} onClick={() => refetch()}>
-                Retry
-              </Button>
-            </>
-          )}
-        </Stack>
+        isUnavailable(error) ? (
+          <Stack gap={2} sx={{ width: '100%' }}>
+            <MoesifLogsSection
+              componentId={moesifTargetComponentId || undefined}
+              environmentId={selectedEnvId || undefined}
+              projectId={projectId}
+              isMI={hasMIRuntimes}
+              allIntegrations={allIntegrationsSelected}
+              showBothTechnologies={allIntegrationsSelected && projectTechnologies.length > 1}
+              perRuntimeLogsHint={
+                hasMIRuntimes && runtimeLinkComponent?.handler ? (
+                  <Typography color="text.secondary" sx={{ mb: 2 }}>
+                    You can still download{' '}
+                    <Link
+                      to={hasComponent(scope) ? resourceUrl(scope, 'runtimes') : resourceUrl({ level: 'components', org: scope.org, project: scope.project, component: runtimeLinkComponent.handler }, 'runtimes')}
+                      style={{ textDecoration: 'underline', cursor: 'pointer' }}>
+                      per-runtime logs
+                    </Link>
+                    .
+                  </Typography>
+                ) : undefined
+              }
+            />
+          </Stack>
+        ) : (
+          <Stack alignItems="center" gap={2} sx={{ py: 6 }}>
+            <Typography color="error" textAlign="center">
+              Failed to fetch logs: {(error as Error).message ?? 'Service unavailable'}
+            </Typography>
+            <Button variant="contained" startIcon={<RefreshCw size={16} />} onClick={() => refetch()}>
+              Retry
+            </Button>
+          </Stack>
+        )
       ) : filteredLogs.length === 0 ? (
         <EmptyListing icon={<ScrollText size={48} />} title="No logs found" description="Try a different time range or filters." />
       ) : (

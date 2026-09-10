@@ -1,4 +1,4 @@
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
 import { gql } from './graphql';
 
 export interface GqlPageInfo {
@@ -309,7 +309,8 @@ const COMPONENT_RUNTIMES_QUERY = `
     runtimes(environmentId: $environmentId, projectId: $projectId, componentId: $componentId) {
       items { runtimeId, runtimeName, runtimeType, status, version,
               platformName, platformVersion, platformHome,
-              osName, osVersion, registrationTime, lastHeartbeat }
+              osName, osVersion, registrationTime, lastHeartbeat,
+              component { displayName } }
       pageInfo { total, limit, offset }
     }
   }`;
@@ -320,6 +321,49 @@ export function useComponentRuntimes(envId: string, projectId: string, component
     queryFn: () => gql<{ runtimes: { items: GqlRuntime[]; pageInfo: GqlPageInfo } }>(COMPONENT_RUNTIMES_QUERY, { environmentId: envId, projectId, componentId }).then((d) => d.runtimes.items),
     enabled: enabled && !!envId && !!projectId && !!componentId,
   });
+}
+
+// Determines, for a given integration (project + component), which of the
+// supplied environments have at least one registered runtime. The `runtimes`
+// query is environment-scoped, so this runs one query per environment (via
+// `useQueries`) and reuses the same cache entries as `useComponentRuntimes`.
+// Returns the set of environment ids that have runtimes plus a combined loading
+// flag. Used to hide environments where the integration has no runtime deployed
+// (e.g. Moesif metrics/logs should only offer environments the integration is
+// actually running in).
+export function useComponentRuntimesByEnvironments(projectId: string, componentId: string, environmentIds: string[], enabled = true) {
+  const results = useQueries({
+    queries: environmentIds.map((envId) => ({
+      queryKey: ['componentRuntimes', envId, projectId, componentId],
+      queryFn: () => gql<{ runtimes: { items: GqlRuntime[]; pageInfo: GqlPageInfo } }>(COMPONENT_RUNTIMES_QUERY, { environmentId: envId, projectId, componentId }).then((d) => d.runtimes.items),
+      enabled: enabled && !!envId && !!projectId && !!componentId,
+    })),
+  });
+
+  const envsWithRuntimes = new Set<string>();
+  environmentIds.forEach((envId, index) => {
+    const items = results[index]?.data;
+    if (items && items.length > 0) {
+      envsWithRuntimes.add(envId);
+    }
+  });
+
+  // Surface failed per-environment requests so callers can distinguish a genuine
+  // "no runtimes" result from a fetch failure (a failed request yields undefined
+  // data, which would otherwise silently drop the environment).
+  const failed = results.find((result) => result.isError);
+
+  return {
+    envsWithRuntimes,
+    isLoading: results.some((result) => result.isLoading),
+    isError: results.some((result) => result.isError),
+    error: failed?.error ?? null,
+    refetch: () => {
+      results.forEach((result) => {
+        void result.refetch();
+      });
+    },
+  };
 }
 
 const PROJECT_RUNTIMES_QUERY = `
@@ -333,12 +377,60 @@ const PROJECT_RUNTIMES_QUERY = `
     }
   }`;
 
-export function useProjectRuntimes(envId: string, projectId: string) {
+export function useProjectRuntimes(envId: string, projectId: string, enabled = true) {
   return useQuery({
     queryKey: ['projectRuntimes', envId, projectId],
     queryFn: () => gql<{ runtimes: { items: GqlRuntime[]; pageInfo: GqlPageInfo } }>(PROJECT_RUNTIMES_QUERY, { environmentId: envId, projectId }).then((d) => d.runtimes.items),
-    enabled: !!envId && !!projectId,
+    enabled: enabled && !!envId && !!projectId,
   });
+}
+
+// Project-wide counterpart of `useComponentRuntimesByEnvironments`: determines
+// which of the supplied environments have at least one runtime registered for
+// ANY integration in the project. Used by the project-scope Moesif views, which
+// aggregate every integration's runtimes instead of targeting one integration,
+// so the environment selector must offer every environment the project is
+// deployed to. Runs one query per environment and shares its cache entries with
+// `useProjectRuntimes`.
+export function useProjectRuntimesByEnvironments(projectId: string, environmentIds: string[], enabled = true) {
+  const results = useQueries({
+    queries: environmentIds.map((envId) => ({
+      queryKey: ['projectRuntimes', envId, projectId],
+      queryFn: () => gql<{ runtimes: { items: GqlRuntime[]; pageInfo: GqlPageInfo } }>(PROJECT_RUNTIMES_QUERY, { environmentId: envId, projectId }).then((d) => d.runtimes.items),
+      enabled: enabled && !!envId && !!projectId,
+    })),
+  });
+
+  const envsWithRuntimes = new Set<string>();
+  // The runtimes themselves, keyed by environment, so callers can narrow further
+  // (e.g. the Moesif metrics view only aggregates runtimes of the technology its
+  // canvas template covers) and build per-runtime filter options without issuing
+  // a second query.
+  const runtimesByEnv: Record<string, GqlRuntime[]> = {};
+  environmentIds.forEach((envId, index) => {
+    const items = results[index]?.data;
+    runtimesByEnv[envId] = items ?? [];
+    if (items && items.length > 0) {
+      envsWithRuntimes.add(envId);
+    }
+  });
+
+  // Surface failed per-environment requests so callers can tell a genuine "no
+  // runtimes" result apart from a fetch failure (see the component-scoped hook).
+  const failed = results.find((result) => result.isError);
+
+  return {
+    envsWithRuntimes,
+    runtimesByEnv,
+    isLoading: results.some((result) => result.isLoading),
+    isError: results.some((result) => result.isError),
+    error: failed?.error ?? null,
+    refetch: () => {
+      results.forEach((result) => {
+        void result.refetch();
+      });
+    },
+  };
 }
 
 const ORG_RUNTIMES_QUERY = `
