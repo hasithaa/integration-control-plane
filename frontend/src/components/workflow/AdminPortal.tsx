@@ -143,7 +143,7 @@ export function WorkflowNameFilter({ definitions, value, onChange }: { definitio
       getOptionLabel={(d) => d.workflowType}
       isOptionEqualToValue={(a, b) => a.workflowType === b.workflowType}
       onChange={(_, v) => onChange(v)}
-      renderInput={(params) => <TextField {...params} label="Workflow name" placeholder="All workflows" />}
+      renderInput={(params) => <TextField {...params} label="Workflow Name" placeholder="All workflows" />}
     />
   );
 }
@@ -190,8 +190,8 @@ export function useTimeRangeFilter() {
       </Select>
       {timeRange === CUSTOM_RANGE && (
         <>
-          <TextField label="Start from" type="datetime-local" size="small" value={customStart} onChange={(e) => setCustomStart(e.target.value)} slotProps={{ inputLabel: { shrink: true } }} />
-          <TextField label="End on" type="datetime-local" size="small" value={customEnd} onChange={(e) => setCustomEnd(e.target.value)} slotProps={{ inputLabel: { shrink: true } }} />
+          <TextField label="Start From" type="datetime-local" size="small" value={customStart} onChange={(e) => setCustomStart(e.target.value)} slotProps={{ inputLabel: { shrink: true } }} />
+          <TextField label="End On" type="datetime-local" size="small" value={customEnd} onChange={(e) => setCustomEnd(e.target.value)} slotProps={{ inputLabel: { shrink: true } }} />
         </>
       )}
     </>
@@ -512,7 +512,7 @@ export function StartWorkflowDialog({ scope, initialWorkflowType, onClose, onToa
               setFieldErrors({});
               setStartError(null);
             }}
-            renderInput={(params) => <TextField {...params} label="Workflow name" required placeholder="Select a workflow" />}
+            renderInput={(params) => <TextField {...params} label="Workflow Name" required placeholder="Select a workflow" />}
           />
           <DefinitionsUnavailableNotice failed={definitions.failed} />
           <SubmitError message={startError} onClear={() => setStartError(null)} />

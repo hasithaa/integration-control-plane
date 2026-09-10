@@ -205,7 +205,7 @@ export default function WorkflowDetailDrawer({ scope, workflowId, onClose }: { s
       {/* The raw event history: debugging material, an overlay rather than a place in the page. */}
       <Dialog open={historyOpen} onClose={() => setHistoryOpen(false)} maxWidth="lg" fullWidth>
         <DialogTitle sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          Event history
+          Event History
           <IconButton size="small" aria-label="close event history" onClick={() => setHistoryOpen(false)}>
             <X size={16} />
           </IconButton>
@@ -241,7 +241,7 @@ export default function WorkflowDetailDrawer({ scope, workflowId, onClose }: { s
       </Dialog>
 
       <Dialog open={resetOpen} onClose={() => !resetMutation.isPending && setResetOpen(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>Reset workflow</DialogTitle>
+        <DialogTitle>Reset Workflow</DialogTitle>
         <DialogContent>
           <Stack gap={2} sx={{ pt: 0.5 }}>
             {/* Replay semantics, stated accurately per choice: steps BEFORE the point are

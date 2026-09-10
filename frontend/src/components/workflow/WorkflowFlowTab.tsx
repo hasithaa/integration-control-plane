@@ -185,12 +185,12 @@ export default function WorkflowFlowTab({
       <Stack direction="row" gap={1.5} sx={{ flexWrap: 'wrap', alignItems: 'flex-start' }}>
         {startInput !== null && (
           <Box sx={{ flex: 1, minWidth: 280 }}>
-            <StructuredValue title="Workflow input" raw={startInput} environmentId={environmentId} />
+            <StructuredValue title="Workflow Input" raw={startInput} environmentId={environmentId} />
           </Box>
         )}
         {resultRaw != null ? (
           <Box sx={{ flex: 1, minWidth: 280 }}>
-            <StructuredValue title="Workflow result" raw={resultRaw} environmentId={environmentId} />
+            <StructuredValue title="Workflow Result" raw={resultRaw} environmentId={environmentId} />
           </Box>
         ) : completedNoResult ? (
           <Box sx={{ flex: 1, minWidth: 280, alignSelf: 'center' }}>

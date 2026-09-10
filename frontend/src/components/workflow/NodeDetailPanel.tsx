@@ -22,10 +22,8 @@ import { useState } from 'react';
 import type { ExecutionGraphNode } from '../../api/workflows';
 import StructuredValue from './StructuredValue';
 import { formatDuration, humanizeKey, parseModelCall, splitQualifiedName, type ModelCallView, type NodeExecutionDetail } from './helpers';
-import { StatusChip, WorkflowIdLink } from './shared';
+import { SectionCard, StatusChip, WorkflowIdLink } from './shared';
 import { typeLabel } from './graphVisuals';
-
-const quietBoxSx = { px: 1.5, py: 1, borderRadius: 1, border: '1px solid', borderColor: 'divider', bgcolor: 'action.hover' } as const;
 
 /**
  * A model call, told as a conversation rather than as its envelope: the newest message the model
@@ -37,55 +35,45 @@ function ModelCallSections({ view, detail, environmentId }: { view: ModelCallVie
   return (
     <>
       {view.lastMessage && (
-        <Stack gap={0.5}>
-          <Stack direction="row" alignItems="baseline" justifyContent="space-between">
-            <Typography variant="caption" sx={{ fontWeight: 700, color: 'text.secondary' }}>
-              Answering
-            </Typography>
-            <Typography variant="caption" sx={{ color: 'text.disabled' }}>
-              {view.earlierCount > 0 ? `${view.earlierCount} earlier ${view.earlierCount === 1 ? 'message' : 'messages'} · ` : ''}
-              {view.toolsOffered} {view.toolsOffered === 1 ? 'tool' : 'tools'} offered
-            </Typography>
-          </Stack>
-          <Box sx={quietBoxSx}>
+        <Stack gap={1}>
+          <SectionCard
+            title="Answering"
+            badge={
+              <Typography variant="caption" sx={{ color: 'text.disabled' }}>
+                {view.earlierCount > 0 ? `${view.earlierCount} earlier ${view.earlierCount === 1 ? 'message' : 'messages'} · ` : ''}
+                {view.toolsOffered} {view.toolsOffered === 1 ? 'tool' : 'tools'} offered
+              </Typography>
+            }>
             <Typography variant="caption" sx={{ display: 'block', color: 'text.disabled', textTransform: 'uppercase', fontSize: 9.5, letterSpacing: 0.5 }}>
               {view.lastMessage.role}
             </Typography>
             <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
               {view.lastMessage.text}
             </Typography>
-          </Box>
-          <Button size="small" variant="text" onClick={() => setShowRaw((v) => !v)} sx={{ alignSelf: 'flex-start', textTransform: 'none', px: 0.5, minWidth: 0 }}>
-            {showRaw ? 'Hide full input' : 'Show full input'}
+          </SectionCard>
+          <Button size="small" variant="text" onClick={() => setShowRaw((v) => !v)} sx={{ alignSelf: 'flex-start', px: 0.5, minWidth: 0 }}>
+            {showRaw ? 'Hide Full Input' : 'Show Full Input'}
           </Button>
-          {showRaw && detail.input !== null && <StructuredValue title="Full input" raw={detail.input} environmentId={environmentId} />}
+          {showRaw && detail.input !== null && <StructuredValue title="Full Input" raw={detail.input} environmentId={environmentId} />}
         </Stack>
       )}
       {view.assistantText !== null && (
-        <Stack gap={0.5}>
-          <Typography variant="caption" sx={{ fontWeight: 700, color: 'text.secondary' }}>
-            Replied
+        <SectionCard title="Replied">
+          <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+            {view.assistantText}
           </Typography>
-          <Box sx={quietBoxSx}>
-            <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
-              {view.assistantText}
-            </Typography>
-          </Box>
-        </Stack>
+        </SectionCard>
       )}
       {view.toolCalls.length > 0 && (
-        <Stack gap={0.5}>
-          <Typography variant="caption" sx={{ fontWeight: 700, color: 'text.secondary' }}>
-            Called
-          </Typography>
-          {view.toolCalls.map((call, i) => (
-            <Box key={`${call.name}-${i}`} sx={quietBoxSx}>
-              <Typography variant="body2" sx={{ fontFamily: 'monospace', fontSize: 12, wordBreak: 'break-word' }}>
+        <SectionCard title="Called" badge={<Typography variant="caption" sx={{ color: 'text.disabled' }}>{`${view.toolCalls.length} ${view.toolCalls.length === 1 ? 'tool' : 'tools'}`}</Typography>}>
+          <Stack gap={0.75}>
+            {view.toolCalls.map((call, i) => (
+              <Typography key={`${call.name}-${i}`} variant="body2" sx={{ fontFamily: 'monospace', fontSize: 12, wordBreak: 'break-word' }}>
                 {call.name}({call.args})
               </Typography>
-            </Box>
-          ))}
-        </Stack>
+            ))}
+          </Stack>
+        </SectionCard>
       )}
       {view.structuredResult && detail.result !== null && <StructuredValue title="Result" raw={detail.result} environmentId={environmentId} />}
     </>
@@ -98,13 +86,13 @@ export default function NodeDetailPanel({ node, detail, hasHistory, onClose, ful
   const modelCall = parseModelCall(detail);
 
   return (
-    <Box sx={{ width: fullWidth ? '100%' : { xs: '100%', md: '45%' }, flexShrink: 0, border: '1px solid', borderColor: 'divider', borderRadius: 1, bgcolor: 'background.paper', alignSelf: 'stretch' }}>
-      <Stack direction="row" alignItems="flex-start" justifyContent="space-between" gap={1} sx={{ px: 2, py: 1.5, borderBottom: '1px solid', borderColor: 'divider' }}>
-        <Stack sx={{ minWidth: 0 }}>
-          <Typography variant="subtitle2" sx={{ fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={node.label}>
-            {task ?? node.label}
-          </Typography>
-          <Stack direction="row" alignItems="center" gap={1} sx={{ mt: 0.5 }}>
+    // The same card as the run's Execution summary beside it: a step's details are the run's
+    // details at one more level of zoom, so they must not look like a different kind of box.
+    <Box sx={{ width: fullWidth ? '100%' : { xs: '100%', md: '45%' }, flexShrink: 0, alignSelf: 'stretch' }}>
+      <SectionCard
+        title={task ?? node.label}
+        badge={
+          <Stack direction="row" alignItems="center" gap={1} sx={{ minWidth: 0 }}>
             <Typography variant="caption" sx={{ color: 'text.secondary' }}>
               {typeLabel(node.type)}
             </Typography>
@@ -116,76 +104,77 @@ export default function NodeDetailPanel({ node, detail, hasHistory, onClose, ful
               </Typography>
             )}
           </Stack>
-        </Stack>
-        <IconButton size="small" aria-label="close node details" onClick={onClose}>
-          <X size={16} />
-        </IconButton>
-      </Stack>
-
-      <Stack gap={2} sx={{ p: 2 }}>
-        {detail.childWorkflowId && environmentId && (
-          <Stack direction="row" gap={1} alignItems="baseline">
-            <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-              Instance
+        }
+        actions={
+          <IconButton size="small" aria-label="close node details" onClick={onClose}>
+            <X size={16} />
+          </IconButton>
+        }>
+        <Stack gap={2}>
+          {detail.childWorkflowId && environmentId && (
+            <Stack direction="row" gap={1} alignItems="baseline">
+              <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+                Instance
+              </Typography>
+              <WorkflowIdLink workflowId={detail.childWorkflowId} environmentId={environmentId} truncate copy />
+            </Stack>
+          )}
+          {detail.callConfig && Object.keys(detail.callConfig).length > 0 && (
+            <Stack direction="row" gap={1} sx={{ flexWrap: 'wrap' }}>
+              {Object.entries(detail.callConfig).map(([key, value]) => {
+                const label = key === 'stepId' ? 'Step' : key === 'retryOnError' ? 'Retries on Error' : humanizeKey(key);
+                const text = typeof value === 'boolean' ? (value ? 'yes' : 'no') : String(value);
+                return (
+                  <Typography key={key} variant="caption" sx={{ px: 1, py: 0.25, border: '1px solid', borderColor: 'divider', borderRadius: 1, color: 'text.secondary' }}>
+                    {label}:{' '}
+                    <Box component="span" sx={{ fontFamily: key === 'stepId' ? 'monospace' : undefined, color: 'text.primary' }}>
+                      {text}
+                    </Box>
+                  </Typography>
+                );
+              })}
+            </Stack>
+          )}
+          {!hasHistory ? (
+            <Typography variant="body2" sx={{ color: 'text.secondary' }}>
+              History is not available, so this step's input and result can't be shown.
             </Typography>
-            <WorkflowIdLink workflowId={detail.childWorkflowId} environmentId={environmentId} truncate copy />
-          </Stack>
-        )}
-        {detail.callConfig && Object.keys(detail.callConfig).length > 0 && (
-          <Stack direction="row" gap={1} sx={{ flexWrap: 'wrap' }}>
-            {Object.entries(detail.callConfig).map(([key, value]) => {
-              const label = key === 'stepId' ? 'Step' : key === 'retryOnError' ? 'Retries on error' : humanizeKey(key);
-              const text = typeof value === 'boolean' ? (value ? 'yes' : 'no') : String(value);
-              return (
-                <Typography key={key} variant="caption" sx={{ px: 1, py: 0.25, border: '1px solid', borderColor: 'divider', borderRadius: 1, color: 'text.secondary' }}>
-                  {label}:{' '}
-                  <Box component="span" sx={{ fontFamily: key === 'stepId' ? 'monospace' : undefined, color: 'text.primary' }}>
-                    {text}
-                  </Box>
-                </Typography>
-              );
-            })}
-          </Stack>
-        )}
-        {!hasHistory ? (
-          <Typography variant="body2" sx={{ color: 'text.secondary' }}>
-            History is not available, so this step's input and result can't be shown.
-          </Typography>
-        ) : (
-          <>
-            {detail.error && (
-              <Box sx={{ px: 1.5, py: 1, borderRadius: 1, border: '1px solid', borderColor: 'error.main', color: 'error.main', bgcolor: (t) => alpha(t.palette.error.main, 0.08) }}>
-                <Typography variant="caption" sx={{ fontWeight: 700, display: 'block' }}>
-                  Error
-                </Typography>
-                <Typography variant="body2" sx={{ wordBreak: 'break-word' }}>
-                  {detail.error}
-                </Typography>
-              </Box>
-            )}
-            {modelCall ? (
-              <ModelCallSections view={modelCall} detail={detail} environmentId={environmentId} />
-            ) : (
-              <>
-                {detail.input !== null ? (
-                  <StructuredValue title="Input" raw={detail.input} environmentId={environmentId} />
-                ) : (
-                  <Typography variant="body2" sx={{ color: 'text.secondary' }}>
-                    No input recorded for this step.
+          ) : (
+            <>
+              {detail.error && (
+                <Box sx={{ px: 1.5, py: 1, borderRadius: 1, border: '1px solid', borderColor: 'error.main', color: 'error.main', bgcolor: (t) => alpha(t.palette.error.main, 0.08) }}>
+                  <Typography variant="caption" sx={{ fontWeight: 700, display: 'block' }}>
+                    Error
                   </Typography>
-                )}
-                {detail.result !== null ? (
-                  <StructuredValue title="Result" raw={detail.result} environmentId={environmentId} />
-                ) : (
-                  <Typography variant="body2" sx={{ color: 'text.secondary' }}>
-                    {detail.status === 'COMPLETED' ? 'This step completed with no return value.' : detail.status ? 'No result — this step has not completed.' : 'No result recorded for this step.'}
+                  <Typography variant="body2" sx={{ wordBreak: 'break-word' }}>
+                    {detail.error}
                   </Typography>
-                )}
-              </>
-            )}
-          </>
-        )}
-      </Stack>
+                </Box>
+              )}
+              {modelCall ? (
+                <ModelCallSections view={modelCall} detail={detail} environmentId={environmentId} />
+              ) : (
+                <>
+                  {detail.input !== null ? (
+                    <StructuredValue title="Input" raw={detail.input} environmentId={environmentId} />
+                  ) : (
+                    <Typography variant="body2" sx={{ color: 'text.secondary' }}>
+                      No input recorded for this step.
+                    </Typography>
+                  )}
+                  {detail.result !== null ? (
+                    <StructuredValue title="Result" raw={detail.result} environmentId={environmentId} />
+                  ) : (
+                    <Typography variant="body2" sx={{ color: 'text.secondary' }}>
+                      {detail.status === 'COMPLETED' ? 'This step completed with no return value.' : detail.status ? 'No result — this step has not completed.' : 'No result recorded for this step.'}
+                    </Typography>
+                  )}
+                </>
+              )}
+            </>
+          )}
+        </Stack>
+      </SectionCard>
     </Box>
   );
 }

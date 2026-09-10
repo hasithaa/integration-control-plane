@@ -21,8 +21,9 @@ import { Copy } from '@wso2/oxygen-ui-icons-react';
 import type { ReactElement, ReactNode } from 'react';
 import type { WorkflowInstance } from '../../api/workflows';
 
-import { displayWorkflowId, formatDuration, formatTime, jsonPretty } from './helpers';
-import { DebugInfoIcon, StatusChip } from './shared';
+import { displayWorkflowId, formatDuration, jsonPretty } from './helpers';
+import { DebugInfoIcon, DetailRow, SectionCard, StatusChip } from './shared';
+import DateTime from '../DateTime';
 
 /**
  * What happened to this run, extracted: the raw instances.get payload is a debugging document —
@@ -51,49 +52,40 @@ export default function ExecutionSummary({
   const durationMs = Number.isFinite(startMs) && Number.isFinite(closeMs) ? closeMs - startMs : null;
   const errorMessage = typeof info['errorMessage'] === 'string' ? (info['errorMessage'] as string) : null;
 
-  const row = (label: string, value: ReactNode): ReactNode =>
-    value == null || value === '' ? null : (
-      <Stack key={label} direction="row" gap={1} alignItems="baseline" sx={{ minWidth: 0 }}>
-        <Typography variant="caption" sx={{ color: 'text.secondary', width: 88, flexShrink: 0 }}>
-          {label}
+  // The same card as every section of the drawers — a run's summary is not a lesser kind of fact
+  // than a task's fields. Status and duration ride beside the title; the debugging controls are
+  // header actions.
+  const row = (label: string, value: ReactNode): ReactNode => (value == null || value === '' ? null : <DetailRow label={label}>{value}</DetailRow>);
+  const badge = (
+    <Stack direction="row" alignItems="center" gap={1}>
+      {status && <StatusChip status={status} />}
+      {durationMs != null && (
+        <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+          {formatDuration(durationMs)}
         </Typography>
-        <Typography variant="body2" component="div" sx={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' }}>
-          {value}
-        </Typography>
-      </Stack>
-    );
+      )}
+    </Stack>
+  );
+  const actions = (
+    <>
+      {onOpenHistory && (
+        <Tooltip title="Debug information: the raw event history">
+          <IconButton size="small" aria-label="open debug information" onClick={onOpenHistory}>
+            <DebugInfoIcon size={14} />
+          </IconButton>
+        </Tooltip>
+      )}
+      <Tooltip title="Copy the raw execution info">
+        <IconButton size="small" aria-label="copy raw execution info" onClick={() => navigator.clipboard.writeText(jsonPretty(info))}>
+          <Copy size={14} />
+        </IconButton>
+      </Tooltip>
+    </>
+  );
 
   return (
-    <Box sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 1, bgcolor: 'background.paper' }}>
-      <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ px: 1.5, py: 1, borderBottom: '1px solid', borderColor: 'divider' }}>
-        <Stack direction="row" alignItems="center" gap={1}>
-          <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
-            Execution
-          </Typography>
-          {status && <StatusChip status={status} />}
-          {durationMs != null && (
-            <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-              {formatDuration(durationMs)}
-            </Typography>
-          )}
-        </Stack>
-        <Stack direction="row" alignItems="center" gap={0.25}>
-          {onOpenHistory && (
-            <Tooltip title="Debug information: the raw event history">
-              <IconButton size="small" aria-label="open debug information" onClick={onOpenHistory}>
-                <DebugInfoIcon size={14} />
-              </IconButton>
-            </Tooltip>
-          )}
-          <Tooltip title="Copy the raw execution info">
-            <IconButton size="small" aria-label="copy raw execution info" onClick={() => navigator.clipboard.writeText(jsonPretty(info))}>
-              <Copy size={14} />
-            </IconButton>
-          </Tooltip>
-        </Stack>
-      </Stack>
-
-      <Stack gap={0.75} sx={{ px: 1.5, py: 1.25 }}>
+    <SectionCard title="Execution" badge={badge} actions={actions}>
+      <Stack gap={1}>
         {row(
           'Instance ID',
           info.workflowId ? (
@@ -109,10 +101,10 @@ export default function ExecutionSummary({
             </Stack>
           ) : null,
         )}
-        {row('Workflow name', info.workflowType)}
-        {row('Started', Number.isFinite(startMs) ? formatTime(new Date(startMs).toISOString()) : null)}
-        {row('Closed', Number.isFinite(closeMs) ? formatTime(new Date(closeMs).toISOString()) : null)}
-        {row('Task queue', info.taskQueue)}
+        {row('Workflow Name', info.workflowType)}
+        {row('Started', Number.isFinite(startMs) ? <DateTime value={startMs} /> : null)}
+        {row('Closed', Number.isFinite(closeMs) ? <DateTime value={closeMs} /> : null)}
+        {row('Task Queue', info.taskQueue)}
         {errorMessage && (
           <Box sx={{ px: 1.25, py: 0.75, borderRadius: 1, border: '1px solid', borderColor: 'error.main', color: 'error.main', bgcolor: (t) => alpha(t.palette.error.main, 0.08) }}>
             <Typography variant="body2" sx={{ wordBreak: 'break-word' }}>
@@ -121,6 +113,6 @@ export default function ExecutionSummary({
           </Box>
         )}
       </Stack>
-    </Box>
+    </SectionCard>
   );
 }
