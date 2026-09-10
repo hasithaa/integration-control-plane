@@ -18,7 +18,7 @@
 
 import { Alert, Box, Button, Checkbox, Chip, CircularProgress, Dialog, DialogActions, DialogContent, DialogTitle, IconButton, ListingTable, MenuItem, Snackbar, Stack, TextField, Tooltip, Typography } from '@wso2/oxygen-ui';
 import SearchField from '../SearchField';
-import { RefreshCw, UserCheck, Wrench } from '@wso2/oxygen-ui-icons-react';
+import { ListChecks, RefreshCw, UserCheck, Wrench } from '@wso2/oxygen-ui-icons-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState, type ReactNode } from 'react';
 import SchemaFormFields from './SchemaFormFields';
@@ -178,7 +178,7 @@ export function WorkItemTable({ items, onOpen, environmentId, integrationLabel, 
           {selection && (
             <ListingTable.Cell sx={{ width: 40, px: 1 }}>
               {/* Selects the selectable — pending reviews. Tasks are completed one at a time
-                  through their own forms, so they take no checkbox rather than a disabled one. */}
+                  through their own forms, so their boxes below are disabled and say so. */}
               <Checkbox size="small" checked={selection.allSelected} indeterminate={!selection.allSelected && selection.selected.size > 0} onChange={selection.onToggleAll} inputProps={{ 'aria-label': 'select all pending reviews' }} />
             </ListingTable.Cell>
           )}
@@ -198,7 +198,17 @@ export function WorkItemTable({ items, onOpen, environmentId, integrationLabel, 
             <ListingTable.Row key={`${w.kind}:${w.id}`} onClick={() => onOpen(w)} sx={{ cursor: 'pointer', '&:hover': { bgcolor: 'action.hover' } }}>
               {selection && (
                 <ListingTable.Cell sx={{ width: 40, px: 1 }} onClick={(e) => e.stopPropagation()}>
-                  {selection.selectable(w) && <Checkbox size="small" checked={selection.selected.has(w.id)} onChange={() => selection.onToggle(w.id)} inputProps={{ 'aria-label': `select ${w.title}` }} />}
+                  {selection.selectable(w) ? (
+                    <Checkbox size="small" checked={selection.selected.has(w.id)} onChange={() => selection.onToggle(w.id)} inputProps={{ 'aria-label': `select ${w.title}` }} />
+                  ) : (
+                    // Every row gets a box while selecting, so the column reads the same all the way
+                    // down; the ones that cannot be chosen say why on hover.
+                    <Tooltip title={w.kind === 'task' ? 'Human tasks are completed one at a time, through their own form.' : 'Only pending reviews can be decided in bulk.'}>
+                      <span>
+                        <Checkbox size="small" disabled inputProps={{ 'aria-label': `${w.title} cannot be selected` }} />
+                      </span>
+                    </Tooltip>
+                  )}
                 </ListingTable.Cell>
               )}
               <ListingTable.Cell>
@@ -280,6 +290,10 @@ function WorkQueue({
   // Bulk retry lives here, on a selection — retrying several failed reviews in one go is the
   // actual use, since workflows do not run reviews in parallel and a per-instance bulk always
   // found exactly one. Only pending reviews are selectable.
+  // Bulk decisions are a MODE, entered on purpose: by default the queue shows no checkboxes at
+  // all. Checkboxes that appeared on some rows and not others, with nothing saying why, read as
+  // a glitch; a "Select reviews" step makes the intent explicit and gives the explanation a place.
+  const [selecting, setSelecting] = useState(false);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [bulkOpen, setBulkOpen] = useState(false);
   const [bulkAction, setBulkAction] = useState<'retry' | 'fail'>('retry');
@@ -362,6 +376,7 @@ function WorkQueue({
     setBulkBusy(false);
     setBulkOpen(false);
     setSelectedIds([]);
+    setSelecting(false);
     invalidateWorkflowQueries(qc, scope.environmentId);
     onToast(
       errored
@@ -421,6 +436,15 @@ function WorkQueue({
             Clear
           </Button>
         )}
+        {!selecting && (
+          <Tooltip title={selectable.length > 0 ? `Choose several pending reviews and retry or fail them together. ${selectable.length} can be selected.` : 'Bulk decisions apply to pending reviews; there are none in this list.'}>
+            <span style={{ marginLeft: 'auto' }}>
+              <Button size="small" variant="outlined" startIcon={<ListChecks size={14} />} disabled={selectable.length === 0} onClick={() => setSelecting(true)}>
+                Select reviews…
+              </Button>
+            </span>
+          </Tooltip>
+        )}
       </Stack>
 
       <RefreshingNote show={queueRefreshing} fetchedAt={queueUpdatedAt} />
@@ -436,15 +460,18 @@ function WorkQueue({
         <Typography sx={emptySx}>{status === 'All' ? 'No tasks.' : `No ${status.toLowerCase()} tasks.`}</Typography>
       ) : (
         <>
-          {selected.size > 0 && (
-            <Stack direction="row" alignItems="center" gap={1.5} sx={{ px: 1.5, py: 1, mb: 1, border: '1px solid', borderColor: 'primary.main', borderRadius: 1, bgcolor: 'action.selected' }}>
-              <Typography variant="body2" sx={{ flex: 1 }}>
-                {selected.size} review{selected.size === 1 ? '' : 's'} selected
+          {selecting && (
+            <Stack direction="row" alignItems="center" gap={1.5} flexWrap="wrap" sx={{ px: 1.5, py: 1, mb: 1, border: '1px solid', borderColor: 'primary.main', borderRadius: 1, bgcolor: 'action.selected' }}>
+              <Typography variant="body2" sx={{ flex: 1, minWidth: 240 }}>
+                {selected.size > 0 ? `${selected.size} of ${selectable.length} pending review${selectable.length === 1 ? '' : 's'} selected.` : `Choose the pending reviews to decide together — ${selectable.length} can be selected.`}{' '}
+                <Typography component="span" variant="body2" color="text.secondary">
+                  Human tasks are completed one at a time, through their own form.
+                </Typography>
               </Typography>
               <Button
                 size="small"
                 variant="contained"
-                disabled={bulkBusy}
+                disabled={bulkBusy || selected.size === 0}
                 onClick={() => {
                   setBulkAction('retry');
                   setBulkOpen(true);
@@ -455,15 +482,22 @@ function WorkQueue({
                 size="small"
                 variant="outlined"
                 color="error"
-                disabled={bulkBusy}
+                disabled={bulkBusy || selected.size === 0}
                 onClick={() => {
                   setBulkAction('fail');
                   setBulkOpen(true);
                 }}>
                 Fail Selected
               </Button>
-              <Button size="small" variant="text" disabled={bulkBusy} onClick={() => setSelectedIds([])}>
-                Clear
+              <Button
+                size="small"
+                variant="text"
+                disabled={bulkBusy}
+                onClick={() => {
+                  setSelectedIds([]);
+                  setSelecting(false);
+                }}>
+                Done
               </Button>
             </Stack>
           )}
@@ -472,7 +506,9 @@ function WorkQueue({
             onOpen={openItem}
             environmentId={scope.environmentId}
             integrationLabel={multi ? (q) => ownerLabel(scope, q) : undefined}
-            selection={{ selectable: (w) => w.kind === 'review' && taskDisplayStatus(w.status) === 'PENDING', selected, onToggle: toggleSelected, onToggleAll: toggleAll, allSelected: selectable.length > 0 && selected.size === selectable.length }}
+            selection={
+              selecting ? { selectable: (w) => w.kind === 'review' && taskDisplayStatus(w.status) === 'PENDING', selected, onToggle: toggleSelected, onToggleAll: toggleAll, allSelected: selectable.length > 0 && selected.size === selectable.length } : undefined
+            }
           />
           <ListFooter count={items.length} singular="item" plural="items" hasMore={hasMore} loadingMore={query.isFetchingNextPage} onLoadMore={loadMore} />
         </>
