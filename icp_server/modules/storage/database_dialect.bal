@@ -83,6 +83,28 @@ public isolated function convertUtcToDbDateTime(time:Utc utcTime) returns string
     }
 }
 
+// Inverse of convertUtcToDbDateTime.
+//
+// Timestamp columns are naive (TIMESTAMP / DATETIME2, no zone) and the values written
+// into them are UTC wall-clock. A naive value carries no zone, so a driver that is asked
+// for an instant has to assume one, and the MySQL and MSSQL connectors assume the JVM's
+// default zone - which shifts the result by the server's UTC offset. Binding these
+// columns as time:Civil and attaching the zero offset here keeps the round trip exact
+// regardless of the host's timezone.
+public isolated function convertDbDateTimeToUtc(time:Civil civilTime) returns time:Utc|error {
+    time:Civil utcCivil = civilTime;
+    utcCivil.utcOffset = {hours: 0, minutes: 0};
+    return time:utcFromCivil(utcCivil);
+}
+
+// "Now" as a dialect-appropriate SQL literal in UTC, for comparing against columns that
+// store UTC wall-clock. Use this instead of CURRENT_TIMESTAMP in such comparisons: the
+// database server evaluates CURRENT_TIMESTAMP in its own timezone, which would offset the
+// comparison by the difference between that timezone and UTC.
+public isolated function utcNowSqlLiteral() returns string|error {
+    return timestampCast(check convertUtcToDbDateTime(time:utcNow()));
+}
+
 // Get database-specific expression to convert a timestamp column to Unix epoch seconds
 // MySQL/H2: UNIX_TIMESTAMP(column)
 // MSSQL: DATEDIFF_BIG(SECOND, '1970-01-01 00:00:00', column)

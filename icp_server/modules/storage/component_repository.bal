@@ -379,14 +379,67 @@ public isolated function getComponentByProjectAndHandler(string projectId, strin
     return mapToComponent(componentRecords[0]);
 }
 
-// Retrieve whether the Moesif metrics dashboards have been created for a
-// component. Returns false when the component does not exist or the flag is unset.
-public isolated function getComponentMoesifDashboardsCreated(string componentId) returns boolean|error {
+// Records whether the Moesif metrics dashboards have been created for a specific
+// environment. Upserts into environment_moesif_config keyed by environment_id.
+// Returns the number of affected rows.
+public isolated function updateComponentMoesifDashboardsCreated(string environmentId, boolean created) returns int|error {
+    sql:ExecutionResult result;
+    if dbType == MSSQL {
+        result = check dbClient->execute(`
+            MERGE INTO environment_moesif_config AS target
+            USING (VALUES (${environmentId}, ${created}))
+                   AS source (environment_id, dashboards_created)
+            ON (target.environment_id = source.environment_id)
+            WHEN MATCHED THEN
+                UPDATE SET dashboards_created = source.dashboards_created, updated_at = GETDATE()
+            WHEN NOT MATCHED THEN
+                INSERT (environment_id, dashboards_created)
+                VALUES (source.environment_id, source.dashboards_created);
+        `);
+    } else if dbType == ORACLE {
+        result = check dbClient->execute(`
+            MERGE INTO environment_moesif_config target
+            USING (SELECT ${environmentId} AS environment_id, ${created} AS dashboards_created FROM dual) source
+            ON (target.environment_id = source.environment_id)
+            WHEN MATCHED THEN
+                UPDATE SET dashboards_created = source.dashboards_created, updated_at = CURRENT_TIMESTAMP
+            WHEN NOT MATCHED THEN
+                INSERT (environment_id, dashboards_created)
+                VALUES (source.environment_id, source.dashboards_created)
+        `);
+    } else if dbType == POSTGRESQL {
+        result = check dbClient->execute(`
+            INSERT INTO environment_moesif_config (environment_id, dashboards_created)
+            VALUES (${environmentId}, ${created})
+            ON CONFLICT (environment_id) DO UPDATE SET
+                dashboards_created = EXCLUDED.dashboards_created,
+                updated_at = CURRENT_TIMESTAMP
+        `);
+    } else {
+        result = check dbClient->execute(`
+            INSERT INTO environment_moesif_config (environment_id, dashboards_created)
+            VALUES (${environmentId}, ${created})
+            ON DUPLICATE KEY UPDATE
+                dashboards_created = VALUES(dashboards_created),
+                updated_at = CURRENT_TIMESTAMP
+        `);
+    }
+    return result.affectedRowCount ?: 0;
+}
+
+// Retrieve the Moesif Management API key stored for an environment. This key is
+// the only credential needed to load either canvas: the short-lived canvas token
+// is minted from it, and the canvas resolves the Moesif organization + application
+// from that token's claims. A Moesif application maps to a specific environment,
+// so the key is stored per environment and is shared by every integration in it
+// and by both the metrics and the logs view. Returns () when no row exists or no
+// key has been stored.
+public isolated function getEnvironmentMoesifManagementKey(string environmentId) returns string?|error {
     sql:ParameterizedQuery selectQuery =
-        `SELECT dashboards_created FROM component_moesif_config WHERE component_id = ${componentId}`;
-    boolean|sql:Error result = dbClient->queryRow(selectQuery);
+        `SELECT management_key FROM environment_moesif_config WHERE environment_id = ${environmentId}`;
+    string?|sql:Error result = dbClient->queryRow(selectQuery);
     if result is sql:NoRowsError {
-        return false;
+        return ();
     }
     if result is sql:Error {
         return result;
@@ -394,126 +447,158 @@ public isolated function getComponentMoesifDashboardsCreated(string componentId)
     return result;
 }
 
-// Records whether the Moesif metrics dashboards have been created for a
-// component. Upserts into component_moesif_config. Returns the number of affected rows.
-public isolated function updateComponentMoesifDashboardsCreated(string componentId, boolean created) returns int|error {
-    sql:ExecutionResult result;
-    if dbType == MSSQL {
-        result = check dbClient->execute(`
-            MERGE INTO component_moesif_config AS target
-            USING (VALUES (${componentId}, ${created}))
-                   AS source (component_id, dashboards_created)
-            ON (target.component_id = source.component_id)
-            WHEN MATCHED THEN
-                UPDATE SET dashboards_created = source.dashboards_created, updated_at = GETDATE()
-            WHEN NOT MATCHED THEN
-                INSERT (component_id, dashboards_created)
-                VALUES (source.component_id, source.dashboards_created);
-        `);
-    } else if dbType == ORACLE {
-        result = check dbClient->execute(`
-            MERGE INTO component_moesif_config target
-            USING (SELECT ${componentId} AS component_id, ${created} AS dashboards_created FROM dual) source
-            ON (target.component_id = source.component_id)
-            WHEN MATCHED THEN
-                UPDATE SET dashboards_created = source.dashboards_created, updated_at = CURRENT_TIMESTAMP
-            WHEN NOT MATCHED THEN
-                INSERT (component_id, dashboards_created)
-                VALUES (source.component_id, source.dashboards_created)
-        `);
-    } else if dbType == POSTGRESQL {
-        result = check dbClient->execute(`
-            INSERT INTO component_moesif_config (component_id, dashboards_created)
-            VALUES (${componentId}, ${created})
-            ON CONFLICT (component_id) DO UPDATE SET
-                dashboards_created = EXCLUDED.dashboards_created,
-                updated_at = CURRENT_TIMESTAMP
-        `);
-    } else {
-        result = check dbClient->execute(`
-            INSERT INTO component_moesif_config (component_id, dashboards_created)
-            VALUES (${componentId}, ${created})
-            ON DUPLICATE KEY UPDATE
-                dashboards_created = VALUES(dashboards_created),
-                updated_at = CURRENT_TIMESTAMP
-        `);
-    }
-    return result.affectedRowCount ?: 0;
+
+// The Moesif organization + Collector Application ids stored for an environment.
+// Both metrics and logs share the one application per environment, so a setup
+// flow must never repoint one feature at a different application while the other
+// stays configured against the old one.
+type EnvironmentMoesifApplication record {|
+    string? canvas_org_id;
+    string? canvas_app_id;
+|};
+
+// Which of the two Moesif setup flows an upsert is running for. Metrics and logs
+// are configured independently and each flips only its own flag, so the flow
+// selects the column to set while everything else about the upsert is shared.
+enum MoesifSetupFlow {
+    MOESIF_METRICS_FLOW,
+    MOESIF_LOGS_FLOW
 }
 
-// Persist the Moesif embed details against a component after the metrics
-// workspace is created: the workspace id (used to build the embed URL and mint
-// workspace access tokens) and the Management API key (used to mint short-lived
-// workspace access tokens on demand). Also flips dashboards_created to TRUE.
-// Upserts into component_moesif_config. Returns the number of affected rows.
-public isolated function updateComponentMoesifDashboardDetails(string componentId, string workspaceId,
+// Persist the Moesif canvas embed details for an environment after one of the two
+// setup flows completes: the Moesif organization id + application id (used to build
+// the canvas iframe src) and the Management API key (kept so the app list can be
+// re-fetched when editing and so a short-lived canvas token can be minted from it
+// on demand). The key is shared by metrics and logs, but the two are separate setup
+// flows, so this flips ONLY the calling flow's flag and leaves the other one
+// untouched (it defaults to FALSE on first insert and is preserved on update).
+//
+// The metrics canvas and the logs canvas resolve against the same Moesif
+// organization + application, so configuring one feature with a key issued for a
+// different application would leave the other pointing at credentials that no
+// longer match. Guarding that with a plain SELECT before the upsert would leave a
+// window in which two concurrent setup flows both read "unconfigured" and then both
+// wrote, so the whole check-then-write runs in one transaction:
+//
+//  1. Claim the row if this environment has no Moesif config yet. Every dialect's
+//     form below is an atomic insert-or-ignore on the environment_id primary key,
+//     so concurrent flows cannot both insert — the loser falls through to step 2
+//     and validates against whatever the winner stored.
+//  2. Re-read the identifiers under a row lock, so no other flow can slip a
+//     different application in between the check and the write.
+//  3. Reject a mismatch before either flag is committed. The environment must be
+//     reconfigured from scratch to move to another Moesif application.
+//  4. Write the identifiers, the key and this flow's flag against the locked row.
+//
+// Returns the number of affected rows.
+isolated function upsertEnvironmentMoesifConfig(string environmentId, string orgId, string appId,
+        string managementKey, MoesifSetupFlow flow) returns int|error {
+    string trimmedOrgId = orgId.trim();
+    string trimmedAppId = appId.trim();
+    int affectedRows = 0;
+
+    transaction {
+        // 1. Insert the row only if this environment has no Moesif config yet.
+        sql:ParameterizedQuery claimQuery;
+        if dbType == MSSQL {
+            claimQuery = `
+                MERGE INTO environment_moesif_config WITH (HOLDLOCK) AS target
+                USING (VALUES (${environmentId}, ${trimmedOrgId}, ${trimmedAppId}))
+                       AS source (environment_id, canvas_org_id, canvas_app_id)
+                ON (target.environment_id = source.environment_id)
+                WHEN NOT MATCHED THEN
+                    INSERT (environment_id, canvas_org_id, canvas_app_id)
+                    VALUES (source.environment_id, source.canvas_org_id, source.canvas_app_id);
+            `;
+        } else if dbType == ORACLE {
+            claimQuery = `
+                MERGE INTO environment_moesif_config target
+                USING (SELECT ${environmentId} AS environment_id, ${trimmedOrgId} AS canvas_org_id,
+                              ${trimmedAppId} AS canvas_app_id FROM dual) source
+                ON (target.environment_id = source.environment_id)
+                WHEN NOT MATCHED THEN
+                    INSERT (environment_id, canvas_org_id, canvas_app_id)
+                    VALUES (source.environment_id, source.canvas_org_id, source.canvas_app_id)
+            `;
+        } else if dbType == POSTGRESQL {
+            claimQuery = `
+                INSERT INTO environment_moesif_config (environment_id, canvas_org_id, canvas_app_id)
+                VALUES (${environmentId}, ${trimmedOrgId}, ${trimmedAppId})
+                ON CONFLICT (environment_id) DO NOTHING
+            `;
+        } else {
+            // MySQL / H2: a self-assignment keeps the conflict branch a no-op, so an
+            // existing row is left exactly as the other flow wrote it.
+            claimQuery = `
+                INSERT INTO environment_moesif_config (environment_id, canvas_org_id, canvas_app_id)
+                VALUES (${environmentId}, ${trimmedOrgId}, ${trimmedAppId})
+                ON DUPLICATE KEY UPDATE environment_id = environment_id
+            `;
+        }
+        _ = check dbClient->execute(claimQuery);
+
+        // 2. Re-read the now-guaranteed-present row under a row lock.
+        sql:ParameterizedQuery lockQuery;
+        if dbType == MSSQL {
+            lockQuery = `SELECT canvas_org_id, canvas_app_id FROM environment_moesif_config
+                WITH (UPDLOCK, ROWLOCK) WHERE environment_id = ${environmentId}`;
+        } else {
+            lockQuery = `SELECT canvas_org_id, canvas_app_id FROM environment_moesif_config
+                WHERE environment_id = ${environmentId} FOR UPDATE`;
+        }
+        EnvironmentMoesifApplication existing = check dbClient->queryRow(lockQuery);
+
+        // 3. Reject a key issued for a different Moesif application. Identifiers that
+        //    are still unset (the row we just claimed, or one written before they were
+        //    recorded) are free to take the incoming values.
+        string storedOrgId = (existing.canvas_org_id ?: "").trim();
+        string storedAppId = (existing.canvas_app_id ?: "").trim();
+        boolean unset = storedOrgId.length() == 0 && storedAppId.length() == 0;
+        if !unset && (storedOrgId != trimmedOrgId || storedAppId != trimmedAppId) {
+            fail error(string `This environment is already configured with a different Moesif application `
+                + string `(organization '${storedOrgId}', application '${storedAppId}'). Moesif metrics and logs `
+                + string `share one application per environment, so use a Management API key issued for that `
+                + string `application, or reset the environment's Moesif configuration before switching.`);
+        }
+
+        // 4. Write the identifiers, the key and only this flow's flag.
+        sql:ParameterizedQuery setUpdatedAt = dbType == MSSQL ? `GETDATE()` : `CURRENT_TIMESTAMP`;
+        sql:ParameterizedQuery setFlag = flow == MOESIF_METRICS_FLOW
+            ? `dashboards_created = ${true}`
+            : `logs_configured = ${true}`;
+        sql:ParameterizedQuery updateQuery = sql:queryConcat(
+            `UPDATE environment_moesif_config SET canvas_org_id = ${trimmedOrgId}, `,
+            `canvas_app_id = ${trimmedAppId}, management_key = ${managementKey}, `,
+            setFlag, `, updated_at = `, setUpdatedAt,
+            ` WHERE environment_id = ${environmentId}`
+        );
+        sql:ExecutionResult result = check dbClient->execute(updateQuery);
+        affectedRows = result.affectedRowCount ?: 0;
+
+        check commit;
+    } on fail error e {
+        return e;
+    }
+
+    return affectedRows;
+}
+
+// Persist the Moesif canvas embed details for an environment after the metrics
+// dashboards are linked. Flips ONLY dashboards_created and leaves logs_configured
+// untouched. See upsertEnvironmentMoesifConfig for the shared-application guard.
+// Returns the number of affected rows.
+public isolated function updateComponentMoesifDashboardDetails(string environmentId, string orgId, string appId,
         string managementKey) returns int|error {
-    sql:ExecutionResult result;
-    if dbType == MSSQL {
-        result = check dbClient->execute(`
-            MERGE INTO component_moesif_config AS target
-            USING (VALUES (${componentId}, ${workspaceId}, ${managementKey}, ${true}))
-                   AS source (component_id, workspace_id, management_key, dashboards_created)
-            ON (target.component_id = source.component_id)
-            WHEN MATCHED THEN
-                UPDATE SET workspace_id = source.workspace_id, management_key = source.management_key,
-                    dashboards_created = source.dashboards_created, updated_at = GETDATE()
-            WHEN NOT MATCHED THEN
-                INSERT (component_id, workspace_id, management_key, dashboards_created)
-                VALUES (source.component_id, source.workspace_id, source.management_key, source.dashboards_created);
-        `);
-    } else if dbType == ORACLE {
-        result = check dbClient->execute(`
-            MERGE INTO component_moesif_config target
-            USING (SELECT ${componentId} AS component_id, ${workspaceId} AS workspace_id,
-                          ${managementKey} AS management_key, ${true} AS dashboards_created FROM dual) source
-            ON (target.component_id = source.component_id)
-            WHEN MATCHED THEN
-                UPDATE SET workspace_id = source.workspace_id, management_key = source.management_key,
-                    dashboards_created = source.dashboards_created, updated_at = CURRENT_TIMESTAMP
-            WHEN NOT MATCHED THEN
-                INSERT (component_id, workspace_id, management_key, dashboards_created)
-                VALUES (source.component_id, source.workspace_id, source.management_key, source.dashboards_created)
-        `);
-    } else if dbType == POSTGRESQL {
-        result = check dbClient->execute(`
-            INSERT INTO component_moesif_config (component_id, workspace_id, management_key, dashboards_created)
-            VALUES (${componentId}, ${workspaceId}, ${managementKey}, ${true})
-            ON CONFLICT (component_id) DO UPDATE SET
-                workspace_id = EXCLUDED.workspace_id,
-                management_key = EXCLUDED.management_key,
-                dashboards_created = EXCLUDED.dashboards_created,
-                updated_at = CURRENT_TIMESTAMP
-        `);
-    } else {
-        result = check dbClient->execute(`
-            INSERT INTO component_moesif_config (component_id, workspace_id, management_key, dashboards_created)
-            VALUES (${componentId}, ${workspaceId}, ${managementKey}, ${true})
-            ON DUPLICATE KEY UPDATE
-                workspace_id = VALUES(workspace_id),
-                management_key = VALUES(management_key),
-                dashboards_created = VALUES(dashboards_created),
-                updated_at = CURRENT_TIMESTAMP
-        `);
-    }
-    return result.affectedRowCount ?: 0;
+    return upsertEnvironmentMoesifConfig(environmentId, orgId, appId, managementKey, MOESIF_METRICS_FLOW);
 }
 
-// Retrieve the Moesif workspace id + Management API key stored against a
-// component so a caller can mint a workspace access token and build the embed
-// URL. Returns () for either field when it has not been set.
-public isolated function getComponentMoesifEmbedDetails(string componentId)
-        returns record {|string? workspaceId; string? managementKey;|}?|error {
-    sql:ParameterizedQuery selectQuery =
-        `SELECT workspace_id, management_key FROM component_moesif_config WHERE component_id = ${componentId}`;
-    record {|string? workspace_id; string? management_key;|}|sql:Error result = dbClient->queryRow(selectQuery);
-    if result is sql:NoRowsError {
-        return ();
-    }
-    if result is sql:Error {
-        return result;
-    }
-    return {workspaceId: result.workspace_id, managementKey: result.management_key};
+// Persist the Moesif canvas embed details for an environment after the logs canvas
+// is linked. Flips ONLY logs_configured and leaves dashboards_created untouched.
+// See upsertEnvironmentMoesifConfig for the shared-application guard. Returns the
+// number of affected rows.
+public isolated function updateComponentMoesifLogsDetails(string environmentId, string orgId, string appId,
+        string managementKey) returns int|error {
+    return upsertEnvironmentMoesifConfig(environmentId, orgId, appId, managementKey, MOESIF_LOGS_FLOW);
 }
 
 // Delete a component by ID
@@ -637,7 +722,9 @@ public isolated function getComponentDeployment(string componentId, string envir
 
     types:BuildInfo buildInfo = {
         buildId: runtime.runtime_id,
-        deployedAt: runtime?.last_heartbeat is time:Utc ? time:utcToString(<time:Utc>runtime?.last_heartbeat) : (),
+        deployedAt: runtime?.last_heartbeat is time:Civil
+            ? time:utcToString(check convertDbDateTimeToUtc(<time:Civil>runtime?.last_heartbeat))
+            : (),
         'commit: (),
         sourceConfigMigrationStatus: (),
         runId: runtime.runtime_id

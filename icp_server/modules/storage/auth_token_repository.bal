@@ -54,11 +54,14 @@ public isolated function validateRefreshToken(string tokenHash) returns types:Us
     log:printDebug("Validating refresh token");
 
     // Query for the refresh token with seconds remaining until expiry
-    // Use dialect-specific TIMESTAMPDIFF to avoid UNIX_TIMESTAMP compatibility issues with H2
+    // Use dialect-specific TIMESTAMPDIFF to avoid UNIX_TIMESTAMP compatibility issues with H2.
+    // expires_at is inserted as an explicit UTC value, so compare against UTC rather than
+    // CURRENT_TIMESTAMP, which the database server evaluates in its own timezone.
+    string nowUtc = check utcNowSqlLiteral();
     sql:ParameterizedQuery selectQuery = sql:queryConcat(
         `SELECT token_id, user_id, revoked, `,
         sql:queryConcat(
-            sqlQueryFromString(getTimestampDiffSeconds("CURRENT_TIMESTAMP", "expires_at")),
+            sqlQueryFromString(getTimestampDiffSeconds(nowUtc, "expires_at")),
             ` as seconds_until_expiry FROM refresh_tokens WHERE token_hash = ${tokenHash}`
         )
     );
@@ -185,9 +188,11 @@ public isolated function revokeAllUserRefreshTokens(string userId) returns error
 public isolated function cleanupExpiredRefreshTokens() returns error? {
     log:printDebug("Cleaning up expired refresh tokens");
 
+    // expires_at holds UTC, so compare against UTC rather than CURRENT_TIMESTAMP
+    string nowUtc = check utcNowSqlLiteral();
     sql:ParameterizedQuery deleteQuery = sql:queryConcat(
-            `DELETE FROM refresh_tokens 
-         WHERE expires_at < CURRENT_TIMESTAMP OR revoked = `, sqlQueryFromString(TRUE_LITERAL)
+            `DELETE FROM refresh_tokens
+         WHERE expires_at < `, sqlQueryFromString(nowUtc), ` OR revoked = `, sqlQueryFromString(TRUE_LITERAL)
     );
     sql:ExecutionResult|sql:Error result = dbClient->execute(deleteQuery);
 
