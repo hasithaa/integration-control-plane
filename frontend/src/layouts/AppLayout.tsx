@@ -170,8 +170,12 @@ export default function AppLayout(): JSX.Element {
     accessControlPerms.push(Permissions.INTEGRATION_EDIT, Permissions.INTEGRATION_MANAGE);
   }
   const canSeeAccessControl = hasAnyPermission(accessControlPerms, projectId || undefined, componentId);
-  // Two integration-level entries depend on the integration's type, and each stays hidden until `currentComponent`
-  // resolves — the same way access control waits on its permissions — so neither is offered and then withdrawn once the.
+  // Two integration-level entries depend on the integration's type, and each stays hidden until
+  // `currentComponent` resolves — the same way access control waits on its permissions — so neither is
+  // offered and then withdrawn once the type is known.
+  //
+  // Workflows applies only to a workflow integration. Project level is unaffected: a project's
+  // workflow data is namespace-wide, not tied to one integration.
   const showWorkflows = !hasComponent(scope) || isWorkflowIntegration(currentComponent?.displayType);
   // The Test Console drives a service's packed OpenAPI definition, so it applies to every type except
   // workflow, which exposes workflows rather than services.

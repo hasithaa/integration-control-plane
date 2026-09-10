@@ -25,7 +25,8 @@ import WorkflowPageFrame from '../components/workflow/WorkflowPageFrame';
 import { useWorkflowPageScope } from '../components/workflow/useWorkflowPageScope';
 import { resourceUrl, broaden, hasComponent, type ComponentScope, type ProjectScope } from '../nav';
 
-// The person's own workflow work: human tasks assigned to their roles, and review activities awaiting their decision.
+// The person's own workflow work: human tasks assigned to their roles, and review activities awaiting their
+// decision.
 export default function WorkflowTasks(scope: ComponentScope | ProjectScope): JSX.Element {
   const componentLevel = hasComponent(scope);
   const [searchParams, setSearchParams] = useSearchParams();

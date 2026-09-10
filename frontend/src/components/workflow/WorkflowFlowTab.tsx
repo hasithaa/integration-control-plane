@@ -29,8 +29,8 @@ import NodeDetailPanel from './NodeDetailPanel';
 import WorkflowTimeline from './WorkflowTimeline';
 import { buildTimeline, extractNodeExecutionDetail, extractWorkflowInput, flowUnavailable, jsonPretty, signalEventIds, type TimelineSpan, modelStepId, modelStepActivity } from './helpers';
 
-// The instance's Overview: everything an operator reads first, on one page. summary cards (start input · execution
-// summary) [ flow / agent rail ] [ timeline — or the execution graph, one toggle away ] The rail is the program as the.
+// The instance's Overview: everything an operator reads first, on one page. summary cards (start input ·
+// execution summary) [ flow / agent rail ] [ timeline — or the execution graph, one toggle away ] The rail is.
 
 export default function WorkflowFlowTab({
   instanceGraph,
@@ -133,8 +133,8 @@ export default function WorkflowFlowTab({
     setRailHighlight(span?.eventId ? (stepOfEvent.get(span.eventId) ?? null) : null);
   };
 
-  // A rail click filters the timeline AND opens the clicked step's details — always, not only when the overlay happened to
-  // be open.
+  // A rail click filters the timeline AND opens the clicked step's details — always, not only when the overlay
+  // happened to be open.
   const selectStep = (stepId: string | null) => {
     setSelectedStepId(stepId);
     if (stepId) {
@@ -239,8 +239,8 @@ export default function WorkflowFlowTab({
           <Box sx={{ width: 3, height: 44, borderRadius: 1.5, bgcolor: 'divider', transition: 'background-color 0.15s' }} />
         </Box>
         <Box sx={{ flex: 1, minWidth: 0, display: 'flex' }}>{timelinePane}</Box>
-        {/* The details ride over the whole split, not over the timeline alone: a short timeline would otherwise crop them. Rows
-            never reflow either way. */}
+        {/* The details ride over the whole split, not over the timeline alone: a short timeline
+            would otherwise crop them. Rows never reflow either way. */}
         {spanDetail && (
           <Box
             sx={{
@@ -255,8 +255,8 @@ export default function WorkflowFlowTab({
               zIndex: 2,
               display: 'flex',
               borderRadius: 1,
-              // The theme's paper is translucent (#ffffffe1) — invisible on the page ground, but floating over the timeline it let the
-              // tick rows bleed through the panel. Ground the overlay the way normal flow would, so the panel's paper reads opaque.
+              // The theme's paper is translucent (#ffffffe1) — invisible on the page ground, but floating over the timeline it
+              // let the tick rows bleed through the panel.
               bgcolor: 'background.default',
             }}>
             <NodeDetailPanel node={spanDetail.node} detail={spanDetail.detail} hasHistory={events.length > 0} onClose={() => selectSpan(null)} fullWidth environmentId={environmentId} />

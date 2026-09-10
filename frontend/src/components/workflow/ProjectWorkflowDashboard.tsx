@@ -105,8 +105,8 @@ function LinkedCount({ text, onClick }: { text: string; onClick: () => void }): 
   );
 }
 
-// A table row: the integration's name, then its figures or one note spanning them (resolving, not deployed, runtime
-// offline).
+// A table row: the integration's name, then its figures or one note spanning them (resolving, not deployed,
+// runtime offline).
 function IntegrationRow({
   integration,
   isDeployed,
@@ -282,8 +282,8 @@ const HOLD_MS = 6000;
 
 const joinNames = (xs: string[]): string => (xs.length <= 1 ? xs.join('') : `${xs.slice(0, -1).join(', ')} and ${xs[xs.length - 1]}`);
 
-// The caller's pending work from every integration in the environment, as one oldest-first queue; each source's state is
-// shown, and no bulk actions.
+// The caller's pending work from every integration in the environment, as one oldest-first queue; each source's
+// state is shown, and no bulk actions.
 function ProjectInbox({ scope, environmentId, integrations, runtimeByComponent, deployedIds }: TableProps): JSX.Element {
   const navigate = useNavigate();
   const queryClient = useQueryClient();

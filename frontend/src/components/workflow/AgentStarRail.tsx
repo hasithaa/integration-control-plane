@@ -110,8 +110,8 @@ export default function AgentStarRail({ data, selectedStepId, onSelect }: { data
                 width={NODE_W}
                 height={NODE_H}
                 rx={isAgent ? NODE_H / 2 : 6}
-                // softPrimary, not alpha(): under CSS-variables theming the accent is the string `var(--oxygen-palette-primary-main)`,
-                // which alpha() cannot parse — toggling to the agent map crashed the whole page on it (MUI error #9).
+                // softPrimary, not alpha(): under CSS-variables theming the accent is the string
+                // `var(--oxygen-palette-primary-main)`, which alpha() cannot parse — toggling to the agent map crashed the whole.
                 fill={selected ? softPrimary(theme, 0.12) : isAgent ? softPrimary(theme, 0.08) : c.paper}
                 stroke={selected ? accent : isAgent ? accent : (statusColor ?? c.divider)}
                 strokeWidth={selected ? 1.75 : statusColor ? 1.5 : 1}

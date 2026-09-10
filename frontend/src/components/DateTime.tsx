@@ -21,8 +21,8 @@ import type { JSX } from 'react';
 import { useTimeZone } from '../contexts/TimeZoneContext';
 import { formatDateTime, formatDistanceToNow, toIsoUtc } from '../utils/time';
 
-// A timestamp as `YYYY-MM-DD HH:mm:ss` on the chosen clock, with the UTC instant and age in the tooltip; `relative`
-// swaps the two.
+// A timestamp as `YYYY-MM-DD HH:mm:ss` on the chosen clock, with the UTC instant and age in the tooltip;
+// `relative` swaps the two.
 export default function DateTime({
   value,
   seconds = true,

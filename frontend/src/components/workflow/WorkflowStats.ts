@@ -20,8 +20,8 @@ import { useQueries, useQuery } from '@tanstack/react-query';
 import { useMemo } from 'react';
 import { instanceCountQueryOptions, pendingReviewCountQueryOptions, pendingTaskCountQueryOptions, pendingWorkItemCountQueryOptions, totalPendingTaskCountQueryOptions, valueOf, type CappedCount, type PendingReviewCount } from '../../api/workflows';
 
-// The figures the project tables and the integration overview share; each is one bounded request per integration, and a
-// missing runtime settles to "—" without affecting its neighbours.
+// The figures the project tables and the integration overview share; each is one bounded request per
+// integration, and a missing runtime settles to "—" without affecting its neighbours.
 
 interface StatsScope {
   componentId: string;
@@ -83,7 +83,8 @@ export function useIntegrationStats(scopes: StatsScope[], since: string, include
   }));
 }
 
-// The same figures for one workflow definition; pending work comes from the work-items listing filtered by parent type.
+// The same figures for one workflow definition; pending work comes from the work-items listing filtered by
+// parent type.
 export function useDefinitionStats(scope: StatsScope, workflowType: string, since: string, include: { reviews: boolean; tasks: boolean }): IntegrationStats {
   const filters = { workflowType };
   const running = useQuery(instanceCountQueryOptions(scope, { ...filters, status: 'RUNNING' }));

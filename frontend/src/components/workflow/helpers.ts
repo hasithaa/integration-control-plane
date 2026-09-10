@@ -23,8 +23,10 @@ import { targetForTaskQueue, type InstanceGraph, type WorkflowTarget } from '../
 import { formatDateTime } from '../../utils/time';
 
 // ── Portal scope ──
-// A project shares one Temporal engine: every runtime in it is bound to the same namespace and differs only by task
-// queue.
+//
+// A project shares one Temporal engine: every runtime in it is bound to the same namespace and
+// differs only by task queue. So one runtime answers for the whole project, and a listing is
+// narrowed by `taskQueue` rather than by which runtime is called. Shared by both portals.
 
 export interface PortalScope {
   // Every integration in view: the read gateway is the first, and rows route back by task queue.
@@ -40,8 +42,8 @@ type TargetScope = { componentId: string; environmentId: string };
 // The runtime every read goes through — any runtime in the project serves the whole namespace.
 export const gatewayScope = (scope: PortalScope): TargetScope => ({ componentId: scope.targets[0]?.componentId ?? '', environmentId: scope.environmentId });
 
-// Scope for acting on one row: the integration whose task queue owns it, falling back to the gateway when the task queue
-// is absent or is not one of this project's integrations.
+// Scope for acting on one row: the integration whose task queue owns it, falling back to the gateway when the
+// task queue is absent or is not one of this project's integrations.
 export function ownerScope(scope: PortalScope, taskQueue?: string): TargetScope {
   const owner = targetForTaskQueue(scope.targets, taskQueue);
   return owner ? { componentId: owner.componentId, environmentId: scope.environmentId } : gatewayScope(scope);
@@ -103,8 +105,8 @@ export function displayWorkflowId(id?: string): string {
   return id.replace(/^(workflow|humantask|childwf|childagent|reviewactivity)-/i, '');
 }
 
-// Splits a qualified task/activity name like `placeOrderWorkflow.approveOrder` (optionally prefixed `workflow-`) into
-// its workflow and task parts. Names without a qualifier map to `{ task: name }`.
+// Splits a qualified task/activity name like `placeOrderWorkflow.approveOrder` (optionally prefixed `workflow-`)
+// into its workflow and task parts. Names without a qualifier map to `{ task: name }`.
 export function splitQualifiedName(name?: string): { workflow?: string; task?: string } {
   if (!name) return {};
   const clean = name.replace(/^workflow-/, '');
@@ -123,8 +125,8 @@ export function humanizeKey(key: string): string {
     .replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
-// A form field derived from a JSON schema property. Object properties that themselves declare `properties` become groups
-// (`fields` set, rendered as a nested set of inputs) rather than a single JSON textarea.
+// A form field derived from a JSON schema property. Object properties that themselves declare `properties`
+// become groups (`fields` set, rendered as a nested set of inputs) rather than a single JSON textarea.
 export interface FormField {
   name: string;
   type: string;
@@ -138,8 +140,8 @@ export interface FormField {
 // Joins a parent path and a field name into the dotted key used for a leaf field's value.
 export const fieldPath = (prefix: string, name: string): string => (prefix ? `${prefix}.${name}` : name);
 
-// The type and value set of one leaf schema, read defensively: `type` may be a string, an array (nullable unions spell
-// `["string","null"]`), or absent; an enum may be a plain `enum`, or an `anyOf`/`oneOf` of `const`/`enum` members (how.
+// The type and value set of one leaf schema, read defensively: `type` may be a string, an array (nullable unions
+// spell `["string","null"]`), or absent; an enum may be a plain `enum`, or an `anyOf`/`oneOf` of `const`/`enum`.
 function normalizeLeafSchema(d: Record<string, unknown>): { type: string; enumValues?: string[] } {
   let type: string | undefined;
   if (typeof d.type === 'string') type = d.type;
@@ -202,8 +204,8 @@ function parseObjectSchema(s: unknown): FormField[] | null {
   return fields.length > 0 ? fields : null;
 }
 
-// Parses a JSON schema (an object, or a JSON string of one) into a field list for form rendering. Nested object schemas
-// are expanded into nested field groups.
+// Parses a JSON schema (an object, or a JSON string of one) into a field list for form rendering. Nested object
+// schemas are expanded into nested field groups.
 export function parseFormSchema(schema: unknown): FormField[] | null {
   let s: unknown = schema;
   if (typeof s === 'string') {
@@ -263,7 +265,9 @@ function buildLevel(fields: FormField[], values: Record<string, string | boolean
   for (const f of fields) {
     const path = fieldPath(prefix, f.name);
     if (f.fields) {
-      // A nested object's own `required` list only applies when that object is present.
+      // A nested object's own `required` list only applies when that object is present. So an optional
+      // group left entirely blank is omitted rather than walked — otherwise its children each report
+      // "is required", which reads as a validation failure for input the schema never asked for.
       if (!f.required && !hasAnyValue(f.fields, values, path)) continue;
       result[f.name] = buildLevel(f.fields, values, path, errors);
     } else {
@@ -273,8 +277,8 @@ function buildLevel(fields: FormField[], values: Record<string, string | boolean
   return result;
 }
 
-// Validates generated-form values against their fields and coerces them to schema types, rebuilding nested objects for
-// grouped fields.
+// Validates generated-form values against their fields and coerces them to schema types, rebuilding nested
+// objects for grouped fields.
 export function buildFormResult(fields: FormField[], values: Record<string, string | boolean>): { result: Record<string, unknown>; errors: Record<string, string> } {
   const errors: Record<string, string> = {};
   const result = buildLevel(fields, values, '', errors);
@@ -300,8 +304,8 @@ function fillValues(fields: FormField[], source: Record<string, unknown>, prefix
   }
 }
 
-// Builds generated-form values (the shape `SchemaFormFields` expects, keyed by dotted path) from a source object — the
-// inverse of `buildFormResult`.
+// Builds generated-form values (the shape `SchemaFormFields` expects, keyed by dotted path) from a source object
+// — the inverse of `buildFormResult`.
 export function formValuesFromObject(fields: FormField[], source: Record<string, unknown>): Record<string, string | boolean> {
   const values: Record<string, string | boolean> = {};
   fillValues(fields, source, '', values);
@@ -316,8 +320,8 @@ export interface FieldChange {
   to: string;
 }
 
-// Which leaf fields differ from their seeded values, with display labels — the evidence an edited-rerun confirmation
-// shows, so what changed is stated rather than remembered.
+// Which leaf fields differ from their seeded values, with display labels — the evidence an edited-rerun
+// confirmation shows, so what changed is stated rather than remembered.
 export function diffFormValues(fields: FormField[], original: Record<string, string | boolean>, current: Record<string, string | boolean>): FieldChange[] {
   const changes: FieldChange[] = [];
   const asText = (v: string | boolean | undefined): string => (v === undefined ? '' : typeof v === 'boolean' ? (v ? 'Yes' : 'No') : v);
@@ -347,8 +351,8 @@ export function sortByStartTimeDesc<T extends { startTime?: string }>(items: T[]
   return [...items].sort((a, b) => ts(b.startTime) - ts(a.startTime));
 }
 
-// Formats an ISO-8601 timestamp for compact display; passes through on failure. A timestamp as text, on the console's
-// clock — `2026-09-09 14:32:05`.
+// Formats an ISO-8601 timestamp for compact display; passes through on failure.
+// A timestamp as text, on the console's clock — `2026-09-09 14:32:05`.
 export function formatTime(value?: string): string {
   return formatDateTime(value);
 }
@@ -382,13 +386,22 @@ export function formatStopwatch(ms: number): string {
 }
 
 // ── Timeline reconstruction from workflow history events ──
-// History events are Temporal-shaped (see extractWorkflowInput): each carries a short-form `eventType` (e.g.
+//
+// History events are Temporal-shaped (see extractWorkflowInput): each carries a short-form
+// `eventType` (e.g. WORKFLOW_EXECUTION_STARTED, ACTIVITY_TASK_SCHEDULED), an `eventId`, an event
+// time, and a generic `attributes` object holding the type-specific fields. The runtime's exact
+// timestamp key can vary, so parsing tries several. Duration bars are reconstructed by pairing each
+// lifecycle group by its id references: activities by the SCHEDULED event's id (echoed as
+// `scheduledEventId` on later events), timers by `timerId`, child workflows by the INITIATED event's
+// id (echoed as `initiatedEventId`). Anything that can't be paired still renders as an open bar
+// running to the last known event.
 
 export type SpanCategory = 'WORKFLOW' | 'ACTIVITY' | 'HUMAN_TASK' | 'TIMER' | 'CHILD_WORKFLOW' | 'SIGNAL';
 
 // ── The agent's vocabulary ──
-// The module's built-in model activities keep their precise wire names (llmChat, generate, generateResult) in history
-// and in Temporal tooling; everywhere a person reads, the renderer speaks plainly instead. llmChat is the agent deciding.
+//
+// The module's built-in model activities keep their precise wire names (llmChat, generate, generateResult) in
+// history and in Temporal tooling; everywhere a person reads, the renderer speaks plainly instead. llmChat is.
 
 // Display names for the built-in model activities.
 export const MODEL_ACTIVITY_LABELS: Record<string, string> = {
@@ -411,8 +424,8 @@ function wrappedToolName(attrs: Record<string, unknown>): string | null {
 
 export interface TimelineSpan {
   key: string;
-  // The open (scheduled/initiated/started) history event's id — what joins this span to a step's eventIds and to the
-  // detail extractor. Absent only where no single event opens the span.
+  // The open (scheduled/initiated/started) history event's id — what joins this span to a step's eventIds and to
+  // the detail extractor. Absent only where no single event opens the span.
   eventId?: string;
   label: string;
   category: SpanCategory;
@@ -519,8 +532,8 @@ function collectDurationGroups(parsed: ParsedEvent[], openType: string, closeSta
   return groups;
 }
 
-// Display label for a review activity's span. A review runs as a child workflow whose type is the gated activity's
-// qualified name prefixed `reviewactivity-`, e.g.
+// Display label for a review activity's span. A review runs as a child workflow whose type is the gated
+// activity's qualified name prefixed `reviewactivity-`, e.g.
 function reviewSpanLabel(bareName: string): string {
   const { workflow, task } = splitQualifiedName(bareName);
   if (!task) return bareName || 'Review';
@@ -648,8 +661,8 @@ function decodePayload(p: Payload): unknown {
   }
 }
 
-// Decodes a Temporal payload container (`{ payloads: [...] }`) into a single value (one payload) or an array (many).
-// Returns null when there are no payloads.
+// Decodes a Temporal payload container (`{ payloads: [...] }`) into a single value (one payload) or an array
+// (many). Returns null when there are no payloads.
 export function decodePayloads(container: unknown): unknown {
   const payloads = asRecord(container)['payloads'];
   if (!Array.isArray(payloads) || payloads.length === 0) return null;
@@ -657,8 +670,7 @@ export function decodePayloads(container: unknown): unknown {
   return decoded.length === 1 ? decoded[0] : decoded;
 }
 
-// Extracts the start input from a workflow history's WORKFLOW_EXECUTION_STARTED event. Temporal carries inputs as
-// payloads with base64 `data` (and a base64 `metadata.encoding`); `json/plain` payloads are parsed into objects.
+// Extracts the start input from a workflow history's WORKFLOW_EXECUTION_STARTED event.
 export function extractWorkflowInput(events: ReadonlyArray<Record<string, unknown>>): string | null {
   const started = events.find((e) => e['eventType'] === 'WORKFLOW_EXECUTION_STARTED');
   if (!started) return null;
@@ -667,8 +679,14 @@ export function extractWorkflowInput(events: ReadonlyArray<Record<string, unknow
 }
 
 // ── Execution-graph node → history mapping ──
+//
 // A graph node's `id` is the history `eventId` of the event that opened that step (activity scheduled,
 // child workflow initiated, sleep/signal started); the input lives in that event's attributes.
+//   HUMAN_TASK    → START_CHILD_WORKFLOW_EXECUTION_INITIATED (input in attributes.input)
+//   WORKFLOW root → WORKFLOW_EXECUTION_STARTED
+// The matching CLOSE event carries the result and echoes the open event's id — activities via
+// `scheduledEventId`, child workflows / human tasks via `initiatedEventId`. From those two events we
+// recover the step's input, result, final status and any failure message.
 
 export interface NodeExecutionDetail {
   // Pretty-printed JSON of the step's input, or null when none was recorded.
@@ -685,8 +703,8 @@ export interface NodeExecutionDetail {
   startTimeMs: number | null;
   // Epoch ms of the close event, or null when still running.
   endTimeMs: number | null;
-  // The module's call configuration, separated from the input: stepId, retryOnError, and whatever future keys ride in the
-  // __callConfig__ envelope. Null when the input carried none.
+  // The module's call configuration, separated from the input: stepId, retryOnError, and whatever future keys ride
+  // in the __callConfig__ envelope. Null when the input carried none.
   callConfig: Record<string, unknown> | null;
   // For a child-workflow span — a human task, a review, a spawned workflow — the child's own instance id, from the
   // initiated event. The handle every management operation needs.
@@ -707,8 +725,8 @@ export function extractNodeExecutionDetail(node: { id: string; type: string; sta
   let inputDecoded = open ? decodePayloads(asRecord(open['attributes'])['input']) : null;
   const childWorkflowId = open && eventTypeOf(open) === 'START_CHILD_WORKFLOW_EXECUTION_INITIATED' ? (asStr(asRecord(open['attributes'])['workflowId']) ?? null) : null;
 
-  // The module appends its call configuration as the input's last element, marked __callConfig__ — runtime metadata
-  // (stepId, retryOnError), not data the activity was called with.
+  // The module appends its call configuration as the input's last element, marked __callConfig__ — runtime
+  // metadata (stepId, retryOnError), not data the activity was called with.
   let callConfig: Record<string, unknown> | null = null;
   const isCallConfig = (v: unknown): v is Record<string, unknown> => v !== null && typeof v === 'object' && !Array.isArray(v) && (v as Record<string, unknown>)['__callConfig__'] === true;
   const stripMarker = (v: Record<string, unknown>) => Object.fromEntries(Object.entries(v).filter(([k]) => k !== '__callConfig__'));
@@ -762,8 +780,9 @@ export function extractNodeExecutionDetail(node: { id: string; type: string; sta
 }
 
 // ── Model-call rendering ──
-// A model call's raw envelope is the whole conversation plus every tool definition — noise for a reader who asked "what
-// did the agent think?".
+//
+// A model call's raw envelope is the whole conversation plus every tool definition — noise for a reader who
+// asked "what did the agent think?".
 
 // One tool invocation the model requested, with its arguments as compact JSON.
 export interface ModelToolCall {

@@ -323,8 +323,14 @@ export function useComponentRuntimes(envId: string, projectId: string, component
   });
 }
 
-// Determines, for a given integration (project + component), which of the supplied environments have at least one
-// registered runtime.
+// Determines, for a given integration (project + component), which of the
+// supplied environments have at least one registered runtime. The `runtimes`
+// query is environment-scoped, so this runs one query per environment (via
+// `useQueries`) and reuses the same cache entries as `useComponentRuntimes`.
+// Returns the set of environment ids that have runtimes plus a combined loading
+// flag. Used to hide environments where the integration has no runtime deployed
+// (e.g. Moesif metrics/logs should only offer environments the integration is
+// actually running in).
 export function useComponentRuntimesByEnvironments(projectId: string, componentId: string, environmentIds: string[], enabled = true) {
   const results = useQueries({
     queries: environmentIds.map((envId) => ({
@@ -342,8 +348,9 @@ export function useComponentRuntimesByEnvironments(projectId: string, componentI
     }
   });
 
-  // Surface failed per-environment requests so callers can distinguish a genuine "no runtimes" result from a fetch failure
-  // (a failed request yields undefined data, which would otherwise silently drop the environment).
+  // Surface failed per-environment requests so callers can distinguish a genuine
+  // "no runtimes" result from a fetch failure (a failed request yields undefined
+  // data, which would otherwise silently drop the environment).
   const failed = results.find((result) => result.isError);
 
   return {
@@ -378,8 +385,13 @@ export function useProjectRuntimes(envId: string, projectId: string, enabled = t
   });
 }
 
-// Project-wide counterpart of `useComponentRuntimesByEnvironments`: determines which of the supplied environments have
-// at least one runtime registered for ANY integration in the project.
+// Project-wide counterpart of `useComponentRuntimesByEnvironments`: determines
+// which of the supplied environments have at least one runtime registered for
+// ANY integration in the project. Used by the project-scope Moesif views, which
+// aggregate every integration's runtimes instead of targeting one integration,
+// so the environment selector must offer every environment the project is
+// deployed to. Runs one query per environment and shares its cache entries with
+// `useProjectRuntimes`.
 export function useProjectRuntimesByEnvironments(projectId: string, environmentIds: string[], enabled = true) {
   const results = useQueries({
     queries: environmentIds.map((envId) => ({
@@ -390,8 +402,10 @@ export function useProjectRuntimesByEnvironments(projectId: string, environmentI
   });
 
   const envsWithRuntimes = new Set<string>();
-  // The runtimes themselves, keyed by environment, so callers can narrow further (e.g. the Moesif metrics view only
-  // aggregates runtimes of the technology its canvas template covers) and build per-runtime filter options without issuing.
+  // The runtimes themselves, keyed by environment, so callers can narrow further
+  // (e.g. the Moesif metrics view only aggregates runtimes of the technology its
+  // canvas template covers) and build per-runtime filter options without issuing
+  // a second query.
   const runtimesByEnv: Record<string, GqlRuntime[]> = {};
   environmentIds.forEach((envId, index) => {
     const items = results[index]?.data;
@@ -554,8 +568,9 @@ export interface GqlArtifact {
   [key: string]: unknown;
 }
 
-// Maps artifactType to its GraphQL query field name and useful display fields `fields` = flat scalar fields, `gqlFields`
-// = full GraphQL selection (including nested) fields = card columns, gqlFields = full GraphQL selection (including.
+// Maps artifactType to its GraphQL query field name and useful display fields
+// `fields` = flat scalar fields, `gqlFields` = full GraphQL selection (including nested)
+// fields = card columns, gqlFields = full GraphQL selection (including nested)
 const ARTIFACT_QUERY_MAP: Record<string, { queryName: string; field: string; fields: string; gqlFields: string }> = {
   RestApi: {
     queryName: 'restApisByEnvironmentAndComponent',
@@ -1052,7 +1067,9 @@ export function useOpenApiDefinitionsByRuntime(runtimeId: string, enabled = true
   });
 }
 
-// ============================================ Registry Browser Queries ============================================
+// ============================================
+// Registry Browser Queries
+// ============================================
 
 export interface GqlRegistryProperty {
   name: string;

@@ -24,14 +24,15 @@ import { humanizeKey } from './helpers';
 import { IdText, SectionCard, WorkflowIdLink } from './shared';
 import DateTime from '../DateTime';
 
-// A JSON value read the way its shape wants to be read. Ids are bare UUIDs now (child ids are name-<uuid>), so the
-// value's shape alone can't say "this is an instance id" — the key has to claim it, and the value has to look like one.
+// A JSON value read the way its shape wants to be read.
+// Ids are bare UUIDs now (child ids are name-<uuid>), so the value's shape alone can't say "this is an instance
+// id" — the key has to claim it, and the value has to look like one.
 const ENDS_WITH_UUID = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const ID_KEY = /(workflowid|taskid|reviewid|instanceid)$/i;
 const isWorkflowId = (key: string, value: unknown): value is string => typeof value === 'string' && (/^(workflow|humantask|reviewactivity|childwf|childagent)-/.test(value) || (ID_KEY.test(key) && ENDS_WITH_UUID.test(value)));
 
-// A value that IS a UUID but whose key claims nothing navigable (completedBy, runId, correlation ids) still deserves the
-// id treatment — truncated with a copy button — instead of a 36-character monospace string wrapping mid-token across two.
+// A value that IS a UUID but whose key claims nothing navigable (completedBy, runId, correlation ids) still
+// deserves the id treatment — truncated with a copy button — instead of a 36-character monospace string wrapping.
 const BARE_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 // A machine timestamp (RFC 3339, any fractional precision) reads as a local time, with the raw
 // value kept in the tooltip — `2026-08-25T15:55:56.106171571Z` is for logs, not for people.
@@ -107,8 +108,8 @@ export default function StructuredValue({
 // Whether every element is a primitive, so an array can read as one line rather than a block.
 const isPrimitiveArray = (v: unknown): v is Array<string | number | boolean | null> => Array.isArray(v) && v.every((e) => e === null || ['string', 'number', 'boolean'].includes(typeof e));
 
-// An object as labelled rows, recursively: nested plain objects become indented sub-forms — one consistent reading
-// whether the value is a task envelope, its payload, or an activity's argument — with primitive arrays inline and only.
+// An object as labelled rows, recursively: nested plain objects become indented sub-forms — one consistent
+// reading whether the value is a task envelope, its payload, or an activity's argument — with primitive arrays.
 function ObjectRows({ value, depth, environmentId }: { value: Record<string, unknown>; depth: number; environmentId?: string }): ReactElement {
   const entries = Object.entries(value);
   return (

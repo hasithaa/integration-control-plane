@@ -16,8 +16,9 @@
  * under the License.
  */
 
-// Visual mappings shared by the execution-graph (node-link) and timeline (Gantt) views: an icon per node/span kind and
-// status→palette-colour resolution.
+// Visual mappings shared by the execution-graph (node-link) and timeline (Gantt) views:
+// an icon per node/span kind and status→palette-colour resolution. Kept in its own module
+// (no component exports) so both views reuse them without tripping React Fast Refresh.
 
 import { alpha, type Theme } from '@wso2/oxygen-ui';
 import { CircleDot, Database, GitBranch, SquareCheck, Timer, UserCheck, Workflow } from '@wso2/oxygen-ui-icons-react';
@@ -42,7 +43,8 @@ export const typeLabel = (type: string): string => humanizeKey(type.toLowerCase(
 // Maps a status to its Oxygen chip colour name (e.g. COMPLETED → success).
 export const statusColorName = (status?: string): ChipColor => STATUS_COLORS[(status ?? '').toUpperCase()] ?? 'default';
 
-// Oxygen themes through CSS variables: `data-color-scheme` on <html> selects a set of `--oxygen-palette-*` values.
+// Oxygen themes through CSS variables: `data-color-scheme` on <html> selects a set of `--oxygen-palette-*`
+// values.
 type VarsTheme = Theme & { vars?: { palette?: Record<string, Record<string, string>> } };
 
 const paletteVars = (theme: Theme): Record<string, Record<string, string>> | undefined => (theme as VarsTheme).vars?.palette;

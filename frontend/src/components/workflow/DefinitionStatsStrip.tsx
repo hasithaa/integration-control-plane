@@ -31,8 +31,8 @@ interface StripCell {
   alarm?: boolean;
 }
 
-// The selected definition's figures on the integration overview — the project table's columns, scoped to one workflow
-// type.
+// The selected definition's figures on the integration overview — the project table's columns, scoped to one
+// workflow type.
 export function DefinitionStatsStrip({
   scope,
   componentId,

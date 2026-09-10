@@ -129,8 +129,10 @@ export default function WorkflowTimeline({
   const built = buildTimeline(events);
   const { start, end } = built;
 
-  // The execution graph carries authoritative node types. Use them to correct categories the history-based inference gets
-  // wrong — e.g. a human task implemented as a child workflow — so the timeline's icon/colour match the execution graph.
+  // The execution graph carries authoritative node types. Use them to correct categories the
+  // history-based inference gets wrong — e.g. a human task implemented as a child workflow — so the
+  // timeline's icon/colour match the execution graph. Graph and history label the same step
+  // differently (prefixes/qualifiers differ), so match on the normalized task name, not the raw label.
   const taskKey = (label: string) => (splitQualifiedName(label).task ?? label).trim().toLowerCase();
   const typeByTask = new Map<string, SpanCategory>();
   for (const n of graph?.nodes ?? []) {

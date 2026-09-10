@@ -16,8 +16,8 @@
  * under the License.
  */
 
-// Turns a workflow's published structure into a floor plan: nested boxes, one per control-flow block, with its steps
-// laid out inside. This is deliberately *not* general graph layout.
+// Turns a workflow's published structure into a floor plan: nested boxes, one per control-flow block, with its
+// steps laid out inside. This is deliberately *not* general graph layout.
 
 import type { ModelGraph, ModelGraphNode } from '../../api/workflows';
 
@@ -119,8 +119,8 @@ function groupByParent(nodes: ModelGraphNode[]): { roots: ModelGraphNode[]; arms
   return { roots, armsOf };
 }
 
-// Arm order for a container. Taken from the edges leaving it, because those are emitted in the order the compiler walked
-// the arms — `then` before `else`, `do` before `onFail`.
+// Arm order for a container. Taken from the edges leaving it, because those are emitted in the order the
+// compiler walked the arms — `then` before `else`, `do` before `onFail`.
 function armOrder(containerId: string, graph: ModelGraph, byArm: Map<string, ModelGraphNode[]>): string[] {
   const order: string[] = [];
   for (const e of graph.edges ?? []) {
@@ -194,8 +194,8 @@ function place(measured: Measured, x: number, y: number): PlacedNode {
   return placed;
 }
 
-// Lays out a whole workflow: the top-level sequence bracketed by Start and End pills. Returns canvas dimensions the
-// caller can hand straight to an `<svg viewBox>`.
+// Lays out a whole workflow: the top-level sequence bracketed by Start and End pills. Returns canvas dimensions
+// the caller can hand straight to an `<svg viewBox>`.
 export function layoutFloorPlan(graph: ModelGraph): FloorPlan {
   const nodes = graph.nodes ?? [];
   const { roots, armsOf } = groupByParent(nodes);

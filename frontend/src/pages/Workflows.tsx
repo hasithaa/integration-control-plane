@@ -42,8 +42,8 @@ export default function Workflows(scope: ComponentScope | ProjectScope): JSX.Ele
     return typeof state?.toast === 'string' ? state.toast : null;
   });
 
-  // Deep-link params (from the Overview page's "View Workflows", the start-workflow success dialog, or a task's workflow
-  // link).
+  // Deep-link params (from the Overview page's "View Workflows", the start-workflow success dialog, or a task's
+  // workflow link).
   const [deepLink, setDeepLink] = useState<{ workflowType?: string; workflowId?: string }>(() => ({
     workflowType: searchParams.get('type') ?? undefined,
     workflowId: searchParams.get('workflowId') ?? undefined,

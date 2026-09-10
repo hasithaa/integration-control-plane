@@ -23,8 +23,8 @@ import type { InstanceGraph, ModelGraphNode, StepExecution } from '../../api/wor
 import { diagramColors, iconForType, paletteColor, softPrimary, statusColorName } from './graphVisuals';
 import { isContainer, layoutFloorPlan, type PlacedArm, type PlacedNode } from './floorPlan';
 
-// The flow rail: the workflow as written, rendered the way it is written — a left-aligned list, one element per row,
-// nesting as indentation, keywords lowercase, `else` on the same level as its `if`, exactly like reading the source.
+// The flow rail: the workflow as written, rendered the way it is written — a left-aligned list, one element per
+// row, nesting as indentation, keywords lowercase, `else` on the same level as its `if`, exactly like reading.
 
 interface TreeNode {
   node: ModelGraphNode;
@@ -322,8 +322,8 @@ export default function FlowRail({
     />
   );
 
-  // A container the way the source spells it: the keyword row, then each arm by its own rule — `then`/`body`/`do` children
-  // sit directly under the keyword (the arm name adds nothing a reader of code expects to see), `else` returns to the.
+  // A container the way the source spells it: the keyword row, then each arm by its own rule — `then`/`body`/`do`
+  // children sit directly under the keyword (the arm name adds nothing a reader of code expects to see), `else`.
   const renderContainer = (t: TreeNode, depth: number, prefix = ''): ReactNode => {
     const Icon = CONSTRUCT_ICONS[constructOf(t.node)] ?? Diamond;
     const isCollapsed = collapsed.has(t.node.stepId);
@@ -438,8 +438,8 @@ export default function FlowRail({
 
 // ── UML activity diagram ─────────────────────────────────────────────────────
 
-// A balanced UML activity diagram: sibling arms sit side by side under their decision diamond and merge below it, laid
-// out by the same recursive box-packing the floor plan used — a workflow body is single-threaded, so its shape is always.
+// A balanced UML activity diagram: sibling arms sit side by side under their decision diamond and merge below
+// it, laid out by the same recursive box-packing the floor plan used — a workflow body is single-threaded, so.
 function UmlActivityDiagram({
   data,
   steps,

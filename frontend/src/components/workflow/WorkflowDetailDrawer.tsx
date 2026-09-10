@@ -42,8 +42,11 @@ import { Permissions } from '../../constants/permissions';
 import { useLayout } from '../../contexts/LayoutContext';
 import DateTime from '../DateTime';
 
-// The drawer fills the main content area only — right-anchored, its left edge lands at the sidebar width so the left
-// navigation stays visible. `sidebarWidth` is supplied live so the panel tracks the sidebar's collapsed/expanded state.
+// The drawer fills the main content area only — right-anchored, its left edge lands at the sidebar
+// width so the left navigation stays visible. `sidebarWidth` is supplied live so the panel tracks
+// the sidebar's collapsed/expanded state.
+// A flex column, so only the body scrolls: the header (and its close button) and the lifecycle
+// bar stay put however far down the execution the reader is.
 const drawerPaperSx = (sidebarWidth: number) => ({
   '& .MuiDrawer-paper': { width: `calc(100% - ${sidebarWidth}px)`, position: 'fixed', top: 64, height: 'calc(100% - 64px)', borderLeft: '1px solid', borderColor: 'divider', display: 'flex', flexDirection: 'column', overflow: 'hidden' },
 });
@@ -100,8 +103,11 @@ export default function WorkflowDetailDrawer({ scope, workflowId, onClose }: { s
 
   const status = (info?.status as string | undefined) ?? '';
 
-  // Lifecycle actions narrowed by status: a running instance can be suspended/cancelled/terminated, a suspended one
-  // resumed/cancelled/terminated; closed instances (completed, failed, terminated, canceled, timed out) get no actions.
+  // Lifecycle actions narrowed by status: a running instance can be suspended/cancelled/terminated,
+  // a suspended one resumed/cancelled/terminated; closed instances (completed, failed, terminated,
+  // canceled, timed out) get no actions. Note: the runtime currently reports suspended instances
+  // as RUNNING (suspend is a signal, not a Temporal status), so SUSPENDED only takes effect once
+  // the runtime exposes it.
   const normalizedStatus = status.toUpperCase();
   const isRunning = normalizedStatus === 'RUNNING';
   const isSuspended = normalizedStatus === 'SUSPENDED';
@@ -122,8 +128,8 @@ export default function WorkflowDetailDrawer({ scope, workflowId, onClose }: { s
   return (
     <Drawer anchor="right" open variant="persistent" sx={drawerPaperSx(sidebarWidth)} onClose={onClose}>
       <Stack direction="row" alignItems="center" justifyContent="space-between" sx={headerSx}>
-        {/* The id and status live in the Execution card below — repeating them here said nothing twice. The header names the
-            page. */}
+        {/* The id and status live in the Execution card below — repeating them here said
+            nothing twice. The header names the page. */}
         <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
           Execution Details
         </Typography>
@@ -132,8 +138,9 @@ export default function WorkflowDetailDrawer({ scope, workflowId, onClose }: { s
         </IconButton>
       </Stack>
 
-      {/* Lifecycle and recovery actions — only for users who can manage workflow executions. The bar renders for CLOSED runs
-          too: reset exists precisely for a run that failed, and bulk retry for reviews its failures left behind. */}
+      {/* Lifecycle and recovery actions — only for users who can manage workflow executions.
+          The bar renders for CLOSED runs too: reset exists precisely for a run that failed, and
+          bulk retry for reviews its failures left behind. */}
       {info && (
         <Authorized permissions={[Permissions.WORKFLOW_MANAGE_WORKFLOWS]}>
           <Stack direction="row" gap={1} sx={{ px: 2, py: 1.5, borderBottom: '1px solid', borderColor: 'divider', flexWrap: 'wrap', justifyContent: 'flex-end', flexShrink: 0 }}>
@@ -224,8 +231,11 @@ export default function WorkflowDetailDrawer({ scope, workflowId, onClose }: { s
         <DialogTitle>Reset Workflow</DialogTitle>
         <DialogContent>
           <Stack gap={2} sx={{ pt: 0.5 }}>
-            {/* Replay semantics, stated accurately per choice: steps BEFORE the point are replayed from the run's own history — their
-                side effects are not repeated. Only what comes after the point runs again for real. */}
+            {/* Replay semantics, stated accurately per choice: steps BEFORE the point are
+                replayed from the run's own history — their side effects are not repeated. Only
+                what comes after the point runs again for real. The first draft of this warning
+                claimed completed activities re-run wholesale, which overstated every option
+                except "from the beginning". */}
             <Alert severity="warning">
               {resetType === 'first-workflow-task'
                 ? 'The whole workflow runs again as a new run of the same workflow ID, with its original input — every activity happens again, side effects included, and every human task is asked again. This cannot be undone.'

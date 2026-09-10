@@ -25,8 +25,8 @@ import { displayWorkflowId, formatDuration, jsonPretty } from './helpers';
 import { DebugInfoIcon, DetailRow, SectionCard, StatusChip } from './shared';
 import DateTime from '../DateTime';
 
-// What happened to this run, extracted: the raw instances.get payload is a debugging document — per-activity invocation
-// records, nulls for everything a closed run no longer carries — and showing it verbatim made the reader do the.
+// What happened to this run, extracted: the raw instances.get payload is a debugging document — per-activity
+// invocation records, nulls for everything a closed run no longer carries — and showing it verbatim made the.
 export default function ExecutionSummary({
   info,
   fallbackStartMs,
