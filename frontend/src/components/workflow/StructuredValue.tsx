@@ -20,8 +20,9 @@ import { Box, Collapse, IconButton, Stack, Tooltip, Typography } from '@wso2/oxy
 import { Braces, ChevronDown, Copy } from '@wso2/oxygen-ui-icons-react';
 import { useState, type ReactElement } from 'react';
 import CodeViewer from '../CodeViewer';
-import { formatTime, humanizeKey } from './helpers';
+import { humanizeKey } from './helpers';
 import { IdText, WorkflowIdLink } from './shared';
+import DateTime from '../DateTime';
 
 /**
  * A JSON value read the way its shape wants to be read. An object's primitive fields become
@@ -173,7 +174,7 @@ function ObjectRows({ value, depth, environmentId }: { value: Record<string, unk
             <Stack key={key} direction="row" gap={1} alignItems="baseline" sx={{ minWidth: 0 }}>
               {label}
               <Typography variant="body2" title={v} sx={{ minWidth: 0, fontSize: 12.5 }}>
-                {formatTime(v)}
+                <DateTime value={v} />
               </Typography>
             </Stack>
           );

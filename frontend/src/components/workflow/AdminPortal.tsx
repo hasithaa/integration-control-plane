@@ -29,6 +29,7 @@ import { buildFormResult, diffFormValues, displayWorkflowId, extractNodeExecutio
 import { ActionCard, DetailDrawer, DetailRow, HeaderCell, IdText, ListFooter, NotProvided, RefreshingNote, SchemaDisclosure, SectionCard, StatusChip, SubmitError, WorkflowIdLink, type WorkflowScope } from './shared';
 import Authorized from '../Authorized';
 import { Permissions } from '../../constants/permissions';
+import DateTime from '../DateTime';
 import {
   distinctWorkflowTypes,
   fetchedAtOf,
@@ -347,7 +348,7 @@ function WorkflowsAdmin({
                   <ListingTable.Cell>
                     <StatusChip status={wf.status} />
                   </ListingTable.Cell>
-                  <ListingTable.Cell>{formatTime(wf.startTime)}</ListingTable.Cell>
+                  <ListingTable.Cell><DateTime value={wf.startTime} /></ListingTable.Cell>
                 </ListingTable.Row>
               ))}
             </ListingTable.Body>
@@ -755,7 +756,7 @@ export function ReviewActivityDetailDialog({ scope, taskId, onClose, onToast }: 
                 <WorkflowIdLink workflowId={activity.parentWorkflowId} environmentId={scope.environmentId} onNavigate={onClose} truncate copy />
               </DetailRow>
               <DetailRow label="Trigger">{reviewTriggerLabel(activity.trigger)}</DetailRow>
-              <DetailRow label="Created">{formatTime(activity.startTime)}</DetailRow>
+              <DetailRow label="Created"><DateTime value={activity.startTime} /></DetailRow>
               {activity.errorMessage && <DetailRow label="Error">{activity.errorMessage}</DetailRow>}
             </Stack>
           </SectionCard>

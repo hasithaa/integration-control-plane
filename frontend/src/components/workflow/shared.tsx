@@ -27,6 +27,7 @@ import { autoRefreshEnabled, setAutoRefreshEnabled } from '../../api/workflows';
 import { displayWorkflowId, sectionTitleSx, STATUS_COLORS } from './helpers';
 import { useLayout } from '../../contexts/LayoutContext';
 import { X } from '@wso2/oxygen-ui-icons-react';
+import { formatClock } from '../../utils/time';
 
 export interface WorkflowScope {
   componentId: string;
@@ -107,7 +108,7 @@ export function RefreshingNote({ show, fetchedAt, label = 'refreshing — fetchi
     <Stack direction="row" alignItems="center" gap={1} sx={{ color: 'text.secondary' }}>
       {show && auto && <CircularProgress size={12} thickness={5} />}
       <Typography variant="caption">
-        {fetchedAt ? `Updated ${new Date(fetchedAt * 1000).toLocaleTimeString()}` : ''}
+        {fetchedAt ? `Updated ${formatClock(fetchedAt * 1000)}` : ''}
         {show && auto ? `${fetchedAt ? ' · ' : ''}${label}` : ''}
       </Typography>
       <Tooltip title={auto ? 'Auto-refresh is on: this view checks for fresher data every 30 seconds. The refresh button always works.' : 'Auto-refresh is off: this view updates only when you refresh it.'}>

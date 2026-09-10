@@ -63,6 +63,7 @@ import { useAccessControl } from '../contexts/AccessControlContext';
 import { ALL_USER_MGT_PERMISSIONS, Permissions } from '../constants/permissions';
 import { isWorkflowIntegration } from '../constants/integrationTypes';
 import { getIcpVersion } from '../config/api';
+import TimeZoneToggle from '../components/TimeZoneToggle';
 
 const SIDEBAR_ICONS: Record<Resource, JSX.Element> = {
   overview: <LayoutDashboard size={20} />,
@@ -77,8 +78,12 @@ const SIDEBAR_ICONS: Record<Resource, JSX.Element> = {
   'access-control': <Shield size={20} />,
 };
 
+// Workflows and Human Tasks are where a person operates what the integrations run — start,
+// suspend, decide — so they sit in their own group, ahead of watching (Observability): a queue
+// is acted on before a log is read.
 const SIDEBAR_CATEGORIES: { label: string; resources: Resource[] }[] = [
-  { label: '', resources: ['overview', 'workflows', 'tasks', 'test', 'runtimes'] },
+  { label: '', resources: ['overview', 'test', 'runtimes'] },
+  { label: 'Manage', resources: ['workflows', 'tasks'] },
   { label: 'Observability', resources: ['logs', 'loggers', 'metrics'] },
   { label: 'Infrastructure', resources: ['environments'] },
   { label: 'Management', resources: ['access-control'] },
@@ -534,6 +539,7 @@ export default function AppLayout(): JSX.Element {
           </Header.Switchers>
           <Header.Spacer />
           <Header.Actions>
+            <TimeZoneToggle />
             <ColorSchemeToggle />
             <Tooltip title="Notifications">
               <IconButton onClick={actions.toggleNotificationPanel} size="small" sx={{ color: 'text.secondary' }}>

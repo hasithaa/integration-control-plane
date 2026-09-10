@@ -28,6 +28,7 @@ import { ActionCard, DetailDrawer, DetailRow, HeaderCell, IdText, ListFooter, No
 import { IntegrationFilter, ReviewActivityDetailDialog, StatusFilter, useTimeRangeFilter, WorkflowNameFilter } from './AdminPortal';
 import Authorized from '../Authorized';
 import { Permissions } from '../../constants/permissions';
+import DateTime from '../DateTime';
 import {
   bulkRetryReviewsRequest,
   distinctWorkflowTypes,
@@ -234,7 +235,7 @@ export function WorkItemTable({ items, onOpen, environmentId, integrationLabel, 
               <ListingTable.Cell>
                 <StatusChip status={w.status} />
               </ListingTable.Cell>
-              <ListingTable.Cell>{formatTime(w.startTime)}</ListingTable.Cell>
+              <ListingTable.Cell><DateTime value={w.startTime} /></ListingTable.Cell>
             </ListingTable.Row>
           );
         })}
@@ -668,7 +669,7 @@ export function TaskDetailDialog({ scope, taskId, actionable, onClose, onToast, 
               <DetailRow label="Parent Workflow">
                 <WorkflowIdLink workflowId={task.parentWorkflowId} environmentId={scope.environmentId} onNavigate={onClose} truncate copy />
               </DetailRow>
-              <DetailRow label="Created">{formatTime(task?.startTime)}</DetailRow>
+              <DetailRow label="Created"><DateTime value={task?.startTime} /></DetailRow>
               <DetailRow label="Eligible Roles">
                 {eligibleRoles?.length ? (
                   <Stack direction="row" gap={0.5} flexWrap="wrap">

@@ -46,12 +46,12 @@ import { useState, type JSX } from 'react';
 import { useProjectsPage, type GqlProject } from '../api/queries';
 import { useDeleteProject } from '../api/mutations';
 import EmptyListing from '../components/EmptyListing';
-import { formatDistanceToNow } from '../utils/time';
 import { resourceUrl, narrow, newProjectUrl, type OrgScope } from '../nav';
 import { editProjectUrl } from '../paths';
 import { useAccessControl } from '../contexts/AccessControlContext';
 import { Permissions } from '../constants/permissions';
 import Authorized from '../components/Authorized';
+import DateTime from '../components/DateTime';
 
 function ProjectCard({ project, onClick, onSettings, onDelete }: { project: GqlProject; onClick: () => void; onSettings: () => void; onDelete: () => void }) {
   return (
@@ -65,7 +65,7 @@ function ProjectCard({ project, onClick, onSettings, onDelete }: { project: GqlP
       <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ px: 2.5, pb: 2 }}>
         <Typography variant="caption" sx={{ display: 'flex', alignItems: 'center', gap: 0.5, color: 'text.secondary' }}>
           <Clock size={14} />
-          {formatDistanceToNow(project.updatedAt)}
+          <DateTime value={project.updatedAt} relative />
         </Typography>
         <Stack direction="row" spacing={0.5}>
           <Authorized permissions={Permissions.PROJECT_MANAGE}>
@@ -105,7 +105,7 @@ function ProjectListItem({ project, onClick, onSettings, onDelete }: { project: 
             {project.name}
           </Typography>
           <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-            Updated {formatDistanceToNow(project.updatedAt)}
+            Updated <DateTime value={project.updatedAt} relative />
           </Typography>
         </Stack>
         <Stack direction="row" spacing={0.5}>

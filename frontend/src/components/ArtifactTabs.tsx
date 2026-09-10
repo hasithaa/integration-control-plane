@@ -29,6 +29,7 @@ import { useUpdateListenerState } from '../api/mutations';
 import { useQueryClient } from '@tanstack/react-query';
 import type { TabProps } from './artifact-config';
 import { HTTP_METHOD_BADGE_COLORS, DEFAULT_METHOD_BADGE_COLOR, METHOD_BADGE_TEXT_SX, RESOURCE_LABEL_TEXT_SX } from '../constants/methodBadgeStyles';
+import DateTime from './DateTime';
 
 // Shared style for resource/method display boxes
 const getMethodBadgeColor = (method: string) => HTTP_METHOD_BADGE_COLORS[method.toUpperCase()] ?? DEFAULT_METHOD_BADGE_COLOR;
@@ -1031,7 +1032,7 @@ export function AutomationExecutions({ artifact }: TabProps) {
             sorted.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage).map((exec, i) => (
               <ListingTable.Row key={i}>
                 <ListingTable.Cell>
-                  <Typography variant="body2">{new Date(exec.timestamp).toLocaleString()}</Typography>
+                  <Typography variant="body2"><DateTime value={exec.timestamp} /></Typography>
                 </ListingTable.Cell>
                 <ListingTable.Cell>
                   <Typography sx={{ fontFamily: 'monospace', fontSize: 12 }}>{exec.runtimeName || exec.runtimeId}</Typography>

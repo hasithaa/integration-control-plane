@@ -48,7 +48,6 @@ import { useLocation, useNavigate } from 'react-router';
 import type { JSX } from 'react';
 import { useAllEnvironments, useOrgSecrets, useOrgRuntimesPage, type GqlEnvironment, type GqlRuntime } from '../api/queries';
 import { useCreateOrgSecret, useDeleteRuntime, useRevokeOrgSecret } from '../api/mutations';
-import { formatDistanceToNow } from '../utils/time';
 import SearchField from '../components/SearchField';
 import { LogFilesDrawer } from '../components/LogFilesDrawer';
 import EmptyListing from '../components/EmptyListing';
@@ -58,6 +57,7 @@ import { technologyLabel } from '../constants/technologies';
 import { useAccessControl } from '../contexts/AccessControlContext';
 import type { OrgScope } from '../nav';
 import { runtimeImports } from '../utils/runtimeToml';
+import DateTime from '../components/DateTime';
 
 const drawerSx = {
   '& .MuiDrawer-paper': { width: '45%', maxWidth: 560, minWidth: 360, position: 'fixed', top: 64, height: 'calc(100% - 64px)', borderLeft: '1px solid', borderColor: 'divider' },
@@ -112,7 +112,7 @@ function SecretDrawer({ env, onClose }: { env: GqlEnvironment; onClose: () => vo
                     <ListingTable.Cell>
                       <code style={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{secret.keyId}....</code>
                     </ListingTable.Cell>
-                    <ListingTable.Cell sx={{ whiteSpace: 'nowrap' }}>{formatDistanceToNow(secret.createdAt)}</ListingTable.Cell>
+                    <ListingTable.Cell sx={{ whiteSpace: 'nowrap' }}><DateTime value={secret.createdAt} relative /></ListingTable.Cell>
                     <ListingTable.Cell sx={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{secret.createdBy ?? '—'}</ListingTable.Cell>
                     <ListingTable.Cell align="right">
                       <IconButton size="small" color="error" aria-label={`Revoke ${secret.keyId}`} onClick={() => setRevoking(secret.keyId)}>
@@ -259,9 +259,6 @@ function formatPlatform(r: GqlRuntime): string {
   return /^\d/.test(r.platformVersion) ? `${r.platformName} ${r.platformVersion}` : r.platformVersion;
 }
 
-function formatDate(iso: string): string {
-  return new Date(iso).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'medium' });
-}
 
 function EnvironmentRuntimeCard({
   env,
@@ -485,8 +482,8 @@ function EnvironmentRuntimeCard({
                         )}
                       </ListingTable.Cell>
                       <ListingTable.Cell>{[r.osName, r.osVersion].filter(Boolean).join(' ')}</ListingTable.Cell>
-                      <ListingTable.Cell>{r.registrationTime ? formatDate(r.registrationTime) : '—'}</ListingTable.Cell>
-                      <ListingTable.Cell>{r.lastHeartbeat ? formatDate(r.lastHeartbeat) : '—'}</ListingTable.Cell>
+                      <ListingTable.Cell><DateTime value={r.registrationTime} /></ListingTable.Cell>
+                      <ListingTable.Cell><DateTime value={r.lastHeartbeat} /></ListingTable.Cell>
                       <ListingTable.Cell>
                         <Stack direction="row" gap={0.5}>
                           {r.runtimeType === 'MI' && (

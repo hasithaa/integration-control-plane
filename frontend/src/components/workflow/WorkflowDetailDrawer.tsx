@@ -35,11 +35,12 @@ import {
   type ResetType,
   type WorkflowLifecycleAction,
 } from '../../api/workflows';
-import { formatTime, splitQualifiedName } from './helpers';
+import { splitQualifiedName } from './helpers';
 import { RefreshingNote, type WorkflowScope } from './shared';
 import Authorized from '../Authorized';
 import { Permissions } from '../../constants/permissions';
 import { useLayout } from '../../contexts/LayoutContext';
+import DateTime from '../DateTime';
 
 // The drawer fills the main content area only — right-anchored, its left edge lands at the sidebar
 // width so the left navigation stays visible. `sidebarWidth` is supplied live so the panel tracks
@@ -280,7 +281,7 @@ export default function WorkflowDetailDrawer({ scope, workflowId, onClose }: { s
                             {point.isFirstFailure ? ' — just before the first failure' : ''}
                           </Typography>
                           <Typography variant="caption" color="text.secondary">
-                            event {point.eventId} · {formatTime(point.timestamp)}
+                            event {point.eventId} · <DateTime value={point.timestamp} />
                           </Typography>
                         </Stack>
                       }

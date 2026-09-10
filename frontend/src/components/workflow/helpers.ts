@@ -20,6 +20,7 @@
 // (shared.tsx) so React Fast Refresh works and concerns stay separated.
 
 import { targetForTaskQueue, type InstanceGraph, type WorkflowTarget } from '../../api/workflows';
+import { formatDateTime } from '../../utils/time';
 
 // ── Portal scope ──
 //
@@ -379,10 +380,13 @@ export function sortByStartTimeDesc<T extends { startTime?: string }>(items: T[]
 }
 
 /** Formats an ISO-8601 timestamp for compact display; passes through on failure. */
+/**
+ * A timestamp as text, on the console's clock — `2026-09-09 14:32:05`. Prefer the `DateTime`
+ * component in JSX (it re-renders on a zone switch and carries the UTC instant in its tooltip);
+ * this is for places that need a plain string.
+ */
 export function formatTime(value?: string): string {
-  if (!value) return '—';
-  const d = new Date(value);
-  return isNaN(d.getTime()) ? value : d.toLocaleString();
+  return formatDateTime(value);
 }
 
 /** Formats a millisecond duration compactly: `840ms`, `4.2s`, `1m 8s`, `2h 5m`. */

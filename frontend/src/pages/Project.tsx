@@ -28,12 +28,12 @@ import { useNavigate } from 'react-router';
 import { useState, type JSX } from 'react';
 import { useProjectByHandler, useComponents, useComponentsPage, type GqlComponent } from '../api/queries';
 import NotFound from '../components/NotFound';
-import { formatDistanceToNow } from '../utils/time';
 import { resourceUrl, narrow, broaden, newComponentUrl, type ProjectScope } from '../nav';
 import { editComponentUrl } from '../paths';
 import { Permissions } from '../constants/permissions';
 import Authorized from '../components/Authorized';
 import { useLoadProjectPermissions } from '../hooks/usePermissionLoader';
+import DateTime from '../components/DateTime';
 
 function IntegrationsTable({ orgHandler, scope, projectId, onSelect }: { orgHandler: string; scope: ProjectScope; projectId: string; onSelect: (handler: string) => void }) {
   const navigate = useNavigate();
@@ -141,7 +141,7 @@ function IntegrationsTable({ orgHandler, scope, projectId, onSelect }: { orgHand
                   </ListingTable.Cell>
                   <ListingTable.Cell>
                     <Typography variant="body2" color="text.secondary">
-                      {formatDistanceToNow(c.lastBuildDate)}
+                      <DateTime value={c.lastBuildDate} relative />
                     </Typography>
                   </ListingTable.Cell>
                   <Authorized permissions={Permissions.INTEGRATION_MANAGE}>

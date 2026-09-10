@@ -30,6 +30,7 @@ import { newEnvironmentUrl, type OrgScope, type ProjectScope } from '../nav';
 import { useAccessControl } from '../contexts/AccessControlContext';
 import { Permissions } from '../constants/permissions';
 import Authorized from '../components/Authorized';
+import DateTime from '../components/DateTime';
 
 function formatErrorMessage(error: Error, action: 'create' | 'update' | 'delete'): string {
   const message = error.message || '';
@@ -288,7 +289,7 @@ export default function Environments(scope: OrgScope | ProjectScope): JSX.Elemen
                       <ListingTable.Cell>
                         <Stack direction="row" alignItems="center" gap={0.5}>
                           <Clock size={14} />
-                          {env.createdAt ? formatDistanceToNow(env.createdAt) : '—'}
+                          <DateTime value={env.createdAt} relative />
                         </Stack>
                       </ListingTable.Cell>
                       <Authorized permissions={Permissions.ENVIRONMENT_MANAGE} fallback={<ListingTable.Cell align="right" />}>
