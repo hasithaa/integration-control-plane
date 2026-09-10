@@ -21,7 +21,7 @@ import { Brain, Database, Info, SquareCheck, UserCheck, Wrench } from '@wso2/oxy
 import { useMemo, type ComponentType, type ReactElement } from 'react';
 import type { ExecutionGraph, InstanceGraph, StepExecution } from '../../api/workflows';
 import { paletteColor, statusColorName } from './graphVisuals';
-import { MODEL_ACTIVITY_LABELS } from './helpers';
+import { MODEL_ACTIVITY_LABELS, modelStepId } from './helpers';
 
 /**
  * The agent's compact rail: everything the agent declares, as a categorized list — human tasks,
@@ -122,7 +122,7 @@ export default function AgentRail({
     }
     for (const [activity, agg] of seen) {
       model.push({
-        id: `model#${activity}`,
+        id: modelStepId(activity),
         label: MODEL_ACTIVITY_LABELS[activity] ?? activity,
         icon: Brain,
         exec: { status: agg.status, count: agg.count, failed: agg.failed, recovered: false },

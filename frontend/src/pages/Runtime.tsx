@@ -84,11 +84,7 @@ secret = "${secret}"
 }
 
 function biToml(envName: string, secret: string, projectHandle: string, integrationHandle: string): string {
-  // One snippet for every BI runtime, with workflow management on. When the integration uses
-  // ballerina/workflow, the bridge advertises the tunnel capability and the ICP delivers management
-  // commands over the heartbeat channel — no management port, no API key, and no workflow block
-  // dictated from this side. The flag is the deployment's opt-out: set it false to run headless
-  // (the runtime keeps heartbeating but accepts no management). A non-workflow runtime ignores it.
+  // One snippet for every BI runtime; enableWorkflowManagement is the deployment's headless opt-out.
   return `[wso2.icp.runtime.bridge]
 environment = "${envName}"
 project = "${projectHandle}"

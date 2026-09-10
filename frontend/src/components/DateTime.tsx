@@ -21,15 +21,7 @@ import type { JSX } from 'react';
 import { useTimeZone } from '../contexts/TimeZoneContext';
 import { formatDateTime, formatDistanceToNow, toIsoUtc } from '../utils/time';
 
-/**
- * A timestamp the way the console writes one: `2026-09-09 14:32:05` on the clock chosen in the
- * header, with everything the text leaves out behind a hover — the exact UTC instant, the zone in
- * effect, and how long ago it was. `relative` swaps the text and the hover: "3 min ago" on the
- * page, the absolute time in the tooltip.
- *
- * Renders a `<time>` element carrying the ISO instant, so the value is machine-readable whatever
- * the display. Nothing is ever shown as a bare number the reader has to decode.
- */
+/** A timestamp as `YYYY-MM-DD HH:mm:ss` on the chosen clock, with the UTC instant and age in the tooltip; `relative` swaps the two. */
 export default function DateTime({
   value,
   seconds = true,

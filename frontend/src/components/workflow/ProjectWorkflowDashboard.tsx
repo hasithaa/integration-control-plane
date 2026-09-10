@@ -28,25 +28,11 @@ import { formatClock, formatDistanceToNow } from '../../utils/time';
 import { useTimeZone } from '../../contexts/TimeZoneContext';
 import { ReviewActivityDetailDialog, type Toast } from './AdminPortal';
 import { TaskDetailDialog, toWorkItem, WorkItemTable, type WorkItem } from './UserPortal';
-import { HeaderCell, ListFooter } from './shared';
+import { HeaderCell, ListFooter, rowOpenProps } from './shared';
 import type { WorkflowIntegrationEntry } from './useWorkflowPageScope';
 import { countText, numberText, sumOf, totalOf, useIntegrationStats, useSinceWindow, type IntegrationStats } from './WorkflowStats';
 
-/**
- * The project level. Listing every instance or task project-wide is impossible by construction —
- * integrations may run against different Temporal servers or namespaces, and no single runtime
- * can see the others' work — so the project shows a summary instead: one row per integration in
- * the selected environment, each figure one bounded request to that integration's runtime, and a
- * drill-down into the integration's own pages for the list behind any number.
- *
- * Executions: how is each integration's workflow doing right now — running, suspended, finished
- * how in the last day, and how much is waiting on a person.
- *
- * Human Tasks: everything waiting for ME across the project, as one queue. It is assembled from
- * one page per integration, so it says plainly which integrations it currently reflects and
- * which are still answering, offline or unreachable — a list built from several sources must
- * never look more complete than it is.
- */
+/** The project level: one row (or one queue) per integration, since no single runtime can list a project's work. */
 export default function ProjectWorkflowDashboard({
   scope,
   projectId,
@@ -64,9 +50,7 @@ export default function ProjectWorkflowDashboard({
   canViewHumanTasks: boolean;
   canViewWorkflows: boolean;
 }): JSX.Element {
-  // Which integrations actually run in THIS environment. The list comes from the project's
-  // components — environment-independent — so without this, switching to an environment with no
-  // deployments kept showing rows whose numbers could never load.
+  // Only integrations deployed in this environment can answer.
   const { data: runtimes, isPending: runtimesPending } = useProjectRuntimes(environmentId, projectId);
   const runtimeByComponent = useMemo(() => latestRuntimeByComponent(runtimes), [runtimes]);
   const deployedIds = runtimes === undefined || runtimesPending ? undefined : new Set(runtimeByComponent.keys());
@@ -100,12 +84,12 @@ interface TableProps {
   canViewWorkflows: boolean;
 }
 
-/** The runtimes that are not heartbeating, from the heartbeat itself — known before any runtime has answered a question. */
+/** Deployed integrations whose runtime is not heartbeating. */
 const offlineCount = (deployed: WorkflowIntegrationEntry[], runtimeByComponent: Map<string, GqlRuntime>): number => deployed.filter((d) => (runtimeByComponent.get(d.componentId)?.status ?? '').toUpperCase() !== 'RUNNING').length;
 
 const plural = (n: number, word: string): string => `${word}${n === 1 ? '' : 's'}`;
 
-/** A number that leads somewhere: dotted underline, and the click does not also open the row. */
+/** A count that links; the click does not also open the row. */
 function LinkedCount({ text, onClick }: { text: string; onClick: () => void }): JSX.Element {
   return (
     <Typography
@@ -121,13 +105,7 @@ function LinkedCount({ text, onClick }: { text: string; onClick: () => void }): 
   );
 }
 
-/**
- * The row shape both tables share: the integration's name, then either the figures or one note
- * spanning them — still resolving, not deployed here, or runtime offline. There is no runtime
- * column: a runtime's status is a fact about the runtime, shown where runtimes are managed, and
- * the only thing it changes here is whether figures can arrive at all. When they cannot, the row
- * says why instead of showing a line of dashes.
- */
+/** A table row: the integration's name, then its figures or one note spanning them (resolving, not deployed, runtime offline). */
 function IntegrationRow({
   integration,
   isDeployed,
@@ -147,7 +125,7 @@ function IntegrationRow({
   const clickable = isDeployed === true;
   const offline = isDeployed === true && (runtime?.status ?? '').toUpperCase() !== 'RUNNING';
   return (
-    <ListingTable.Row hover={clickable} onClick={clickable ? onOpen : undefined} sx={{ cursor: clickable ? 'pointer' : 'default' }}>
+    <ListingTable.Row hover={clickable} {...(clickable ? rowOpenProps(onOpen) : {})}>
       <ListingTable.Cell>
         <Stack direction="row" alignItems="center" gap={1} sx={{ minWidth: 0 }}>
           <Workflow size={16} />
@@ -163,16 +141,12 @@ function IntegrationRow({
           </Typography>
         </ListingTable.Cell>
       ) : isDeployed === false ? (
-        // The rows are the project's components; deployment is per environment. Saying so beats
-        // a row of numbers that would never arrive.
         <ListingTable.Cell colSpan={span}>
           <Typography variant="caption" color="text.disabled">
             Not deployed in this environment.
           </Typography>
         </ListingTable.Cell>
       ) : offline ? (
-        // The runtime answers every figure in this row; while it is not heartbeating there is
-        // nothing to count, and the reason reads better than six dashes.
         <ListingTable.Cell colSpan={span}>
           <Typography variant="caption" color="warning.main">
             Runtime offline{runtime?.lastHeartbeat ? ` — last heartbeat ${formatDistanceToNow(runtime.lastHeartbeat)}` : ''}. Figures return when it heartbeats again.
@@ -195,10 +169,10 @@ function WorkflowStatsTable({ scope, environmentId, integrations, runtimeByCompo
   const rows = useIntegrationStats(
     deployed.map((d) => ({ componentId: d.componentId, environmentId })),
     since,
-    { instances: true, reviews: canSeeWork, tasks: canSeeWork, myTasks: false },
+    { instances: true, reviews: canSeeWork, tasks: canViewHumanTasks, myTasks: false },
   );
   const statsByComponent = new Map<string, IntegrationStats>(deployed.map((d, i) => [d.componentId, rows[i]]));
-  // Definitions come from stored heartbeat metadata — no call into the runtime — tagged by owner.
+  // Definitions come from heartbeat metadata, not the runtime.
   const definitions = useWorkflowDefinitionsAcross(
     deployed.map((d) => ({ componentId: d.componentId, componentName: d.name, handler: d.routeHandler })),
     environmentId,
@@ -209,7 +183,6 @@ function WorkflowStatsTable({ scope, environmentId, integrations, runtimeByCompo
     return m;
   }, [definitions.items]);
 
-  // The strip: what needs attention across the project.
   const offline = offlineCount(deployed, runtimeByComponent);
   const failedTotal = totalOf(rows, (s) => s.failed);
   const reviewsTotal = totalOf(rows, (s) => s.reviews);
@@ -232,7 +205,7 @@ function WorkflowStatsTable({ scope, environmentId, integrations, runtimeByCompo
           <Chip size="small" variant={offline > 0 ? 'filled' : 'outlined'} color={offline > 0 ? 'warning' : 'default'} label={`${offline} ${plural(offline, 'runtime')} offline`} />
           <Chip size="small" variant={failedTotal.count > 0 ? 'filled' : 'outlined'} color={failedTotal.count > 0 ? 'error' : 'default'} label={`${failedTotal.text} failed in 24h`} />
           {canSeeWork && <Chip size="small" variant={reviewsTotal.count > 0 ? 'filled' : 'outlined'} color={reviewsTotal.count > 0 ? 'primary' : 'default'} label={`${reviewsTotal.text} ${plural(reviewsTotal.count, 'review')} waiting`} />}
-          {canSeeWork && <Chip size="small" variant={tasksTotal.count > 0 ? 'filled' : 'outlined'} color={tasksTotal.count > 0 ? 'primary' : 'default'} label={`${tasksTotal.text} ${plural(tasksTotal.count, 'task')} waiting`} />}
+          {canViewHumanTasks && <Chip size="small" variant={tasksTotal.count > 0 ? 'filled' : 'outlined'} color={tasksTotal.count > 0 ? 'primary' : 'default'} label={`${tasksTotal.text} ${plural(tasksTotal.count, 'task')} waiting`} />}
         </Stack>
       )}
 
@@ -246,7 +219,7 @@ function WorkflowStatsTable({ scope, environmentId, integrations, runtimeByCompo
             <HeaderCell label="Failed (24h)" help="Instances that finished as FAILED in the last 24 hours." />
             <HeaderCell label="Completed (24h)" help="Instances that finished successfully in the last 24 hours." />
             {canSeeWork && <HeaderCell label="Pending Reviews" help="Review activities waiting for a decision — approval gates and failed-activity reviews. Decided in Human Tasks." />}
-            {canSeeWork && <HeaderCell label="Pending Tasks" help="Human tasks waiting for anyone in any role — the project total, unlike the Human Tasks page, which shows only the work you can act on." />}
+            {canViewHumanTasks && <HeaderCell label="Pending Tasks" help="Human tasks waiting for anyone in any role — the project total, unlike the Human Tasks page, which shows only the work you can act on." />}
           </ListingTable.Row>
         </ListingTable.Head>
         <ListingTable.Body>
@@ -259,7 +232,7 @@ function WorkflowStatsTable({ scope, environmentId, integrations, runtimeByCompo
                 integration={integration}
                 isDeployed={deployedIds?.has(integration.componentId)}
                 runtime={runtimeByComponent.get(integration.componentId)}
-                span={canSeeWork ? 7 : 5}
+                span={5 + (canSeeWork ? 1 : 0) + (canViewHumanTasks ? 1 : 0)}
                 onOpen={() => openExecutions(integration)}>
                 <ListingTable.Cell>{definitions.isLoading && types === undefined ? '…' : (types ?? 0)}</ListingTable.Cell>
                 <ListingTable.Cell>{countText(s.running)}</ListingTable.Cell>
@@ -270,13 +243,12 @@ function WorkflowStatsTable({ scope, environmentId, integrations, runtimeByCompo
                   </Typography>
                 </ListingTable.Cell>
                 <ListingTable.Cell>{countText(s.completed)}</ListingTable.Cell>
-                {/* Reviews and tasks are decided in Human Tasks, so those numbers go THERE. */}
                 {canSeeWork && (
                   <ListingTable.Cell>
                     <LinkedCount text={countText(s.reviews)} onClick={() => openTasks(integration, 'reviews')} />
                   </ListingTable.Cell>
                 )}
-                {canSeeWork && (
+                {canViewHumanTasks && (
                   <ListingTable.Cell>
                     <LinkedCount text={numberText(s.tasks)} onClick={() => openTasks(integration)} />
                   </ListingTable.Cell>
@@ -292,7 +264,7 @@ function WorkflowStatsTable({ scope, environmentId, integrations, runtimeByCompo
 
 // ── Human Tasks: the project inbox ──
 
-/** One integration's contribution to the inbox, and how far along it is. */
+/** One integration's part of the inbox. */
 interface SourceState {
   integration: WorkflowIntegrationEntry;
   status: 'offline' | 'fetching' | 'refreshing' | 'ready' | 'failed';
@@ -309,22 +281,7 @@ const HOLD_MS = 6000;
 
 const joinNames = (xs: string[]): string => (xs.length <= 1 ? xs.join('') : `${xs.slice(0, -1).join(', ')} and ${xs[xs.length - 1]}`);
 
-/**
- * Every pending task and review the caller can act on, from every integration in the
- * environment, as one queue — oldest first, because the item someone has waited longest on is
- * the one to open next. No single runtime can list this: each integration answers for itself,
- * so the inbox asks each one for a page and merges them here.
- *
- * That is also why it has to be honest about itself. The sources answer at different moments —
- * one integration's runtime may be offline, another still preparing its page — so the queue can
- * grow while it is being read. The strip above the list names each integration with its state
- * (how many it contributed, still answering, offline, unreachable) and the line under the title
- * says how many sources the list currently reflects. Oldest-first keeps the changes calm: an
- * integration answering late adds rows at the bottom, and a decided item simply leaves.
- *
- * No bulk actions here: a decision is made one item at a time, in the drawer of the integration
- * that owns it.
- */
+/** The caller's pending work from every integration in the environment, as one oldest-first queue; each source's state is shown, and no bulk actions. */
 function ProjectInbox({ scope, environmentId, integrations, runtimeByComponent, deployedIds }: TableProps): JSX.Element {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -334,14 +291,9 @@ function ProjectInbox({ scope, environmentId, integrations, runtimeByComponent, 
   const [openReview, setOpenReview] = useState<WorkItem | null>(null);
 
   const deployed = useMemo(() => integrations.filter((i) => deployedIds?.has(i.componentId)), [integrations, deployedIds]);
-  // An offline runtime cannot answer; asking it only produces an error to explain. Its row in the
-  // strip says why it is missing instead.
+  // Offline runtimes are not asked; their chip says why.
   const online = (d: WorkflowIntegrationEntry) => (runtimeByComponent.get(d.componentId)?.status ?? '').toUpperCase() === 'RUNNING';
-  // ── Paging, per source ──
-  // Each source is asked for one page of 50. A source with more says so ("50+"), and Load more
-  // asks every such source for its next page — one more request per source, never a re-read of
-  // what is already shown. The follow-up pages are separate queries keyed by their token, so the
-  // first page's polling keeps the list fresh while the later pages stay as they were loaded.
+  // One page of 50 per source; Load more asks every source with more for its next page.
   const [moreTokens, setMoreTokens] = useState<Record<string, string[]>>({});
   const results = useQueries({
     queries: deployed.map((d) => ({ ...pendingWorkItemsQueryOptions({ componentId: d.componentId, environmentId }), enabled: online(d) })),
@@ -351,16 +303,7 @@ function ProjectInbox({ scope, environmentId, integrations, runtimeByComponent, 
     queries: pageDescriptors.map((pd) => ({ ...pendingWorkItemsQueryOptions({ componentId: pd.componentId, environmentId }, 50, pd.token), refetchInterval: false as const })),
   });
 
-  // ── Merging gracefully ──
-  // The sources answer at different moments. Re-sorting the whole list each time one arrives
-  // would move rows under the reader's eye, so the merge is done in two phases. First the list
-  // is HELD: nothing is shown until every reachable source has answered or a short grace period
-  // has passed — most of the time that is a second or two, and the reader sees one complete,
-  // oldest-first list. Then the order is FROZEN: every item keeps the position it was first
-  // shown in; a source answering after the hold appends its items at the bottom (oldest-first
-  // among themselves) and is named as late; an item that is decided simply leaves. The natural
-  // order is still oldest-first for everything shown together — only late arrivals break it, and
-  // they say so.
+  // Held until every reachable source answers (or the grace period ends), then the order is frozen: rows never move under the reader.
   const orderRef = useRef<Map<string, number>>(new Map());
   const seqRef = useRef(0);
   const [settled, setSettled] = useState(false);
@@ -438,10 +381,10 @@ function ProjectInbox({ scope, environmentId, integrations, runtimeByComponent, 
         merged.push(item);
       }
     });
-    // Natural order: oldest first — ISO-8601 sorts lexicographically; items without a time sink.
+    // Oldest first; items without a time sink.
     merged.sort((a, b) => (a.startTime ?? '\uffff').localeCompare(b.startTime ?? '\uffff'));
     if (!settled) return { items: merged, labels, sources };
-    // Frozen order: first appearance decides the position, so nothing already shown moves.
+    // First appearance decides the position.
     const order = orderRef.current;
     for (const w of merged) if (!order.has(w.id)) order.set(w.id, ++seqRef.current);
     merged.sort((a, b) => (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0));
@@ -450,7 +393,6 @@ function ProjectInbox({ scope, environmentId, integrations, runtimeByComponent, 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [deployed, runtimeByComponent, settled, pageDescriptors, ...results.map((r) => r.data), ...results.map((r) => r.error), ...results.map((r) => r.isPending), ...moreResults.map((r) => r.data), ...moreResults.map((r) => r.isPending)]);
 
-  // Load more asks every source that reported more for its next page.
   const anyMore = sources.some((src) => src.hasMore && src.nextToken && (src.status === 'ready' || src.status === 'refreshing'));
   const anyLoadingMore = sources.some((src) => src.loadingMore);
   const loadMore = () =>
@@ -531,7 +473,6 @@ function ProjectInbox({ scope, environmentId, integrations, runtimeByComponent, 
         </Typography>
       </Stack>
 
-      {/* The sources: one chip per integration, its state in words, its queue one click away. */}
       {sources.length > 0 && (
         <Stack direction="row" flexWrap="wrap" gap={1} alignItems="center">
           <Typography variant="caption" sx={{ color: 'text.secondary', mr: 0.5 }}>
@@ -561,8 +502,7 @@ function ProjectInbox({ scope, environmentId, integrations, runtimeByComponent, 
         </>
       )}
 
-      {/* Each item opens the drawer its own integration would — decisions go to the runtime that
-          owns the item, and a decision refreshes every view of this environment. */}
+      {/* Each item opens its own integration's drawer. */}
       {openTask?.componentId && (
         <TaskDetailDialog
           scope={{ componentId: openTask.componentId, environmentId }}

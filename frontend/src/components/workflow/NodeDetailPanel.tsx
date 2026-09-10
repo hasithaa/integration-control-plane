@@ -51,10 +51,14 @@ function ModelCallSections({ view, detail, environmentId }: { view: ModelCallVie
               {view.lastMessage.text}
             </Typography>
           </SectionCard>
-          <Button size="small" variant="text" onClick={() => setShowRaw((v) => !v)} sx={{ alignSelf: 'flex-start', px: 0.5, minWidth: 0 }}>
-            {showRaw ? 'Hide Full Input' : 'Show Full Input'}
-          </Button>
-          {showRaw && detail.input !== null && <StructuredValue title="Full Input" raw={detail.input} environmentId={environmentId} />}
+          {detail.input !== null && (
+            <>
+              <Button size="small" variant="text" onClick={() => setShowRaw((v) => !v)} sx={{ alignSelf: 'flex-start', px: 0.5, minWidth: 0 }}>
+                {showRaw ? 'Hide Full Input' : 'Show Full Input'}
+              </Button>
+              {showRaw && <StructuredValue title="Full Input" raw={detail.input} environmentId={environmentId} />}
+            </>
+          )}
         </Stack>
       )}
       {view.assistantText !== null && (
@@ -86,8 +90,6 @@ export default function NodeDetailPanel({ node, detail, hasHistory, onClose, ful
   const modelCall = parseModelCall(detail);
 
   return (
-    // The same card as the run's Execution summary beside it: a step's details are the run's
-    // details at one more level of zoom, so they must not look like a different kind of box.
     <Box sx={{ width: fullWidth ? '100%' : { xs: '100%', md: '45%' }, flexShrink: 0, alignSelf: 'stretch' }}>
       <SectionCard
         title={task ?? node.label}

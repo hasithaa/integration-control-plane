@@ -62,6 +62,7 @@ import { ArtifactTypeSelector } from './ArtifactDetail';
 import Authorized from './Authorized';
 import { Permissions } from '../constants/permissions';
 import { hasComponent, resourceUrl, useScope } from '../nav';
+import { useAccessControl } from '../contexts/AccessControlContext';
 import { isWorkflowIntegration } from '../constants/integrationTypes';
 import { ENTRY_POINT_CONFIG, ENTRY_POINT_DETAIL_TABS, type SelectedArtifact, type TabProps } from './artifact-config';
 import SyncSwitch from './SyncSwitch';
@@ -142,6 +143,8 @@ function EntryPointDetail({ selected, onOpenDrawerTab }: { selected: SelectedArt
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const scope = useScope();
+  const { hasAnyPermission } = useAccessControl();
+  const canViewTasks = hasAnyPermission([Permissions.WORKFLOW_VIEW_HUMAN_TASKS, Permissions.WORKFLOW_MANAGE_HUMAN_TASKS], projectId, componentId);
   const updateTracingStatus = useUpdateArtifactTracingStatus();
   const updateStatisticsStatus = useUpdateArtifactStatisticsStatus();
   const updateArtifactStatus = useUpdateArtifactStatus();
@@ -498,15 +501,10 @@ function EntryPointDetail({ selected, onOpenDrawerTab }: { selected: SelectedArt
             ))}
           </Box>
         )}
-        {/* The selected definition's figures — the same columns the project's Workflow Executions
-            table shows, scoped to the workflow type chosen in the selector above so the two agree.
-            Counting calls /workflows, which the proxy gates on the workflow view permission, so
-            the strip only renders for someone who can load it; the pending-work cells are for
-            those allowed to see work. hasComponent narrows the scope for the links: this page only
-            renders at integration scope, so it is a type-level guarantee. */}
+        {/* The selected definition's figures; hasComponent narrows the scope for the links. */}
         {artifactType === 'Workflow' && hasComponent(scope) && (
           <Authorized permissions={[Permissions.WORKFLOW_VIEW_WORKFLOWS, Permissions.WORKFLOW_MANAGE_WORKFLOWS]}>
-            <DefinitionStatsStrip scope={scope} componentId={componentId} environmentId={envId} workflowType={artifactName} canSeeWork />
+            <DefinitionStatsStrip scope={scope} componentId={componentId} environmentId={envId} workflowType={artifactName} canViewReviews canViewTasks={canViewTasks} />
           </Authorized>
         )}
         {/* pt: 0 for Service — it's the first block rendered (no header/overview above it here), so

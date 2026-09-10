@@ -81,9 +81,7 @@ export const ENTRY_POINT_CONFIG: Record<string, { label: string; detailLabel: st
   Service: { label: 'Service', detailLabel: 'SERVICE', color: '#4a148c', bgColor: '#f3e5f5', metaField: 'basePath', primaryDisplay: true, overviewFields: 'package, type' },
   Listener: { label: 'Listener', detailLabel: 'LISTENER', color: '#bf360c', bgColor: '#fbe9e7', metaField: 'port', primaryDisplay: true, overviewFields: 'package, protocol, host, port' },
   Automation: { label: 'Automation', detailLabel: 'AUTOMATION', color: '#f57c00', bgColor: '#fff3e0', metaField: 'packageVersion', overviewFields: 'packageOrg, packageName, packageVersion' },
-  // No overview fields: `state` had no control behind it (a definition cannot be disabled from
-  // here) and `workerCount` is Temporal's worker bookkeeping, not something an operator of the
-  // integration acts on. The definition's figures come from the stats strip instead.
+  // No overview fields; the definition's figures come from the stats strip.
   Workflow: { label: 'Workflow', detailLabel: 'WORKFLOW', color: '#00838f', bgColor: '#e0f7fa' },
 };
 

@@ -57,7 +57,7 @@ export default function StructuredValue({
   raw: string;
   environmentId?: string;
   collapsible?: boolean;
-  /** Marks the value as context the reader cannot change here — shown as a badge beside the title. */
+  /** Shows a Read-only badge beside the title. */
   readOnly?: boolean;
 }): ReactElement {
   const [showRaw, setShowRaw] = useState(false);
@@ -73,8 +73,7 @@ export default function StructuredValue({
   const isFormable = !parseFailed && parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed);
   const isBare = !parseFailed && !isFormable && (parsed === null || typeof parsed !== 'object');
 
-  // The same SectionCard as every other section of the drawer: a payload is not a lesser kind of
-  // fact than the fields around it, so it must not look like a different kind of box.
+  // Same SectionCard as every other drawer section.
   const actions = (
     <>
       <Tooltip title={showRaw ? 'Show as a form' : 'Show the raw JSON'}>
@@ -93,7 +92,7 @@ export default function StructuredValue({
 
   let body: ReactElement;
   if (showRaw || parseFailed || (!isFormable && !isBare)) {
-    // Raw on demand, and raw whenever the value defies structure — unparseable text stays visible.
+    // Raw on demand, or when the value has no structure to show.
     body = (
       <Box sx={{ minWidth: 0, overflow: 'auto', maxHeight: '32vh' }}>
         <Box component="pre" sx={{ m: 0, fontFamily: 'monospace', fontSize: 12, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>

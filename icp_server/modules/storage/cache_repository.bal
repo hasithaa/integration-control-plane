@@ -416,6 +416,8 @@ public isolated function claimCacheOperations(string runtimeId, int count)
     } on fail error e {
         return error("Failed to claim operations", e);
     }
+    // Only stamped operations are handed out: an unstamped one could not record its outcome.
+    types:CacheOperation[] delivered = [];
     foreach types:CacheOperation operation in operations {
         sql:ExecutionResult|sql:Error marked = dbClient->execute(`
             UPDATE cache_operation_outbox
@@ -423,11 +425,13 @@ public isolated function claimCacheOperations(string runtimeId, int count)
             WHERE operation_id = ${operation.operationId} AND status = ${types:CACHE_OP_PENDING}
         `);
         if marked is sql:Error {
-            log:printWarn("Failed to mark a cached operation delivered", marked,
+            log:printWarn("Failed to mark a cached operation delivered; it stays queued", marked,
                     operationId = operation.operationId);
+            continue;
         }
+        delivered.push(operation);
     }
-    return operations;
+    return delivered;
 }
 
 # Records a mutation's outcome, first write wins.

@@ -52,9 +52,6 @@ export default function ExecutionSummary({
   const durationMs = Number.isFinite(startMs) && Number.isFinite(closeMs) ? closeMs - startMs : null;
   const errorMessage = typeof info['errorMessage'] === 'string' ? (info['errorMessage'] as string) : null;
 
-  // The same card as every section of the drawers — a run's summary is not a lesser kind of fact
-  // than a task's fields. Status and duration ride beside the title; the debugging controls are
-  // header actions.
   const row = (label: string, value: ReactNode): ReactNode => (value == null || value === '' ? null : <DetailRow label={label}>{value}</DetailRow>);
   const badge = (
     <Stack direction="row" alignItems="center" gap={1}>

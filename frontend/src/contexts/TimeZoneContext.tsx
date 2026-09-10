@@ -19,18 +19,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type JSX, type ReactNode } from 'react';
 import { getTimeZonePreference, setTimeZonePreference, zoneLabel, type TimeZonePreference } from '../utils/time';
 
-/**
- * Which clock every timestamp in the workflow pages is shown on: the browser's local zone, or UTC.
- *
- * One switch for all of those pages, not a format per view: a person comparing a workflow's start
- * time with a task's decision time and a reset point must be able to trust that all three are on
- * the same clock. The choice is per browser (localStorage) and defaults to local — operators
- * mostly read times as "when did this happen for me" — with UTC one click away for anyone
- * correlating across regions or with a server log. The chosen zone is always named beside the
- * pages' environment picker, so a time is never shown without saying whose clock it is on. The
- * provider sits at the app root so the choice carries across every workflow page; other areas
- * may adopt the same DateTime component and inherit it.
- */
+/** The clock the workflow pages show times on — local or UTC — chosen once per browser. */
 interface TimeZoneState {
   zone: TimeZonePreference;
   /** Human name of the zone in effect: "UTC", or e.g. "UTC+05:30 · Asia/Colombo". */
@@ -43,8 +32,7 @@ const TimeZoneContext = createContext<TimeZoneState | null>(null);
 
 export function TimeZoneProvider({ children }: { children: ReactNode }): JSX.Element {
   const [zone, setZoneState] = useState<TimeZonePreference>(getTimeZonePreference);
-  // Keep the module-level preference in step so plain string formatting (log exports, copied
-  // text) outside React reads the same zone the components render.
+  // Plain string formatting outside React reads the same zone.
   useEffect(() => setTimeZonePreference(zone), [zone]);
   const setZone = useCallback((z: TimeZonePreference) => setZoneState(z), []);
   const toggle = useCallback(() => setZoneState((z) => (z === 'utc' ? 'local' : 'utc')), []);
@@ -52,7 +40,7 @@ export function TimeZoneProvider({ children }: { children: ReactNode }): JSX.Ele
   return <TimeZoneContext.Provider value={value}>{children}</TimeZoneContext.Provider>;
 }
 
-/** The console's time-zone preference. Outside the provider (tests, isolated renders) it reads as local. */
+/** The time-zone preference; local when no provider is mounted. */
 export function useTimeZone(): TimeZoneState {
   const ctx = useContext(TimeZoneContext);
   return ctx ?? { zone: 'local', label: zoneLabel('local'), setZone: () => {}, toggle: () => {} };

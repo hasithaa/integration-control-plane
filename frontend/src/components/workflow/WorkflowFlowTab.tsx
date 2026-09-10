@@ -27,7 +27,7 @@ import ExecutionSummary from './ExecutionSummary';
 import FlowRail from './FlowRail';
 import NodeDetailPanel from './NodeDetailPanel';
 import WorkflowTimeline from './WorkflowTimeline';
-import { buildTimeline, extractNodeExecutionDetail, extractWorkflowInput, flowUnavailable, jsonPretty, signalEventIds, type TimelineSpan } from './helpers';
+import { buildTimeline, extractNodeExecutionDetail, extractWorkflowInput, flowUnavailable, jsonPretty, signalEventIds, type TimelineSpan, modelStepId, modelStepActivity } from './helpers';
 
 /**
  * The instance's Overview: everything an operator reads first, on one page.
@@ -103,7 +103,7 @@ export default function WorkflowFlowTab({
     const nodes = executionGraph.nodes ?? [];
     for (let i = nodes.length - 1; i >= 0; i--) {
       const stepId = nodes[i].metadata?.['stepId'] as string | undefined;
-      if (stepId) return isAgent && stepId === 'model' && nodes[i].label ? `model#${nodes[i].label}` : stepId;
+      if (stepId) return isAgent && stepId === 'model' && nodes[i].label ? modelStepId(nodes[i].label) : stepId;
     }
     return null;
   }, [executionGraph, isAgent]);
@@ -117,7 +117,7 @@ export default function WorkflowFlowTab({
     if (isAgent) {
       // Model events name the split row; signals name their event node.
       for (const n of executionGraph?.nodes ?? []) {
-        if ((n.metadata?.['stepId'] as string | undefined) === 'model' && n.label) map.set(n.id, `model#${n.label}`);
+        if ((n.metadata?.['stepId'] as string | undefined) === 'model' && n.label) map.set(n.id, modelStepId(n.label));
       }
       for (const e of events) {
         if ((e['eventType'] ?? '') !== 'WORKFLOW_EXECUTION_SIGNALED') continue;
@@ -131,8 +131,8 @@ export default function WorkflowFlowTab({
 
   const stepEventIds = useMemo(() => {
     return (stepId: string): Set<string> => {
-      if (stepId.startsWith('model#')) {
-        const activity = stepId.slice('model#'.length);
+      const activity = modelStepActivity(stepId);
+      if (activity !== null) {
         return new Set((executionGraph?.nodes ?? []).filter((n) => (n.metadata?.['stepId'] as string | undefined) === 'model' && n.label === activity).map((n) => n.id));
       }
       if (stepId.startsWith('event:')) {
@@ -241,7 +241,7 @@ export default function WorkflowFlowTab({
                 railVariant === 'chart' ? (
                   <AgentRail data={instanceGraph!} executionGraph={executionGraph} events={events} selectedStepId={selectedStepId ?? railHighlight} onSelect={selectStep} />
                 ) : (
-                  <AgentStarRail data={instanceGraph!} selectedStepId={(selectedStepId ?? railHighlight)?.startsWith('model#') ? 'model' : (selectedStepId ?? railHighlight)} onSelect={selectStep} />
+                  <AgentStarRail data={instanceGraph!} selectedStepId={modelStepActivity(selectedStepId ?? railHighlight ?? '') !== null ? 'model' : (selectedStepId ?? railHighlight)} onSelect={selectStep} />
                 )
               ) : (
                 <FlowRail data={instanceGraph!} selectedStepId={selectedStepId ?? railHighlight} currentStepId={currentStepId} onSelect={selectStep} variant={railVariant} />

@@ -16,10 +16,10 @@
  * under the License.
  */
 
-import { Alert, Box, Button, Card, CardActionArea, Chip, CircularProgress, Collapse, Divider, Drawer, FormControlLabel, IconButton, Link, ListingTable, Menu, MenuItem, Stack, Switch, Tooltip, Typography } from '@wso2/oxygen-ui';
+import { alpha, Alert, Box, Button, Card, CardActionArea, Chip, CircularProgress, Collapse, Divider, Drawer, FormControlLabel, IconButton, Link, ListingTable, Menu, MenuItem, Stack, Switch, Tooltip, Typography } from '@wso2/oxygen-ui';
 import { Bug, ChevronDown, ChevronRight, Copy, EllipsisVertical, Info } from '@wso2/oxygen-ui-icons-react';
 import { useQueryClient } from '@tanstack/react-query';
-import { useState, type JSX, type ReactNode } from 'react';
+import React, { useState, type JSX, type ReactNode } from 'react';
 import { useNavigate } from 'react-router';
 import { resourceUrl, useScope } from '../../nav';
 import CodeViewer from '../CodeViewer';
@@ -32,6 +32,25 @@ import { formatClock } from '../../utils/time';
 export interface WorkflowScope {
   componentId: string;
   environmentId: string;
+}
+
+/** The app bar's height; drawers open below it. */
+export const APP_BAR_HEIGHT = 64;
+
+/** Props that make a clickable table row keyboard-reachable: focusable, a button role, Enter/Space open it. */
+export function rowOpenProps(open: () => void) {
+  return {
+    onClick: open,
+    tabIndex: 0,
+    role: 'button' as const,
+    onKeyDown: (e: React.KeyboardEvent) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        open();
+      }
+    },
+    sx: { cursor: 'pointer', '&:hover': { bgcolor: 'action.hover' }, '&:focus-visible': { outline: '2px solid', outlineColor: 'primary.main', outlineOffset: -2 } },
+  };
 }
 
 /**
@@ -245,7 +264,7 @@ export function DetailDrawer({ title, status, onClose, actions, menu, children }
       open
       variant="persistent"
       onClose={onClose}
-      sx={{ '& .MuiDrawer-paper': { width: `calc(100% - ${sidebarWidth}px)`, position: 'fixed', top: 64, height: 'calc(100% - 64px)', borderLeft: '1px solid', borderColor: 'divider', display: 'flex', flexDirection: 'column' } }}>
+      sx={{ '& .MuiDrawer-paper': { width: `calc(100% - ${sidebarWidth}px)`, position: 'fixed', top: APP_BAR_HEIGHT, height: `calc(100% - ${APP_BAR_HEIGHT}px)`, borderLeft: '1px solid', borderColor: 'divider', display: 'flex', flexDirection: 'column' } }}>
       <Stack direction="row" alignItems="center" justifyContent="space-between" gap={1} sx={{ px: 3, py: 1.5, borderBottom: '1px solid', borderColor: 'divider', flexShrink: 0 }}>
         <Stack direction="row" alignItems="center" gap={1.5} sx={{ minWidth: 0 }}>
           <Typography variant="subtitle1" component="div" sx={{ fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
@@ -274,18 +293,9 @@ export function DetailDrawer({ title, status, onClose, actions, menu, children }
   );
 }
 
-/**
- * The one card every section of the task and review drawers is made of — facts, inputs,
- * arguments, decisions alike. A reader does not distinguish "the task's fields" from "the task's
- * input" by importance, so nothing here may look like a different kind of container: same tint,
- * same header, same padding. `badge` sits beside the title (a "Read-only" mark); `actions` are
- * small controls at the header's right edge, kept outside the clickable title so a button never
- * nests inside a button.
- */
+/** The card every drawer section is made of. `badge` sits beside the title; `actions` sit at the header's right edge, outside the clickable title. */
 export function SectionCard({ title, badge, actions, collapsible, defaultOpen = true, children }: { title: string; badge?: ReactNode; actions?: ReactNode; collapsible?: boolean; defaultOpen?: boolean; children: ReactNode }): JSX.Element {
-  // Open by default: the context is why the reader is here. Collapsing is for the second visit,
-  // once the facts are absorbed and the actions are what is left. A section that starts closed
-  // is one most readers never need — advanced settings whose defaults are right.
+  // Open by default; `defaultOpen={false}` is for sections most readers never need.
   const [open, setOpen] = useState(defaultOpen);
   const titleBlock = (
     <Stack direction="row" alignItems="center" gap={1} sx={{ flex: 1, minWidth: 0, px: 2, py: 1.5 }}>
@@ -359,9 +369,9 @@ export function ActionCard({ title, subtitle, info, selected, disabled, disabled
           </Box>
           {info && (
             <Tooltip title={info}>
-              <Box component="span" onClick={(e) => e.stopPropagation()} sx={{ display: 'inline-flex', color: 'text.disabled', mt: 0.25 }}>
+              <IconButton size="small" aria-label={`about ${title}`} onClick={(e) => e.stopPropagation()} sx={{ p: 0.25, color: 'text.disabled', mt: 0.25 }}>
                 <Info size={14} />
-              </Box>
+              </IconButton>
             </Tooltip>
           )}
         </Stack>
@@ -404,7 +414,7 @@ export function HeaderCell({ label, help }: { label: string; help: string }): JS
   return (
     <ListingTable.Cell>
       <Tooltip title={help} placement="top">
-        <Typography component="span" variant="inherit" sx={{ cursor: 'help', textDecoration: 'underline dotted', textUnderlineOffset: 3, textDecorationColor: 'rgba(128,128,128,0.5)' }}>
+        <Typography component="span" variant="inherit" sx={{ cursor: 'help', textDecoration: 'underline dotted', textUnderlineOffset: 3, textDecorationColor: (t) => alpha(t.palette.text.secondary, 0.5) }}>
           {label}
         </Typography>
       </Tooltip>

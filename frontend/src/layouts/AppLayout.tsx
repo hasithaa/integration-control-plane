@@ -77,9 +77,6 @@ const SIDEBAR_ICONS: Record<Resource, JSX.Element> = {
   'access-control': <Shield size={20} />,
 };
 
-// Workflows and Human Tasks are where a person operates what the integrations run — start,
-// suspend, decide — so they sit in their own group, ahead of watching (Observability): a queue
-// is acted on before a log is read.
 const SIDEBAR_CATEGORIES: { label: string; resources: Resource[] }[] = [
   { label: '', resources: ['overview', 'test', 'runtimes'] },
   { label: 'Manage', resources: ['workflows', 'tasks'] },

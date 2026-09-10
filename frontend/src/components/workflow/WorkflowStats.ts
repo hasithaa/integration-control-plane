@@ -20,17 +20,7 @@ import { useQueries, useQuery } from '@tanstack/react-query';
 import { useMemo } from 'react';
 import { instanceCountQueryOptions, pendingReviewCountQueryOptions, pendingTaskCountQueryOptions, pendingWorkItemCountQueryOptions, totalPendingTaskCountQueryOptions, valueOf, type CappedCount, type PendingReviewCount } from '../../api/workflows';
 
-/**
- * The numbers that say how one integration's workflows are doing, and the pieces that show them.
- * Shared by the project-level tables (one row per integration) and the integration overview's
- * strip (IntegrationStatsStrip), so the two places read the same figures from the same queries —
- * react-query dedupes by key, so a person moving between them pays for each count once.
- *
- * Every figure is one bounded request to the integration's runtime, through the tunnel. An
- * integration whose runtime is not heartbeating answers nothing: its figures settle to "—" and
- * its neighbours' are unaffected. That isolation is the point — a project view must degrade one
- * cell at a time, never as a whole, when one of several integrations is missing.
- */
+/** The figures the project tables and the integration overview share; each is one bounded request per integration, and a missing runtime settles to "—" without affecting its neighbours. */
 
 interface StatsScope {
   componentId: string;
@@ -60,20 +50,12 @@ export interface StatsSelection {
   myTasks: boolean;
 }
 
-/**
- * The "last 24 hours" window for the finished-instance counts, fixed once per mount: it is part
- * of every count's query key, and a value that moved every render would refetch in a loop. A
- * page reload starts a fresh window.
- */
+/** The 24h window for finished-instance counts, fixed per mount: it is part of the query key. */
 export function useSinceWindow(): string {
   return useMemo(() => new Date(Date.now() - 24 * 3600_000).toISOString(), []);
 }
 
-/**
- * The selected figures for each scope, fanned out with one batch per metric. The result is
- * aligned with `scopes`. The runtime scopes every listing to the integration's own task queue on
- * the server, so no queue needs naming here.
- */
+/** The selected figures per scope, one batch per metric; the result is aligned with `scopes`. */
 export function useIntegrationStats(scopes: StatsScope[], since: string, include: StatsSelection): IntegrationStats[] {
   const running = useQueries({ queries: scopes.map((s) => ({ ...instanceCountQueryOptions(s, { status: 'RUNNING' }), enabled: include.instances })) });
   const suspended = useQueries({ queries: scopes.map((s) => ({ ...instanceCountQueryOptions(s, { status: 'SUSPENDED' }), enabled: include.instances })) });
@@ -100,21 +82,15 @@ export function useIntegrationStats(scopes: StatsScope[], since: string, include
   }));
 }
 
-/**
- * The same figures for ONE workflow definition: instances filtered by workflow type on the
- * runtime, pending work counted from the work-items listing filtered by parent workflow type.
- * Shown on the integration overview beside the definition selector, so the numbers follow the
- * selection — a strip that read across every type under a selector for one would say two things.
- * `reviews` and `tasks` are capped page counts here, like the instance figures.
- */
-export function useDefinitionStats(scope: StatsScope, workflowType: string, since: string, includeWork: boolean): IntegrationStats {
+/** The same figures for one workflow definition; pending work comes from the work-items listing filtered by parent type. */
+export function useDefinitionStats(scope: StatsScope, workflowType: string, since: string, include: { reviews: boolean; tasks: boolean }): IntegrationStats {
   const filters = { workflowType };
   const running = useQuery(instanceCountQueryOptions(scope, { ...filters, status: 'RUNNING' }));
   const suspended = useQuery(instanceCountQueryOptions(scope, { ...filters, status: 'SUSPENDED' }));
   const failed = useQuery(instanceCountQueryOptions(scope, { ...filters, status: 'FAILED', closeTimeFrom: since }));
   const completed = useQuery(instanceCountQueryOptions(scope, { ...filters, status: 'COMPLETED', closeTimeFrom: since }));
-  const reviews = useQuery({ ...pendingWorkItemCountQueryOptions(scope, { kind: 'REVIEW_ACTIVITY', parentWorkflowType: workflowType }), enabled: includeWork });
-  const tasks = useQuery({ ...pendingWorkItemCountQueryOptions(scope, { kind: 'HUMAN_TASK', parentWorkflowType: workflowType, allRoles: true }), enabled: includeWork });
+  const reviews = useQuery({ ...pendingWorkItemCountQueryOptions(scope, { kind: 'REVIEW_ACTIVITY', parentWorkflowType: workflowType }), enabled: include.reviews });
+  const tasks = useQuery({ ...pendingWorkItemCountQueryOptions(scope, { kind: 'HUMAN_TASK', parentWorkflowType: workflowType, allRoles: true }), enabled: include.tasks });
   const settle = <T>(r: { data?: unknown; error: unknown }): T | null | undefined => (r.error ? null : (valueOf(r.data as Parameters<typeof valueOf>[0]) as T | undefined));
   const taskPage = settle<CappedCount>(tasks);
   return {
@@ -123,8 +99,7 @@ export function useDefinitionStats(scope: StatsScope, workflowType: string, sinc
     failed: settle<CappedCount>(failed),
     completed: settle<CappedCount>(completed),
     reviews: settle<CappedCount>(reviews),
-    // The integration-wide shape carries `tasks` as a plain number; here it is a page count, so
-    // the number and its cap travel in two fields.
+    // `tasks` is a plain number in the shared shape; the cap travels beside it.
     tasks: taskPage === undefined || taskPage === null ? taskPage : taskPage.count,
     tasksCapped: taskPage?.capped ?? false,
   };

@@ -16,23 +16,7 @@
  * under the License.
  */
 
-/**
- * One way to write a time across the workflow pages — and on offer to the rest of the console.
- *
- * The workflow pages used to hand timestamps to `toLocaleString()`, which asks the browser: an American
- * browser wrote 07/09/2026 for the 9th of July, a European one for the 7th of September, and
- * nothing on the page said which — or whose clock the hours were on. The standard here removes
- * both ambiguities:
- *
- *  - Dates are written `YYYY-MM-DD`. No locale reads it two ways, and it sorts as text.
- *  - Times are 24-hour, `HH:mm:ss`, with milliseconds only where they carry meaning (log lines).
- *  - Every time is on ONE clock chosen once for these pages — the browser's local zone or UTC
- *    (see TimeZoneContext) — named beside the environment picker. A timestamp is never shown
- *    without a way to know which zone it is in: the `DateTime` component's tooltip carries the
- *    exact UTC instant and the zone in effect.
- *  - Relative phrasing ("3 min ago") is kept where recency is the point, always with the absolute
- *    time behind it.
- */
+/** Timestamps as `YYYY-MM-DD HH:mm:ss`, 24h, on one clock (local or UTC); no locale-dependent formatting. */
 
 export type TimeZonePreference = 'local' | 'utc';
 
@@ -56,7 +40,7 @@ export function setTimeZonePreference(zone: TimeZonePreference): void {
   try {
     localStorage.setItem(STORAGE_KEY, zone);
   } catch {
-    // Private browsing or a full quota: the choice simply does not survive the tab.
+    // Storage unavailable: the choice does not survive the tab.
   }
 }
 
@@ -78,7 +62,7 @@ export function localOffsetLabel(at: Date = new Date()): string {
   return `UTC${sign}${String(Math.floor(abs / 60)).padStart(2, '0')}:${String(abs % 60).padStart(2, '0')}`;
 }
 
-/** "UTC" or "UTC+05:30 · Asia/Colombo" — what the header shows so no time is anonymous. */
+/** "UTC" or "UTC+05:30 · Asia/Colombo". */
 export function zoneLabel(zone: TimeZonePreference = current): string {
   if (zone === 'utc') return 'UTC';
   const name = localZoneName();
@@ -87,11 +71,11 @@ export function zoneLabel(zone: TimeZonePreference = current): string {
 }
 
 export interface DateTimeFormatOptions {
-  /** Include seconds. Default true: most console times are events, and seconds order them. */
+  /** Include seconds (default true). */
   seconds?: boolean;
-  /** Include milliseconds (implies seconds). For log lines. */
+  /** Include milliseconds (implies seconds). */
   ms?: boolean;
-  /** Override the console-wide zone for this one value. */
+  /** Override the chosen zone for this value. */
   zone?: TimeZonePreference;
 }
 
@@ -104,8 +88,7 @@ function parse(value: DateInput): Date | null {
 }
 
 function parts(d: Date, zone: TimeZonePreference): Record<string, string> {
-  // formatToParts, not a locale's string: the pieces are assembled here, so the shape is the
-  // same in every browser regardless of its language settings.
+  // Assembled from parts so the shape does not depend on the browser's locale.
   const fmt = new Intl.DateTimeFormat('en-US', {
     timeZone: zone === 'utc' ? 'UTC' : undefined,
     year: 'numeric',
@@ -128,10 +111,7 @@ function clock(d: Date, p: Record<string, string>, opts: DateTimeFormatOptions):
   return time;
 }
 
-/**
- * `2026-09-09 14:32:05` — the console's timestamp. Returns "—" for nothing, and the raw input for
- * a string that is not a date, so a value the server sent unparsed is still visible.
- */
+/** `2026-09-09 14:32:05`; "—" for nothing, the raw input for an unparseable string. */
 export function formatDateTime(value: DateInput, opts: DateTimeFormatOptions = {}): string {
   const d = parse(value);
   if (!d) return value === undefined || value === null || value === '' ? '—' : String(value);
@@ -147,20 +127,20 @@ export function formatDate(value: DateInput, zone: TimeZonePreference = current)
   return `${p.year}-${p.month}-${p.day}`;
 }
 
-/** `14:32:05` alone — for "Updated 14:32:05" notes where the date is today by construction. */
+/** `14:32:05` alone. */
 export function formatClock(value: DateInput, opts: DateTimeFormatOptions = {}): string {
   const d = parse(value);
   if (!d) return '—';
   return clock(d, parts(d, opts.zone ?? current), opts);
 }
 
-/** The exact instant as ISO-8601 in UTC, e.g. `2026-09-09T09:02:05.123Z` — what a tooltip or a bug report quotes. */
+/** The instant as ISO-8601 UTC. */
 export function toIsoUtc(value: DateInput): string {
   const d = parse(value);
   return d ? d.toISOString() : '—';
 }
 
-/** "just now", "3 min ago", "2 hours ago", "5 days ago" — recency, never a substitute for the absolute time. */
+/** "just now", "3 min ago", "2 hours ago", "5 days ago". */
 export function formatDistanceToNow(dateStr: string | number | Date): string {
   const d = parse(dateStr);
   if (!d) return '—';

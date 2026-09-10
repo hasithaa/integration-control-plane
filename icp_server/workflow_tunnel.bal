@@ -394,15 +394,15 @@ isolated function operationActor(types:CacheOperation row) returns string? {
     if document is map<json> {
         json identity = document["identity"] ?: ();
         if identity is map<json> {
-            json userId = identity["userId"] ?: ();
-            return userId is string ? userId : ();
+            json actorId = identity["actorId"] ?: identity["userId"];
+            return actorId is string ? actorId : ();
         }
     }
     return ();
 }
 
 isolated function enqueueWorkflowMutation(string componentId, string environmentId,
-        string operation, map<json> params, string userId, string[] roles,
+        string operation, map<json> params, string userId, string actorId, string[] roles,
         string idempotencyKey) returns WorkflowMutationOutcome?|error {
     WorkflowCommandTarget? target = check selectWorkflowCommandTarget(componentId, environmentId);
     if target is () {
@@ -422,7 +422,7 @@ isolated function enqueueWorkflowMutation(string componentId, string environment
         ? decisionOperationId(scopeKey, <string>taskId)
         : WF_OPERATION_COMMAND_PREFIX + idempotencyKey;
 
-    string request = workflowRequestDocument(operation, params, roles, userId);
+    string request = workflowRequestDocument(operation, params, roles, userId, actorId);
     types:CacheOperation row = {
         operationId: operationId,
         target: target.runtimeId,
@@ -446,19 +446,18 @@ isolated function enqueueWorkflowMutation(string componentId, string environment
         return {operationId: operationId, state: "QUEUED"};
     }
     string? actor = operationActor(existing);
-    if !decides || actor == userId {
-        // The caller's own resubmission — the idempotency key doing its job.
-        return {operationId: operationId, state: "RESUBMITTED"};
-    }
-    if existing.status == types:CACHE_OP_FAILED || existing.status == types:CACHE_OP_EXPIRED {
-        // The first decision did not take effect, so the task is still open and this caller is
-        // entitled to decide it. A fresh row, because the deterministic id is already spent.
+    if decides && (existing.status == types:CACHE_OP_FAILED || existing.status == types:CACHE_OP_EXPIRED) {
+        // The first decision never took effect; a fresh row, since the deterministic id is spent.
         types:CacheOperation reopened = row.clone();
         reopened.operationId = operationId + ".r" + newFetchId().substring(0, 8);
         boolean retried = check storage:enqueueCacheOperation(reopened);
         if retried {
             return {operationId: reopened.operationId, state: "QUEUED"};
         }
+    }
+    if !decides || actor == actorId {
+        // The caller's own resubmission.
+        return {operationId: operationId, state: "RESUBMITTED"};
     }
     return {operationId: operationId, state: "TAKEN", owner: actor};
 }
@@ -471,11 +470,11 @@ isolated function newFetchId() returns string => uuid:createType4AsString();
 // integration can apply its own role check — the ICP's filtering is a convenience, not the
 // authorization boundary.
 isolated function workflowRequestDocument(string operation, map<json> params, string[] roles,
-        string? userId = ()) returns string =>
+        string? userId = (), string? actorId = ()) returns string =>
     {
         operation: operation,
         params: params,
-        identity: {userId: userId, roles: roles}
+        identity: {userId: userId, actorId: actorId ?: userId, roles: roles}
     }.toJsonString();
 
 # The identity of one cached answer: its scope, the operation, its parameters, and the
@@ -913,8 +912,9 @@ isolated function reportWorkflowOutcome(string operationId, boolean succeeded,
                 target = taskId is string ? taskId : (workflowId is string ? workflowId : "");
             }
             json? identity = request["identity"];
-            if identity is map<json> && identity["userId"] is string {
-                actor = <string>identity["userId"];
+            if identity is map<json> {
+                json actorId = identity["actorId"] ?: identity["userId"];
+                actor = actorId is string ? actorId : ();
             }
         }
     }
@@ -958,8 +958,9 @@ isolated function reportExpiredWorkflowOperations(types:CacheOperation[] expired
                 operation = operationValue;
             }
             json? identity = request["identity"];
-            if identity is map<json> && identity["userId"] is string {
-                actor = <string>identity["userId"];
+            if identity is map<json> {
+                json actorId = identity["actorId"] ?: identity["userId"];
+                actor = actorId is string ? actorId : ();
             }
         }
         storage:raiseSystemEvent("workflow_operation_unconfirmed", "ERROR",

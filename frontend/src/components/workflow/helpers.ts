@@ -107,9 +107,14 @@ export const STATUS_COLORS: Record<string, ChipColor> = {
  * now travels in the instance's own memo — so displays drop it, while every API call, copy, and
  * search keeps the full id, which is the only identity the runtime answers to.
  */
+/** The rail row for an agent's model calls on one activity: `model#<activity>`. */
+export const modelStepId = (activity: string): string => `model#${activity}`;
+/** The activity behind a `model#<activity>` step id, or null for any other id. */
+export const modelStepActivity = (stepId: string): string | null => (stepId.startsWith('model#') ? stepId.slice('model#'.length) : null);
+
 export function displayWorkflowId(id?: string): string {
   if (!id) return '—';
-  return id.replace(/^(workflow|humantask|childwf|reviewactivity)-/i, '');
+  return id.replace(/^(workflow|humantask|childwf|childagent|reviewactivity)-/i, '');
 }
 
 /**
@@ -164,8 +169,9 @@ function normalizeLeafSchema(d: Record<string, unknown>): { type: string; enumVa
   if (typeof d.type === 'string') type = d.type;
   else if (Array.isArray(d.type)) type = d.type.find((t): t is string => typeof t === 'string' && t !== 'null');
 
-  let enumValues = Array.isArray(d.enum) ? d.enum.filter((v) => v !== null).map(String) : undefined;
-  let enumSamples: unknown[] = Array.isArray(d.enum) ? d.enum.filter((v) => v !== null) : [];
+  const rawEnum = Array.isArray(d.enum) ? d.enum.filter((v) => v !== null) : [];
+  let enumValues = rawEnum.length > 0 ? rawEnum.map(String) : undefined;
+  let enumSamples: unknown[] = rawEnum;
   if (!enumValues) {
     const variants = Array.isArray(d.anyOf) ? d.anyOf : Array.isArray(d.oneOf) ? d.oneOf : null;
     if (variants) {
@@ -788,10 +794,16 @@ export function extractNodeExecutionDetail(node: { id: string; type: string; sta
   // two: the reader gets the arguments as the author passed them, and the metadata gets its own
   // section instead of masquerading as an argument.
   let callConfig: Record<string, unknown> | null = null;
-  if (Array.isArray(inputDecoded) && inputDecoded.length > 0) {
+  const isCallConfig = (v: unknown): v is Record<string, unknown> => v !== null && typeof v === 'object' && !Array.isArray(v) && (v as Record<string, unknown>)['__callConfig__'] === true;
+  const stripMarker = (v: Record<string, unknown>) => Object.fromEntries(Object.entries(v).filter(([k]) => k !== '__callConfig__'));
+  if (isCallConfig(inputDecoded)) {
+    // A call with no arguments decodes to the envelope alone.
+    callConfig = stripMarker(inputDecoded);
+    inputDecoded = null;
+  } else if (Array.isArray(inputDecoded) && inputDecoded.length > 0) {
     const last = inputDecoded[inputDecoded.length - 1];
-    if (last !== null && typeof last === 'object' && !Array.isArray(last) && (last as Record<string, unknown>)['__callConfig__'] === true) {
-      callConfig = Object.fromEntries(Object.entries(last as Record<string, unknown>).filter(([k]) => k !== '__callConfig__'));
+    if (isCallConfig(last)) {
+      callConfig = stripMarker(last);
       const args = inputDecoded.slice(0, -1);
       inputDecoded = args.length === 0 ? null : args.length === 1 ? args[0] : args;
     }

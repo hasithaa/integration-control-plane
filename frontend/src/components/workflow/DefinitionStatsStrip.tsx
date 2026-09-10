@@ -31,17 +31,25 @@ interface StripCell {
   alarm?: boolean;
 }
 
-/**
- * The selected workflow definition's figures, on the integration overview: what is running, what
- * finished how in the last day, and what is waiting on a person — the same columns the project's
- * Workflow Executions table shows, scoped to the definition chosen in the selector above, so the
- * two always agree. Each number opens the page that lists what it counts. A count is one page
- * from the runtime: exact below the page size, "50+" at it.
- */
-export function DefinitionStatsStrip({ scope, componentId, environmentId, workflowType, canSeeWork }: { scope: ComponentScope; componentId: string; environmentId: string; workflowType: string; canSeeWork: boolean }): JSX.Element {
+/** The selected definition's figures on the integration overview — the project table's columns, scoped to one workflow type. */
+export function DefinitionStatsStrip({
+  scope,
+  componentId,
+  environmentId,
+  workflowType,
+  canViewReviews,
+  canViewTasks,
+}: {
+  scope: ComponentScope;
+  componentId: string;
+  environmentId: string;
+  workflowType: string;
+  canViewReviews: boolean;
+  canViewTasks: boolean;
+}): JSX.Element {
   const navigate = useNavigate();
   const since = useSinceWindow();
-  const s = useDefinitionStats({ componentId, environmentId }, workflowType, since, canSeeWork);
+  const s = useDefinitionStats({ componentId, environmentId }, workflowType, since, { reviews: canViewReviews, tasks: canViewTasks });
   const env = `env=${encodeURIComponent(environmentId)}`;
   const executions = `${resourceUrl(scope, 'workflows')}?tab=management&type=${encodeURIComponent(workflowType)}&${env}`;
   const cells: StripCell[] = [
@@ -50,12 +58,12 @@ export function DefinitionStatsStrip({ scope, componentId, environmentId, workfl
     { label: 'Failed (24h)', value: countText(s.failed), help: `${workflowType} instances that finished as FAILED in the last 24 hours.`, to: executions, alarm: (s.failed?.count ?? 0) > 0 },
     { label: 'Completed (24h)', value: countText(s.completed), help: `${workflowType} instances that finished successfully in the last 24 hours.`, to: executions },
   ];
-  if (canSeeWork) {
+  if (canViewReviews) {
+    cells.push({ label: 'Pending Reviews', value: countText(s.reviews), help: `Review activities of ${workflowType} waiting for a decision — approval gates and failed activities. Opens Human Tasks.`, to: `${resourceUrl(scope, 'tasks')}?tab=reviews&${env}` });
+  }
+  if (canViewTasks) {
     const tasksText = s.tasks === undefined ? '…' : s.tasks === null ? '—' : `${s.tasks}${s.tasksCapped ? '+' : ''}`;
-    cells.push(
-      { label: 'Pending Reviews', value: countText(s.reviews), help: `Review activities of ${workflowType} waiting for a decision — approval gates and failed activities. Opens Human Tasks.`, to: `${resourceUrl(scope, 'tasks')}?tab=reviews&${env}` },
-      { label: 'Pending Tasks', value: tasksText, help: `Human tasks of ${workflowType} waiting for anyone in any role. Human Tasks shows the ones you can act on.`, to: `${resourceUrl(scope, 'tasks')}?${env}` },
-    );
+    cells.push({ label: 'Pending Tasks', value: tasksText, help: `Human tasks of ${workflowType} waiting for anyone in any role. Human Tasks shows the ones you can act on.`, to: `${resourceUrl(scope, 'tasks')}?${env}` });
   }
 
   return (

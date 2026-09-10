@@ -22,13 +22,7 @@ import type { JSX } from 'react';
 import { useTimeZone } from '../contexts/TimeZoneContext';
 import { localOffsetLabel } from '../utils/time';
 
-/**
- * The workflow pages' clock: names the zone every timestamp on them is on, and switches it
- * between the browser's local zone and UTC with one click. Always visible on those pages,
- * because a time whose zone the reader has to guess is the ambiguity this exists to remove.
- * Scoped to the workflow UI on purpose — other areas format time their own way, and a control
- * claiming to govern the whole console would be a promise they would break.
- */
+/** Names the zone the workflow pages' times are on and switches it between local and UTC. */
 export default function TimeZoneToggle(): JSX.Element {
   const { zone, label, toggle } = useTimeZone();
   const other = zone === 'utc' ? `your local time (${localOffsetLabel()})` : 'UTC';

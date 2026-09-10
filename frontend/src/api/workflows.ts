@@ -498,11 +498,11 @@ export function useWorkflowInstancesInfinite(s: Scope, filters: Omit<WorkflowFil
     queryKey: ['wf', 'instances', s.componentId, s.environmentId, filters],
     queryFn: ({ pageParam }) => fetchWorkflowInstances(s.componentId, s.environmentId, { ...filters, pageToken: pageParam || undefined }),
     initialPageParam: '',
-    // A page still being prepared has no token to follow yet, so paging pauses rather than
-    // reading "not ready" as "no more pages".
-    getNextPageParam: (last) => {
+    // A page still being prepared keeps its own param, so paging pauses instead of ending.
+    getNextPageParam: (last, _pages, lastParam) => {
       const page = valueOf(last);
-      return page?.hasMore && page.nextPageToken ? page.nextPageToken : undefined;
+      if (!page) return lastParam;
+      return page.hasMore && page.nextPageToken ? page.nextPageToken : undefined;
     },
     refetchInterval: ({ state }) => fetchableRefetch(state.data?.pages[state.data.pages.length - 1]),
     enabled: enabledFor(s),
@@ -701,11 +701,11 @@ export function useHumanTasksInfinite(s: Scope, filters: Omit<HumanTaskFilters, 
     queryKey: ['wf', 'human-tasks', s.componentId, s.environmentId, filters],
     queryFn: ({ pageParam }) => fetchHumanTasks(s.componentId, s.environmentId, { ...filters, pageToken: pageParam || undefined }),
     initialPageParam: '',
-    // Each page is a Fetchable: a page still being prepared has no token to follow yet, so
-    // paging stops until it arrives rather than treating "not ready" as "no more".
-    getNextPageParam: (last) => {
+    // A page still being prepared keeps its own param, so paging pauses instead of ending.
+    getNextPageParam: (last, _pages, lastParam) => {
       const page = valueOf(last);
-      return page?.hasMore && page.nextPageToken ? page.nextPageToken : undefined;
+      if (!page) return lastParam;
+      return page.hasMore && page.nextPageToken ? page.nextPageToken : undefined;
     },
     refetchInterval: ({ state }) => fetchableRefetch(state.data?.pages[state.data.pages.length - 1]),
     enabled: enabledFor(s),
@@ -823,9 +823,10 @@ export function useWorkItemsInfinite(s: Scope, filters: Omit<WorkItemFilters, 'p
     // because it never learned its answer had gone stale.
     queryFn: ({ pageParam }) => fetchWorkItems(s.componentId, s.environmentId, { ...filters, pageToken: pageParam || undefined }),
     initialPageParam: '',
-    getNextPageParam: (last) => {
+    getNextPageParam: (last, _pages, lastParam) => {
       const page = valueOf(last);
-      return page?.hasMore && page.nextPageToken ? page.nextPageToken : undefined;
+      if (!page) return lastParam;
+      return page.hasMore && page.nextPageToken ? page.nextPageToken : undefined;
     },
     refetchInterval: ({ state }) => fetchableRefetch(state.data?.pages[state.data.pages.length - 1]),
     enabled: enabledFor(s),

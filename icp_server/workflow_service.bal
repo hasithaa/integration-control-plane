@@ -203,7 +203,7 @@ const int WF_MAX_IDEMPOTENCY_KEY_LENGTH = 64;
 # produce two operations — the integration is what tells the second one it lost.
 isolated function acceptWorkflowMutation(http:Request req, string componentId,
         string environmentId, string operation, map<json> params, string userId,
-        string[] roles) returns http:Response {
+        string actorId, string[] roles) returns http:Response {
     string|http:HeaderNotFoundError key = req.getHeader(WF_IDEMPOTENCY_HEADER);
     string idempotencyKey;
     if key is string && key.trim().length() > 0 {
@@ -226,7 +226,7 @@ isolated function acceptWorkflowMutation(http:Request req, string componentId,
         idempotencyKey = uuid:createType4AsString();
     }
     WorkflowMutationOutcome?|error queued = enqueueWorkflowMutation(componentId, environmentId,
-            operation, params, userId, roles, idempotencyKey);
+            operation, params, userId, actorId, roles, idempotencyKey);
     if queued is error {
         log:printError("Failed to queue a workflow mutation", queued, operation = operation);
         return workflowErrorResponse(500, "Failed to submit the operation: " + queued.message());
@@ -292,8 +292,13 @@ isolated function acceptWorkflowMutation(http:Request req, string componentId,
 # A finished operation reports what the integration said, including a conflict when someone
 # else acted first. `EXPIRED` is deliberately distinct from `FAILED`: the ICP never learned
 # the outcome, so the caller is told to check the target's state rather than to retry.
-isolated function serveWorkflowOperationStatus(string operationId) returns http:Response {
+isolated function serveWorkflowOperationStatus(string operationId, string componentId,
+        string environmentId) returns http:Response {
     types:CacheOperation?|error row = storage:getCacheOperation(operationId);
+    // An operation id from another scope reads as unknown, not as someone else's status.
+    if row is types:CacheOperation && row.owner != workflowScopeKey(componentId, environmentId) {
+        row = ();
+    }
     if row is error {
         return workflowErrorResponse(500, "Failed to read the operation: " + row.message());
     }
@@ -432,7 +437,7 @@ function handleWorkflowRequest(string componentId, string environmentId, string[
     // Answered before target selection so a user still learns what happened to their action
     // when the integration has since gone offline.
     if method == http:GET && wfPath.length() == 2 && wfPath[0] == "operations" {
-        return serveWorkflowOperationStatus(wfPath[1]);
+        return serveWorkflowOperationStatus(wfPath[1], componentId, environmentId);
     }
 
     // 4. Map the request to a management operation and tunnel it to the leader
@@ -472,7 +477,12 @@ function handleWorkflowRequest(string componentId, string environmentId, string[
             if allRoles is error {
                 return workflowErrorResponse(500, "Failed to resolve organization roles: " + allRoles.message());
             }
-            escapedRoles = allRoles.map(escapeRoleName);
+            // Added to the caller's own roles: the synthetic "admin" role is not in roles_v2.
+            foreach string role in allRoles.map(escapeRoleName) {
+                if escapedRoles.indexOf(role) is () {
+                    escapedRoles.push(role);
+                }
+            }
         }
     }
 
@@ -537,11 +547,9 @@ function handleWorkflowRequest(string componentId, string environmentId, string[
         return serveWorkflowRead(componentId, environmentId, operation[0], operationParams,
                 escapedRoles, forceRefresh);
     }
-    // The actor travels by username, not by user id: the integration stores it verbatim as
-    // `completedBy`/`decidedBy`, and a person reading a task's decision should see who — a
-    // name — not an opaque UUID only this ICP's user table can resolve.
+    // The runtime records the username as completedBy/decidedBy; the stable id is for the audit trail.
     return acceptWorkflowMutation(req, componentId, environmentId, operation[0], operationParams,
-            userContext.username, escapedRoles);
+            userContext.username, userContext.userId, escapedRoles);
 }
 
 # The kinds of work a caller may list, as the operation's `kinds` parameter: the intersection

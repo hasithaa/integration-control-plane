@@ -42,7 +42,7 @@ import {
   splitQualifiedName,
   type PortalScope,
 } from './helpers';
-import { ActionCard, DetailDrawer, DetailRow, HeaderCell, IdText, ListFooter, NotProvided, RefreshingNote, SchemaDisclosure, SectionCard, StatusChip, SubmitError, WorkflowIdLink, type WorkflowScope } from './shared';
+import { ActionCard, DetailDrawer, DetailRow, HeaderCell, IdText, ListFooter, NotProvided, RefreshingNote, SchemaDisclosure, SectionCard, StatusChip, SubmitError, WorkflowIdLink, type WorkflowScope, rowOpenProps } from './shared';
 import Authorized from '../Authorized';
 import { Permissions } from '../../constants/permissions';
 import DateTime from '../DateTime';
@@ -348,7 +348,7 @@ function WorkflowsAdmin({
             </ListingTable.Head>
             <ListingTable.Body>
               {items.map((wf) => (
-                <ListingTable.Row key={`${wf.workflowId}:${wf.runId ?? ''}`} onClick={() => setDetail({ workflowId: wf.workflowId, taskQueue: wf.taskQueue })} sx={{ cursor: 'pointer', '&:hover': { bgcolor: 'action.hover' } }}>
+                <ListingTable.Row key={`${wf.workflowId}:${wf.runId ?? ''}`} {...rowOpenProps(() => setDetail({ workflowId: wf.workflowId, taskQueue: wf.taskQueue }))}>
                   <ListingTable.Cell>
                     <IdText id={displayWorkflowId(wf.workflowId)} />
                   </ListingTable.Cell>
@@ -371,7 +371,7 @@ function WorkflowsAdmin({
               ))}
             </ListingTable.Body>
           </ListingTable>
-          <ListFooter count={items.length} singular="instance" plural="instances" hasMore={hasNextPage} loadingMore={isFetchingNextPage} onLoadMore={() => fetchNextPage()} />
+          <ListFooter count={items.length} singular="instance" plural="instances" hasMore={hasNextPage} loadingMore={isFetchingNextPage || isPreparing(data?.pages[data.pages.length - 1])} onLoadMore={() => fetchNextPage()} />
         </>
       )}
 
@@ -516,9 +516,6 @@ export function StartWorkflowDialog({ scope, initialWorkflowType, onClose, onToa
           />
           <DefinitionsUnavailableNotice failed={definitions.failed} />
           <SubmitError message={startError} onClear={() => setStartError(null)} />
-          {/* The workflow's own input is one thing; how the run is identified and bounded is
-              another. The first is what the person came to fill in; the second has defaults
-              almost everyone keeps, so it waits behind a closed section. */}
           {selected && (
             <SectionCard title="Input">
               {formFields ? (

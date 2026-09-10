@@ -24,7 +24,7 @@ import { useEffect, useState, type ReactNode } from 'react';
 import SchemaFormFields from './SchemaFormFields';
 import StructuredValue from './StructuredValue';
 import { buildFormResult, displayWorkflowId, formatTime, gatewayScope, jsonPretty, ownerLabel, ownerScope, parseFormSchema, sortByStartTimeDesc, splitQualifiedName, unescapeRoleName, type PortalScope } from './helpers';
-import { ActionCard, DetailDrawer, DetailRow, HeaderCell, IdText, ListFooter, NotProvided, RefreshingNote, SectionCard, StatusChip, SubmitError, WorkflowIdLink, type WorkflowScope } from './shared';
+import { ActionCard, DetailDrawer, DetailRow, HeaderCell, IdText, ListFooter, NotProvided, RefreshingNote, SectionCard, StatusChip, SubmitError, WorkflowIdLink, type WorkflowScope, rowOpenProps } from './shared';
 import { IntegrationFilter, ReviewActivityDetailDialog, StatusFilter, useTimeRangeFilter, WorkflowNameFilter } from './AdminPortal';
 import Authorized from '../Authorized';
 import { Permissions } from '../../constants/permissions';
@@ -177,8 +177,6 @@ export function WorkItemTable({ items, onOpen, environmentId, integrationLabel, 
         <ListingTable.Row>
           {selection && (
             <ListingTable.Cell sx={{ width: 40, px: 1 }}>
-              {/* Selects the selectable — pending reviews. Tasks are completed one at a time
-                  through their own forms, so their boxes below are disabled and say so. */}
               <Checkbox size="small" checked={selection.allSelected} indeterminate={!selection.allSelected && selection.selected.size > 0} onChange={selection.onToggleAll} inputProps={{ 'aria-label': 'select all pending reviews' }} />
             </ListingTable.Cell>
           )}
@@ -195,14 +193,13 @@ export function WorkItemTable({ items, onOpen, environmentId, integrationLabel, 
         {items.map((w) => {
           const Icon = w.kind === 'review' ? Wrench : UserCheck;
           return (
-            <ListingTable.Row key={`${w.kind}:${w.id}`} onClick={() => onOpen(w)} sx={{ cursor: 'pointer', '&:hover': { bgcolor: 'action.hover' } }}>
+            <ListingTable.Row key={`${w.kind}:${w.id}`} {...rowOpenProps(() => onOpen(w))}>
               {selection && (
                 <ListingTable.Cell sx={{ width: 40, px: 1 }} onClick={(e) => e.stopPropagation()}>
                   {selection.selectable(w) ? (
                     <Checkbox size="small" checked={selection.selected.has(w.id)} onChange={() => selection.onToggle(w.id)} inputProps={{ 'aria-label': `select ${w.title}` }} />
                   ) : (
-                    // Every row gets a box while selecting, so the column reads the same all the way
-                    // down; the ones that cannot be chosen say why on hover.
+                    // Non-selectable rows keep a disabled box so the column reads the same.
                     <Tooltip title={w.kind === 'task' ? 'Human tasks are completed one at a time, through their own form.' : 'Only pending reviews can be decided in bulk.'}>
                       <span>
                         <Checkbox size="small" disabled inputProps={{ 'aria-label': `${w.title} cannot be selected` }} />
@@ -290,9 +287,7 @@ function WorkQueue({
   // Bulk retry lives here, on a selection — retrying several failed reviews in one go is the
   // actual use, since workflows do not run reviews in parallel and a per-instance bulk always
   // found exactly one. Only pending reviews are selectable.
-  // Bulk decisions are a MODE, entered on purpose: by default the queue shows no checkboxes at
-  // all. Checkboxes that appeared on some rows and not others, with nothing saying why, read as
-  // a glitch; a "Select reviews" step makes the intent explicit and gives the explanation a place.
+  // Bulk decisions are an explicit mode; no checkboxes until it is entered.
   const [selecting, setSelecting] = useState(false);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [bulkOpen, setBulkOpen] = useState(false);
@@ -353,26 +348,31 @@ function WorkQueue({
 
   const submitBulk = async () => {
     setBulkBusy(true);
-    // One request per owning integration: a selection can span task queues, and each batch must
-    // reach the runtime that owns its reviews. The outcomes are summed, not blurred — a partial
-    // success reports its arithmetic.
+    // One request per owning integration, run concurrently; outcomes are summed.
     const chosen = selectable.filter((w) => selected.has(w.id));
     const byQueue = new Map<string | undefined, string[]>();
     for (const w of chosen) byQueue.set(w.taskQueue, [...(byQueue.get(w.taskQueue) ?? []), w.id]);
+    const feedback = bulkAction === 'fail' ? bulkFeedback.trim() || undefined : undefined;
+    const outcomes = await Promise.all(
+      [...byQueue].map(async ([queue, ids]) => {
+        try {
+          return { result: await bulkRetryReviewsRequest(ownerScope(scope, queue), { taskIds: ids, action: bulkAction, feedback }) };
+        } catch (e) {
+          return { error: `${ownerLabel(scope, queue)}: ${e instanceof Error && e.message ? e.message : 'bulk decision failed'}` };
+        }
+      }),
+    );
     let applied = 0;
     let skipped = 0;
     let failed = 0;
-    let errored: string | null = null;
-    for (const [queue, ids] of byQueue) {
-      try {
-        const result = await bulkRetryReviewsRequest(ownerScope(scope, queue), { taskIds: ids, action: bulkAction, feedback: bulkAction === 'fail' ? bulkFeedback.trim() || undefined : undefined });
-        applied += result.applied;
-        skipped += result.skipped;
-        failed += result.failed;
-      } catch (e) {
-        errored = e instanceof Error ? e.message : 'Bulk decision failed.';
-      }
+    for (const o of outcomes) {
+      if (!o.result) continue;
+      applied += o.result.applied;
+      skipped += o.result.skipped;
+      failed += o.result.failed;
     }
+    const errors = outcomes.flatMap((o) => (o.error ? [o.error] : []));
+    const errored = errors.length ? errors.join('; ') : null;
     setBulkBusy(false);
     setBulkOpen(false);
     setSelectedIds([]);
@@ -510,7 +510,7 @@ function WorkQueue({
               selecting ? { selectable: (w) => w.kind === 'review' && taskDisplayStatus(w.status) === 'PENDING', selected, onToggle: toggleSelected, onToggleAll: toggleAll, allSelected: selectable.length > 0 && selected.size === selectable.length } : undefined
             }
           />
-          <ListFooter count={items.length} singular="item" plural="items" hasMore={hasMore} loadingMore={query.isFetchingNextPage} onLoadMore={loadMore} />
+          <ListFooter count={items.length} singular="item" plural="items" hasMore={hasMore} loadingMore={query.isFetchingNextPage || isPreparing(query.data?.pages[query.data.pages.length - 1])} onLoadMore={loadMore} />
         </>
       )}
 
