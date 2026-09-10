@@ -722,7 +722,9 @@ public isolated function getComponentDeployment(string componentId, string envir
 
     types:BuildInfo buildInfo = {
         buildId: runtime.runtime_id,
-        deployedAt: runtime?.last_heartbeat is time:Utc ? time:utcToString(<time:Utc>runtime?.last_heartbeat) : (),
+        deployedAt: runtime?.last_heartbeat is time:Civil
+            ? time:utcToString(check convertDbDateTimeToUtc(<time:Civil>runtime?.last_heartbeat))
+            : (),
         'commit: (),
         sourceConfigMigrationStatus: (),
         runId: runtime.runtime_id

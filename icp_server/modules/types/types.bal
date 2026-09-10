@@ -654,8 +654,12 @@ public type RuntimeDBRecord record {
     int used_memory?;
     string os_arch?;
     string server_name?;
-    time:Utc registration_time?;
-    time:Utc last_heartbeat?;
+    // These columns are naive (no zone) and hold UTC wall-clock, as written by
+    // convertUtcToDbDateTime. Binding them as time:Civil keeps the driver from
+    // reinterpreting them in the JVM's local zone; convertDbDateTimeToUtc
+    // attaches the zero offset on the way out.
+    time:Civil registration_time?;
+    time:Civil last_heartbeat?;
 };
 
 public type RuntimeTypeRecord record {
