@@ -52,12 +52,12 @@ import { gql } from '../api/graphql';
 import { useProjectByHandler, useEnvironments, useComponentByHandler, useComponentSecrets, useRuntimesPage, COMPONENT_SECRETS_QUERY, type GqlRuntime, type GqlBoundSecret } from '../api/queries';
 import { useCreateOrgSecret, useDeleteRuntime, useRevokeOrgSecret } from '../api/mutations';
 import { hasComponent, type ProjectScope, type ComponentScope } from '../nav';
+import { formatDistanceToNow } from '../utils/time';
 import { runtimeImports } from '../utils/runtimeToml';
 import Authorized from '../components/Authorized';
 import { Permissions } from '../constants/permissions';
 import { technologyLabel } from '../constants/technologies';
 import { useAccessControl } from '../contexts/AccessControlContext';
-import DateTime from '../components/DateTime';
 
 const drawerSx = {
   '& .MuiDrawer-paper': { width: '45%', maxWidth: 560, minWidth: 360, position: 'fixed', top: 64, height: 'calc(100% - 64px)', borderLeft: '1px solid', borderColor: 'divider' },
@@ -68,6 +68,9 @@ function formatPlatform(r: GqlRuntime): string {
   return /^\d/.test(r.platformVersion) ? `${r.platformName} ${r.platformVersion}` : r.platformVersion;
 }
 
+function formatDate(iso: string): string {
+  return new Date(iso).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'medium' });
+}
 
 function miToml(envName: string, secret: string, projectHandle: string, integrationHandle: string): string {
   return `[icp_config]
@@ -247,7 +250,7 @@ function BoundSecretDrawer({ componentId, environmentId, environmentName, onClos
                     <ListingTable.Cell>
                       <code style={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{secret.keyId}....</code>
                     </ListingTable.Cell>
-                    <ListingTable.Cell sx={{ whiteSpace: 'nowrap' }}><DateTime value={secret.createdAt} relative /></ListingTable.Cell>
+                    <ListingTable.Cell sx={{ whiteSpace: 'nowrap' }}>{formatDistanceToNow(secret.createdAt)}</ListingTable.Cell>
                     <ListingTable.Cell sx={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{secret.createdBy ?? '—'}</ListingTable.Cell>
                     <ListingTable.Cell>
                       {secret.runtimes.length === 0 ? (
@@ -528,8 +531,8 @@ function EnvironmentRuntimeCard({
                         )}
                       </ListingTable.Cell>
                       <ListingTable.Cell>{[r.osName, r.osVersion].filter(Boolean).join(' ')}</ListingTable.Cell>
-                      <ListingTable.Cell><DateTime value={r.registrationTime} /></ListingTable.Cell>
-                      <ListingTable.Cell><DateTime value={r.lastHeartbeat} /></ListingTable.Cell>
+                      <ListingTable.Cell>{r.registrationTime ? formatDate(r.registrationTime) : '—'}</ListingTable.Cell>
+                      <ListingTable.Cell>{r.lastHeartbeat ? formatDate(r.lastHeartbeat) : '—'}</ListingTable.Cell>
                       <ListingTable.Cell>
                         <Stack direction="row" gap={0.5}>
                           {r.runtimeType === 'MI' && (

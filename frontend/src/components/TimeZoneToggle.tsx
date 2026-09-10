@@ -23,15 +23,17 @@ import { useTimeZone } from '../contexts/TimeZoneContext';
 import { localOffsetLabel } from '../utils/time';
 
 /**
- * The header's clock: names the zone every timestamp on the page is on, and switches it between
- * the browser's local zone and UTC with one click. Always visible, because a time whose zone the
- * reader has to guess is the ambiguity this exists to remove.
+ * The workflow pages' clock: names the zone every timestamp on them is on, and switches it
+ * between the browser's local zone and UTC with one click. Always visible on those pages,
+ * because a time whose zone the reader has to guess is the ambiguity this exists to remove.
+ * Scoped to the workflow UI on purpose — other areas format time their own way, and a control
+ * claiming to govern the whole console would be a promise they would break.
  */
 export default function TimeZoneToggle(): JSX.Element {
   const { zone, label, toggle } = useTimeZone();
   const other = zone === 'utc' ? `your local time (${localOffsetLabel()})` : 'UTC';
   return (
-    <Tooltip title={`All times are shown in ${label}. Click to show them in ${other}.`}>
+    <Tooltip title={`Workflow times are shown in ${label}. Click to show them in ${other}.`}>
       <Button
         size="small"
         variant="text"

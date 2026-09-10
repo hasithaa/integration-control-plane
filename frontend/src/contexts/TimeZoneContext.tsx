@@ -20,14 +20,16 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState, t
 import { getTimeZonePreference, setTimeZonePreference, zoneLabel, type TimeZonePreference } from '../utils/time';
 
 /**
- * Which clock every timestamp in the console is shown on: the browser's local zone, or UTC.
+ * Which clock every timestamp in the workflow pages is shown on: the browser's local zone, or UTC.
  *
- * One switch for the whole console, not a format per page: a person comparing a heartbeat time
- * on the Runtimes page with a log line and a workflow's start time must be able to trust that all
- * three are on the same clock. The choice is per browser (localStorage) and defaults to local —
- * operators mostly read times as "when did this happen for me" — with UTC one click away for
- * anyone correlating across regions or with a server log. The chosen zone is always named in the
- * header, so a time is never shown without saying whose clock it is on.
+ * One switch for all of those pages, not a format per view: a person comparing a workflow's start
+ * time with a task's decision time and a reset point must be able to trust that all three are on
+ * the same clock. The choice is per browser (localStorage) and defaults to local — operators
+ * mostly read times as "when did this happen for me" — with UTC one click away for anyone
+ * correlating across regions or with a server log. The chosen zone is always named beside the
+ * pages' environment picker, so a time is never shown without saying whose clock it is on. The
+ * provider sits at the app root so the choice carries across every workflow page; other areas
+ * may adopt the same DateTime component and inherit it.
  */
 interface TimeZoneState {
   zone: TimeZonePreference;

@@ -63,7 +63,6 @@ import { useAccessControl } from '../contexts/AccessControlContext';
 import { ALL_USER_MGT_PERMISSIONS, Permissions } from '../constants/permissions';
 import { isWorkflowIntegration } from '../constants/integrationTypes';
 import { getIcpVersion } from '../config/api';
-import TimeZoneToggle from '../components/TimeZoneToggle';
 
 const SIDEBAR_ICONS: Record<Resource, JSX.Element> = {
   overview: <LayoutDashboard size={20} />,
@@ -539,7 +538,6 @@ export default function AppLayout(): JSX.Element {
           </Header.Switchers>
           <Header.Spacer />
           <Header.Actions>
-            <TimeZoneToggle />
             <ColorSchemeToggle />
             <Tooltip title="Notifications">
               <IconButton onClick={actions.toggleNotificationPanel} size="small" sx={{ color: 'text.secondary' }}>

@@ -17,17 +17,17 @@
  */
 
 /**
- * One way to write a time, everywhere in the console.
+ * One way to write a time across the workflow pages — and on offer to the rest of the console.
  *
- * The console used to hand timestamps to `toLocaleString()`, which asks the browser: an American
+ * The workflow pages used to hand timestamps to `toLocaleString()`, which asks the browser: an American
  * browser wrote 07/09/2026 for the 9th of July, a European one for the 7th of September, and
  * nothing on the page said which — or whose clock the hours were on. The standard here removes
  * both ambiguities:
  *
  *  - Dates are written `YYYY-MM-DD`. No locale reads it two ways, and it sorts as text.
  *  - Times are 24-hour, `HH:mm:ss`, with milliseconds only where they carry meaning (log lines).
- *  - Every time is on ONE clock chosen once for the whole console — the browser's local zone or
- *    UTC (see TimeZoneContext) — and the header names that clock. A timestamp is never shown
+ *  - Every time is on ONE clock chosen once for these pages — the browser's local zone or UTC
+ *    (see TimeZoneContext) — named beside the environment picker. A timestamp is never shown
  *    without a way to know which zone it is in: the `DateTime` component's tooltip carries the
  *    exact UTC instant and the zone in effect.
  *  - Relative phrasing ("3 min ago") is kept where recency is the point, always with the absolute

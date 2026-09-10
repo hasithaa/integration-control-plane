@@ -19,6 +19,7 @@
 import { Autocomplete, CircularProgress, PageContent, Stack, TextField, Typography } from '@wso2/oxygen-ui';
 import type { JSX, ReactNode } from 'react';
 import type { GqlEnvironment } from '../../api/queries';
+import TimeZoneToggle from '../TimeZoneToggle';
 
 /**
  * The chrome the workflow pages share: title, environment picker, description, and the three
@@ -58,16 +59,22 @@ export default function WorkflowPageFrame({
     <PageContent>
       <Stack component="header" direction="row" alignItems="center" justifyContent="space-between" gap={2} sx={{ mb: 1 }}>
         <Typography variant="h1">{title}</Typography>
-        <Autocomplete
-          size="small"
-          sx={{ width: 280 }}
-          options={environments}
-          getOptionLabel={(e) => e.name}
-          value={selectedEnv}
-          isOptionEqualToValue={(a, b) => a.id === b.id}
-          onChange={(_, v) => onEnvChange(v?.id ?? '')}
-          renderInput={(params) => <TextField {...params} label="Environment" placeholder="Select environment" />}
-        />
+        {/* The clock every timestamp on these pages is on, beside the environment they belong to.
+            It lives here, not in the global header: the workflow pages share one time standard,
+            and a header-wide promise would be broken by every other area's own formatting. */}
+        <Stack direction="row" alignItems="center" gap={1.5}>
+          <TimeZoneToggle />
+          <Autocomplete
+            size="small"
+            sx={{ width: 280 }}
+            options={environments}
+            getOptionLabel={(e) => e.name}
+            value={selectedEnv}
+            isOptionEqualToValue={(a, b) => a.id === b.id}
+            onChange={(_, v) => onEnvChange(v?.id ?? '')}
+            renderInput={(params) => <TextField {...params} label="Environment" placeholder="Select environment" />}
+          />
+        </Stack>
       </Stack>
       <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
         {description}

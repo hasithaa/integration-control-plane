@@ -26,8 +26,6 @@ import EmptyListing from '../components/EmptyListing';
 import NotFound from '../components/NotFound';
 import SearchField from '../components/SearchField';
 import { resourceUrl, broaden, hasComponent, type ProjectScope, type ComponentScope } from '../nav';
-import DateTime from '../components/DateTime';
-import { formatDateTime } from '../utils/time';
 
 const LOG_LEVELS = ['INFO', 'WARN', 'ERROR', 'DEBUG'] as const;
 
@@ -77,12 +75,12 @@ function formatValue(value: unknown): string {
 }
 
 function copyLog(log: LogRow) {
-  const text = `$<DateTime value={log.timestamp} ms /> [${log.level}] ${log.logLine}`;
+  const text = `${new Date(log.timestamp).toLocaleString()} [${log.level}] ${log.logLine}`;
   navigator.clipboard.writeText(text);
 }
 
 function downloadLogs(logs: LogRow[]) {
-  const text = logs.map((l) => `${formatDateTime(l.timestamp, { ms: true })} [${l.level}] ${l.logLine}`).join('\n');
+  const text = logs.map((l) => `${new Date(l.timestamp).toLocaleString()} [${l.level}] ${l.logLine}`).join('\n');
   const blob = new Blob([text], { type: 'text/plain' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
@@ -127,7 +125,7 @@ function LogEntry({ log, expanded, onToggle }: { log: LogRow; expanded: boolean;
           {expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
         </IconButton>
         <Typography component="span" sx={{ fontFamily: 'monospace', fontSize: 12, color: levelColor(log.level), whiteSpace: 'nowrap', mr: 1 }}>
-          <DateTime value={log.timestamp} ms />
+          {new Date(log.timestamp).toLocaleString()}
         </Typography>
         <Chip label={log.level} size="small" sx={{ fontFamily: 'monospace', fontSize: 10, height: 18, mr: 1, bgcolor: levelColor(log.level), color: '#fff', fontWeight: 700 }} />
         {log.serviceType && (
@@ -162,7 +160,7 @@ function LogEntry({ log, expanded, onToggle }: { log: LogRow; expanded: boolean;
                   {label}
                 </Typography>
                 <Typography component="span" sx={{ fontFamily: 'monospace', fontSize: 12, whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>
-                  {key === 'timestamp' ? <DateTime value={val} ms /> : val}
+                  {key === 'timestamp' ? new Date(val).toLocaleString() : val}
                 </Typography>
               </Stack>
             );
