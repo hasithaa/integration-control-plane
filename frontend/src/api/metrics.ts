@@ -151,13 +151,17 @@ async function fetchWorkflowMetrics(req: MetricsRequest): Promise<WorkflowMetric
   }
 }
 
-/** The workflow-domain counterpart of {@link useMetrics}: same request, answered from the workflow module's samples. */
-export function useWorkflowMetrics(req: MetricsRequest | null, getTimeRange?: () => { startTime: string; endTime: string }) {
+/**
+ * The workflow-domain counterpart of {@link useMetrics}: same request, answered from the workflow
+ * module's samples. `refreshKey` re-keys the query so the page's Refresh action refetches this
+ * section too, not only the HTTP metrics query it holds a `refetch` handle for.
+ */
+export function useWorkflowMetrics(req: MetricsRequest | null, getTimeRange?: () => { startTime: string; endTime: string }, refreshKey = 0) {
   const getTimeRangeRef = useRef(getTimeRange);
   getTimeRangeRef.current = getTimeRange;
 
   return useQuery<WorkflowMetricsResponse>({
-    queryKey: ['workflow-metrics', req],
+    queryKey: ['workflow-metrics', req, refreshKey],
     queryFn: () => {
       const baseReq = getTimeRangeRef.current ? { ...req!, ...getTimeRangeRef.current() } : req!;
       return fetchWorkflowMetrics(baseReq);

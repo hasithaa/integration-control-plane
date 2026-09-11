@@ -34,6 +34,8 @@ interface WorkflowMetricsSectionProps {
   getTimeRange: () => { startTime: string; endTime: string };
   /** Formats a bucket's ISO timestamp for the x axis, the way the page's other charts do. */
   makeLabel: (iso: string) => string;
+  /** Bumped by the page's Refresh action so this section refetches with the rest of the page. */
+  refreshKey: number;
 }
 
 const LINE_OPTS = { dot: false, connectNulls: true, type: 'linear' as const };
@@ -141,8 +143,8 @@ function StatCard({ title, value, color }: { title: string; value: string; color
   );
 }
 
-export default function WorkflowMetricsSection({ request, getTimeRange, makeLabel }: WorkflowMetricsSectionProps): JSX.Element | null {
-  const { data } = useWorkflowMetrics(request, getTimeRange);
+export default function WorkflowMetricsSection({ request, getTimeRange, makeLabel, refreshKey }: WorkflowMetricsSectionProps): JSX.Element | null {
+  const { data } = useWorkflowMetrics(request, getTimeRange, refreshKey);
 
   const runs = useMemo(() => aggregateRuns(data?.runs ?? []), [data]);
   const activities = useMemo(() => aggregateActivities(data?.activities ?? []), [data]);
@@ -153,7 +155,9 @@ export default function WorkflowMetricsSection({ request, getTimeRange, makeLabe
   // A failed or absent workflow-metrics call must never take the HTTP metrics down with it: say nothing.
   if (!data || !hasAnything) return null;
 
-  const xAxisInterval = Math.max(0, Math.floor(runChart.length / 8) - 1);
+  // The same label density as the page's other charts (~5 ticks), or long date+time
+  // labels collide on wide ranges.
+  const xAxisInterval = Math.max(0, Math.ceil((runChart.length || 1) / 5) - 1);
 
   return (
     <>
