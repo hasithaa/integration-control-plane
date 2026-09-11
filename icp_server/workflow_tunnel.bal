@@ -153,8 +153,7 @@ final string[] & readonly WF_TASK_QUEUE_SCOPED_OPERATIONS = [
     "humanTasks.list",
     "humanTasks.pendingCount",
     "reviewActivities.list",
-    // The unified queue is two of the listings above read as one, so it needs the same
-    // narrowing. Left out, it was the one view that answered namespace-wide.
+    // The unified queue is two of the listings above read as one, so it needs the same narrowing.
     "workItems.list"
 ];
 
@@ -460,7 +459,6 @@ isolated function enqueueWorkflowMutation(string componentId, string environment
         }
     }
     if !decides || actor == actorId {
-        // The caller's own resubmission.
         return {operationId: operationId, state: "RESUBMITTED"};
     }
     return {operationId: operationId, state: "TAKEN", owner: actor};
@@ -1026,8 +1024,7 @@ const int WF_COMPLETED_RETENTION_SECONDS = 300;
 // paths now answer 404 instead.
 
 final string[] & readonly WF_INSTANCE_SUBRESOURCES = ["history", "activity-tree", "execution-graph", "reset-points"];
-// "wake" is the durable agent's built-in wake signal: it ends an agent's in-progress
-// `sleep` tool call early. Harmless on a workflow that is not a sleeping agent.
+// "wake" ends a durable agent's in-progress `sleep` tool call early; harmless on other workflows.
 final string[] & readonly WF_INSTANCE_ACTIONS = ["suspend", "resume", "terminate", "cancel", "wake"];
 
 isolated function mapWorkflowRequestToOperation(string method, string[] wfPath,
@@ -1066,7 +1063,6 @@ isolated function mapWorkflowRequestToOperation(string method, string[] wfPath,
             }
             "work-items" => {
                 if segments == 1 {
-                    // The unified queue: tasks and reviews together.
                     return ["workItems.list", queryParams];
                 }
             }
@@ -1076,8 +1072,7 @@ isolated function mapWorkflowRequestToOperation(string method, string[] wfPath,
                 }
                 if segments == 2 {
                     return wfPath[1] == "pending-count"
-                        // The query params carry the taskQueue filter. Dropping them made the badge
-                        // count the whole namespace while the queue-filtered listing showed nothing.
+                        // The query params carry the taskQueue filter, so the badge matches the filtered listing.
                         ? ["humanTasks.pendingCount", queryParams]
                         : ["humanTasks.get", {taskId: wfPath[1]}];
                 }
@@ -1100,8 +1095,7 @@ isolated function mapWorkflowRequestToOperation(string method, string[] wfPath,
     match first {
         "workflows" => {
             if segments == 1 {
-                // Fill workflowId so a retried start is idempotent on the runtime side. A bare
-                // UUID: what an instance is travels in its memo, never in its id.
+                // Fill workflowId so a retried start is idempotent on the runtime side.
                 map<json> params = body.clone();
                 if params["workflowId"] !is string {
                     params["workflowId"] = uuid:createType4AsString();
@@ -1122,8 +1116,6 @@ isolated function mapWorkflowRequestToOperation(string method, string[] wfPath,
                 }
                 return ["instances." + wfPath[3], params];
             }
-            // Reset replays the run to a chosen workflow task and re-executes everything after it — the recovery
-            // tool for a run wedged by a bad deploy or a poisoned decision.
             if segments == 3 && wfPath[2] == "reset" {
                 map<json> params = {workflowId: wfPath[1]};
                 foreach string key in ["resetType", "eventId", "reason", "reapply", "runId"] {
@@ -1148,8 +1140,6 @@ isolated function mapWorkflowRequestToOperation(string method, string[] wfPath,
             }
         }
         "review-activities" if segments == 2 && wfPath[1] == "bulk-retry" => {
-            // One decision over many reviews: retry or fail them together, addressed by explicit ids or by the
-            // parent instance.
             map<json> params = {};
             foreach string key in ["action", "taskIds", "parentWorkflowId", "activityName", "feedback"] {
                 if body[key] !is () {
@@ -1184,8 +1174,6 @@ isolated function instanceSubresourceOperation(string sub) returns string {
             return "instances.activityTree";
         }
         "reset-points" => {
-            // The workflow tasks a run can be reset to, from its history — a read, so the
-            // console can offer the choice before anything irreversible is submitted.
             return "instances.resetPoints";
         }
         _ => {

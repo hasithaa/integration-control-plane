@@ -34,16 +34,13 @@ export default function Workflows(scope: ComponentScope | ProjectScope): JSX.Ele
   const [searchParams, setSearchParams] = useSearchParams();
   const [selectedEnvId, setSelectedEnvId] = useState(searchParams.get('env') ?? '');
 
-  // A page that sent the user here can send one confirmation along (completing a task navigates
-  // here — its own toast would unmount with it). Read once; a refresh does not replay it.
+  // A page navigating here can pass one toast in router state; it is read once, so a refresh does not replay it.
   const location = useLocation();
   const [arrivalToast, setArrivalToast] = useState<string | null>(() => {
     const state = location.state as { toast?: string } | null;
     return typeof state?.toast === 'string' ? state.toast : null;
   });
 
-  // Deep-link params (from the Overview page's "View Workflows", the start-workflow success dialog, or a task's
-  // workflow link).
   const [deepLink, setDeepLink] = useState<{ workflowType?: string; workflowId?: string }>(() => ({
     workflowType: searchParams.get('type') ?? undefined,
     workflowId: searchParams.get('workflowId') ?? undefined,
@@ -68,8 +65,7 @@ export default function Workflows(scope: ComponentScope | ProjectScope): JSX.Ele
 
   const pageScope = useWorkflowPageScope(scope, selectedEnvId);
   const { environments, activeEnvId, targets, taskQueue, component, project, workflowIntegrations, soleWorkflowIntegration, canViewHumanTasks, canViewWorkflows } = pageScope;
-  // Same rule as the tasks page: several workflow integrations make the project level a
-  // dashboard; exactly one makes the page behave as that integration.
+  // Same rule as the tasks page: the project level is a dashboard unless there is exactly one workflow integration.
   const dashboard = !componentLevel && !soleWorkflowIntegration;
 
   // A deep-linked id might not be a workflow at all — a human task and a review are their own instances.
@@ -84,8 +80,6 @@ export default function Workflows(scope: ComponentScope | ProjectScope): JSX.Ele
     navigate(`${resourceUrl(scope, 'tasks')}?${params}`, { replace: true });
   }, [linkedInfo, deepLink.workflowId, activeEnvId, navigate, scope]);
 
-  // This page used to also hold My Tasks and Review Activities as tabs; send those bookmarks to
-  // the page they became.
   const requestedTab = searchParams.get('tab');
   if (requestedTab === 'tasks' || requestedTab === 'reviews') {
     const params = new URLSearchParams({ tab: requestedTab });

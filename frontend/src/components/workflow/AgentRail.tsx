@@ -23,8 +23,7 @@ import type { ExecutionGraph, InstanceGraph, StepExecution } from '../../api/wor
 import { paletteColor, statusColorName } from './graphVisuals';
 import { MODEL_ACTIVITY_LABELS, modelStepId } from './helpers';
 
-// The agent's compact rail: everything the agent declares, as a categorized list — human tasks, events, tools,
-// activities, and the model's own calls.
+// The agent's compact rail: human tasks, events, tools, activities and model calls, as a categorized list.
 
 interface Row {
   id: string;
@@ -78,19 +77,15 @@ export default function AgentRail({
       if (kind === 'HUMAN_TASK') {
         tasks.push({ id: node.stepId, label: name, icon: UserCheck, exec: execOf(steps[node.stepId]) });
       } else if (kind === 'EVENT') {
-        // Events are signals, not activities, so the server-side join never sees them; their
-        // execution state comes from the history's SIGNALED events, counted by the overview.
+        // Events are signals, not activities: the server-side join misses them; state comes from SIGNALED events.
         const count = events.filter((e) => (e['eventType'] ?? '') === 'WORKFLOW_EXECUTION_SIGNALED' && ((e['attributes'] as Record<string, unknown> | undefined)?.['signalName'] ?? '') === name).length;
         eventRows.push({ id: node.stepId, label: name, icon: Database, exec: count > 0 ? { status: 'COMPLETED', count, failed: false, recovered: false } : undefined });
       } else if (kind === 'TOOL') {
-        // The descriptor says what backs each tool: an activity function or an AI function.
         const row: Row = { id: node.stepId, label: name, icon: node.source === 'ACTIVITY' ? SquareCheck : Wrench, exec: execOf(steps[node.stepId]) };
         (node.source === 'ACTIVITY' ? activities : tools).push(row);
       }
     }
 
-    // The model's calls, one row per built-in activity that ran — Thinking beside the
-    // business-valued Generate / Generate Result — in first-execution order.
     const model: Row[] = [];
     const seen = new Map<string, { count: number; worst: number; status?: string; failed: boolean }>();
     const rank = (s: string) => (['FAILED', 'TERMINATED', 'TIMED_OUT'].includes(s) ? 3 : s === 'RUNNING' ? 2 : 1);
@@ -118,7 +113,6 @@ export default function AgentRail({
       });
     }
     if (model.length === 0) {
-      // Nothing ran yet: the model's row still belongs on the list, muted like an unrun tool.
       model.push({ id: 'model', label: 'Thinking', icon: Brain });
     }
 

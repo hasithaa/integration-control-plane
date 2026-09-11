@@ -20,8 +20,7 @@ import { useQueries, useQuery } from '@tanstack/react-query';
 import { useMemo } from 'react';
 import { instanceCountQueryOptions, pendingReviewCountQueryOptions, pendingTaskCountQueryOptions, pendingWorkItemCountQueryOptions, totalPendingTaskCountQueryOptions, valueOf, type CappedCount, type PendingReviewCount } from '../../api/workflows';
 
-// The figures the project tables and the integration overview share; each is one bounded request per
-// integration, and a missing runtime settles to "—" without affecting its neighbours.
+// Figures shared by the project tables and the integration overview; one bounded request per integration per metric.
 
 interface StatsScope {
   componentId: string;
@@ -35,9 +34,8 @@ export interface IntegrationStats {
   failed?: CappedCount | null;
   completed?: CappedCount | null;
   reviews?: PendingReviewCount | null;
-  // Pending human tasks for anyone in any role — the integration's total.
+  // Pending human tasks across all roles, not just the caller's.
   tasks?: number | null;
-  // Pending human tasks the caller's roles can act on — their slice.
   myTasks?: number | null;
   // Per-definition only: `tasks` came from a page that filled, so the real number is at least that.
   tasksCapped?: boolean;
@@ -66,7 +64,6 @@ export function useIntegrationStats(scopes: StatsScope[], since: string, include
   const tasks = useQueries({ queries: scopes.map((s) => ({ ...totalPendingTaskCountQueryOptions(s), enabled: include.tasks })) });
   const myTasks = useQueries({ queries: scopes.map((s) => ({ ...pendingTaskCountQueryOptions(s), enabled: include.myTasks })) });
 
-  // A metric that errored reads as null — shown as "—" — rather than spinning forever as "…".
   const settle = <T>(r: { data?: unknown; error: unknown } | undefined): T | null | undefined => {
     if (!r) return undefined;
     if (r.error) return null;
@@ -83,8 +80,7 @@ export function useIntegrationStats(scopes: StatsScope[], since: string, include
   }));
 }
 
-// The same figures for one workflow definition; pending work comes from the work-items listing filtered by
-// parent type.
+// The same figures for one workflow definition; pending work comes from the work-items listing filtered by parent type.
 export function useDefinitionStats(scope: StatsScope, workflowType: string, since: string, include: { reviews: boolean; tasks: boolean }): IntegrationStats {
   const filters = { workflowType };
   const running = useQuery(instanceCountQueryOptions(scope, { ...filters, status: 'RUNNING' }));
@@ -107,11 +103,9 @@ export function useDefinitionStats(scope: StatsScope, workflowType: string, sinc
   };
 }
 
-// A capped count as text: exact below the page size, "50+" at it, "…" while loading, "—" when unavailable.
 export const countText = (c: CappedCount | PendingReviewCount | null | undefined): string => (c === undefined ? '…' : c === null ? '—' : `${c.count}${c.capped ? '+' : ''}`);
 export const numberText = (n: number | null | undefined): string => (n === undefined ? '…' : n === null ? '—' : String(n));
 
-// Sums one capped metric across rows; pending while any row is, capped when any row was.
 export function totalOf(rows: IntegrationStats[], pick: (s: IntegrationStats) => CappedCount | PendingReviewCount | null | undefined): { text: string; count: number } {
   let count = 0;
   let capped = false;
@@ -127,7 +121,6 @@ export function totalOf(rows: IntegrationStats[], pick: (s: IntegrationStats) =>
   return { text: pending ? '…' : `${count}${capped ? '+' : ''}`, count };
 }
 
-// Sums a plain-number metric across rows; pending while any row is.
 export function sumOf(rows: IntegrationStats[], pick: (s: IntegrationStats) => number | null | undefined): { text: string; count: number } {
   let count = 0;
   let pending = false;

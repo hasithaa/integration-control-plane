@@ -21,8 +21,7 @@ import type { JSX, ReactNode } from 'react';
 import type { GqlEnvironment } from '../../api/queries';
 import TimeZoneToggle from '../TimeZoneToggle';
 
-// The chrome the workflow pages share: title, environment picker, description, and the three states that
-// pre-empt content (loading, no environments, no permission).
+// Shared chrome for the workflow pages, including the loading, no-environment and no-permission states.
 export default function WorkflowPageFrame({
   title,
   description,
@@ -56,9 +55,6 @@ export default function WorkflowPageFrame({
     <PageContent>
       <Stack component="header" direction="row" alignItems="center" justifyContent="space-between" gap={2} sx={{ mb: 1 }}>
         <Typography variant="h1">{title}</Typography>
-        {/* The clock every timestamp on these pages is on, beside the environment they belong to.
-            It lives here, not in the global header: the workflow pages share one time standard,
-            and a header-wide promise would be broken by every other area's own formatting. */}
         <Stack direction="row" alignItems="center" gap={1.5}>
           <TimeZoneToggle />
           <Autocomplete

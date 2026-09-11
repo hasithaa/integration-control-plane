@@ -50,7 +50,6 @@ export default function ProjectWorkflowDashboard({
   canViewHumanTasks: boolean;
   canViewWorkflows: boolean;
 }): JSX.Element {
-  // Only integrations deployed in this environment can answer.
   const { data: runtimes, isPending: runtimesPending } = useProjectRuntimes(environmentId, projectId);
   const runtimeByComponent = useMemo(() => latestRuntimeByComponent(runtimes), [runtimes]);
   const deployedIds = runtimes === undefined || runtimesPending ? undefined : new Set(runtimeByComponent.keys());
@@ -61,7 +60,6 @@ export default function ProjectWorkflowDashboard({
   return resource === 'workflows' ? <WorkflowStatsTable {...common} /> : <ProjectInbox {...common} />;
 }
 
-// One runtime per component — the most recently heard from, when an integration has several.
 function latestRuntimeByComponent(runtimes: GqlRuntime[] | undefined): Map<string, GqlRuntime> {
   const byComponent = new Map<string, GqlRuntime>();
   for (const r of runtimes ?? []) {
@@ -84,12 +82,10 @@ interface TableProps {
   canViewWorkflows: boolean;
 }
 
-// Deployed integrations whose runtime is not heartbeating.
 const offlineCount = (deployed: WorkflowIntegrationEntry[], runtimeByComponent: Map<string, GqlRuntime>): number => deployed.filter((d) => (runtimeByComponent.get(d.componentId)?.status ?? '').toUpperCase() !== 'RUNNING').length;
 
 const plural = (n: number, word: string): string => `${word}${n === 1 ? '' : 's'}`;
 
-// A count that links; the click does not also open the row.
 function LinkedCount({ text, onClick }: { text: string; onClick: () => void }): JSX.Element {
   return (
     <Typography
@@ -105,8 +101,6 @@ function LinkedCount({ text, onClick }: { text: string; onClick: () => void }): 
   );
 }
 
-// A table row: the integration's name, then its figures or one note spanning them (resolving, not deployed,
-// runtime offline).
 function IntegrationRow({
   integration,
   isDeployed,
@@ -118,7 +112,6 @@ function IntegrationRow({
   integration: WorkflowIntegrationEntry;
   isDeployed: boolean | undefined;
   runtime: GqlRuntime | undefined;
-  // How many columns the note covers: every figure.
   span: number;
   onOpen: () => void;
   children: ReactNode;
@@ -265,25 +258,21 @@ function WorkflowStatsTable({ scope, environmentId, integrations, runtimeByCompo
 
 // ── Human Tasks: the project inbox ──
 
-// One integration's part of the inbox.
 interface SourceState {
   integration: WorkflowIntegrationEntry;
   status: 'offline' | 'fetching' | 'refreshing' | 'ready' | 'failed';
   count: number;
   fetchedAt?: number;
-  // The source reported more than the pages loaded so far.
   hasMore?: boolean;
   nextToken?: string;
   loadingMore?: boolean;
 }
 
-// How long the list is held for slow sources before it is shown with what has arrived.
+// How long slow sources are waited for before the list is shown with what has arrived.
 const HOLD_MS = 6000;
 
 const joinNames = (xs: string[]): string => (xs.length <= 1 ? xs.join('') : `${xs.slice(0, -1).join(', ')} and ${xs[xs.length - 1]}`);
 
-// The caller's pending work from every integration in the environment, as one oldest-first queue; each source's
-// state is shown, and no bulk actions.
 function ProjectInbox({ scope, environmentId, integrations, runtimeByComponent, deployedIds }: TableProps): JSX.Element {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -293,9 +282,8 @@ function ProjectInbox({ scope, environmentId, integrations, runtimeByComponent, 
   const [openReview, setOpenReview] = useState<WorkItem | null>(null);
 
   const deployed = useMemo(() => integrations.filter((i) => deployedIds?.has(i.componentId)), [integrations, deployedIds]);
-  // Offline runtimes are not asked; their chip says why.
   const online = (d: WorkflowIntegrationEntry) => (runtimeByComponent.get(d.componentId)?.status ?? '').toUpperCase() === 'RUNNING';
-  // One page of 50 per source; Load more asks every source with more for its next page.
+  // One page of 50 per source; Load more asks every source that still has more for its next page.
   const [moreTokens, setMoreTokens] = useState<Record<string, string[]>>({});
   const results = useQueries({
     queries: deployed.map((d) => ({ ...pendingWorkItemsQueryOptions({ componentId: d.componentId, environmentId }), enabled: online(d) })),
@@ -305,7 +293,7 @@ function ProjectInbox({ scope, environmentId, integrations, runtimeByComponent, 
     queries: pageDescriptors.map((pd) => ({ ...pendingWorkItemsQueryOptions({ componentId: pd.componentId, environmentId }, 50, pd.token), refetchInterval: false as const })),
   });
 
-  // Held until every reachable source answers (or the grace period ends), then the order is frozen: rows never move under the reader.
+  // Order is frozen once every reachable source has answered or the hold expires, so rows never move under the reader.
   const orderRef = useRef<Map<string, number>>(new Map());
   const seqRef = useRef(0);
   const [settled, setSettled] = useState(false);
@@ -323,7 +311,6 @@ function ProjectInbox({ scope, environmentId, integrations, runtimeByComponent, 
   const statuses = deployed.map((d, i) => statusOf(d, i));
   const allAnswered = deployedIds !== undefined && statuses.every((st) => st !== 'fetching');
 
-  // A new environment is a new list: forget the order, hold again.
   useEffect(() => {
     orderRef.current = new Map();
     setMoreTokens({});
@@ -333,11 +320,9 @@ function ProjectInbox({ scope, environmentId, integrations, runtimeByComponent, 
     setSettled(false);
   }, [environmentId]);
 
-  // Settle when every reachable source has answered, or after the grace period — whichever first.
   useEffect(() => {
     if (settled || deployedIds === undefined) return;
     if (allAnswered) {
-      // Every reachable source has answered, so none of them can be late.
       answeredAtSettleRef.current = new Set(deployed.map((d) => d.componentId));
       setSettled(true);
       return;
@@ -351,7 +336,7 @@ function ProjectInbox({ scope, environmentId, integrations, runtimeByComponent, 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [settled, deployedIds, allAnswered, ...statuses]);
 
-  // A source that answers after the hold is late: its items go to the bottom, and it is named.
+  // A source answering after the hold is late: its items land at the bottom of the frozen order.
   useEffect(() => {
     if (!settled) return;
     const late = deployed.filter((d, i) => (statuses[i] === 'ready' || statuses[i] === 'refreshing') && !answeredAtSettleRef.current.has(d.componentId)).map((d) => d.componentId);
@@ -367,7 +352,6 @@ function ProjectInbox({ scope, environmentId, integrations, runtimeByComponent, 
       const r = results[i];
       labels.set(d.componentId, d.name);
       const first = valueOf(r?.data);
-      // The source's later pages, in the order they were asked for.
       const later = pageDescriptors.map((pd, j) => (pd.componentId === d.componentId ? valueOf(moreResults[j]?.data) : undefined)).filter((pg) => pg !== undefined);
       const loadingMore = pageDescriptors.some((pd, j) => pd.componentId === d.componentId && (moreResults[j]?.isPending || isPreparing(moreResults[j]?.data)));
       const last = later.length ? later[later.length - 1] : first;
@@ -383,10 +367,9 @@ function ProjectInbox({ scope, environmentId, integrations, runtimeByComponent, 
         merged.push(item);
       }
     });
-    // Oldest first; items without a time sink.
+    // Oldest first; items without a start time sort last.
     merged.sort((a, b) => (a.startTime ?? '\uffff').localeCompare(b.startTime ?? '\uffff'));
     if (!settled) return { items: merged, labels, sources };
-    // First appearance decides the position.
     const order = orderRef.current;
     for (const w of merged) if (!order.has(w.id)) order.set(w.id, ++seqRef.current);
     merged.sort((a, b) => (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0));
@@ -419,8 +402,6 @@ function ProjectInbox({ scope, environmentId, integrations, runtimeByComponent, 
   const reviews = items.length - tasks;
   const holding = !resolving && !settled;
 
-  // The line that says what the list is: how much, from how many of the sources, what is still coming, and what is
-  // missing. Written from the states rather than assumed, so it is never more confident than the data behind it.
   const summary = (() => {
     if (resolving) return 'Finding the integrations deployed in this environment…';
     if (deployed.length === 0) return 'No workflow integration is deployed in this environment.';
@@ -503,7 +484,6 @@ function ProjectInbox({ scope, environmentId, integrations, runtimeByComponent, 
         </>
       )}
 
-      {/* Each item opens its own integration's drawer. */}
       {openTask?.componentId && (
         <TaskDetailDialog
           scope={{ componentId: openTask.componentId, environmentId }}

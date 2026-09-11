@@ -43,13 +43,10 @@ export const typeLabel = (type: string): string => humanizeKey(type.toLowerCase(
 // Maps a status to its Oxygen chip colour name (e.g. COMPLETED → success).
 export const statusColorName = (status?: string): ChipColor => STATUS_COLORS[(status ?? '').toUpperCase()] ?? 'default';
 
-// Oxygen themes through CSS variables: `data-color-scheme` on <html> selects a set of `--oxygen-palette-*`
-// values.
 type VarsTheme = Theme & { vars?: { palette?: Record<string, Record<string, string>> } };
 
 const paletteVars = (theme: Theme): Record<string, Record<string, string>> | undefined => (theme as VarsTheme).vars?.palette;
 
-// The colours the diagrams paint with, as CSS variables wherever the theme provides them.
 export function diagramColors(theme: Theme): {
   paper: string;
   textPrimary: string;
@@ -69,8 +66,7 @@ export function diagramColors(theme: Theme): {
   };
 }
 
-// A translucent primary, safe under CSS variables. `alpha()` parses a colour, so it cannot be handed
-// `var(--oxygen-palette-primary-main)`.
+// `alpha()` parses a colour, so it cannot be handed `var(--oxygen-palette-primary-main)`; use the channel instead.
 export function softPrimary(theme: Theme, opacity: number): string {
   const channel = paletteVars(theme)?.primary?.mainChannel;
   return channel ? `rgba(${channel} / ${opacity})` : alpha(theme.palette.primary.main, opacity);

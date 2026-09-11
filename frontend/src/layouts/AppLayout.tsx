@@ -131,7 +131,6 @@ export default function AppLayout(): JSX.Element {
   const currentComponent = hasComponent(scope) ? components.find((c) => c.handler === scope.component) : undefined;
   const componentId = currentComponent?.id;
 
-  // Returns the resource if the user has permission at the target scope, or 'overview' as fallback.
   const canAccessResource = (targetScope: Parameters<typeof hasProject>[0], target: Resource, targetProjectId: string | undefined = projectId || undefined, targetComponentId: string | undefined = componentId): Resource => {
     switch (target) {
       case 'overview':

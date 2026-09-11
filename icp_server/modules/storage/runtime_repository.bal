@@ -1186,8 +1186,8 @@ public isolated function getWorkflowMetadataForComponentEnv(string componentId, 
     return metadataList;
 }
 
-// Get the stored workflow metadata documents of every RUNNING runtime in the same *project* and
-// environment as the given component, the given component's own first and then freshest heartbeat.
+// Workflow metadata of every RUNNING runtime in the component's project and environment;
+// its own rows first, then freshest heartbeat.
 public isolated function getWorkflowMetadataForProjectEnv(string componentId, string environmentId)
         returns types:WorkflowMetadataRecord[]|error {
     types:WorkflowMetadataRecord[] metadataList = [];

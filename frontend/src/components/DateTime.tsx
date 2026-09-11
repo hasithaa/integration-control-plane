@@ -21,23 +21,8 @@ import type { JSX } from 'react';
 import { useTimeZone } from '../contexts/TimeZoneContext';
 import { formatDateTime, formatDistanceToNow, toIsoUtc } from '../utils/time';
 
-// A timestamp as `YYYY-MM-DD HH:mm:ss` on the chosen clock, with the UTC instant and age in the tooltip;
-// `relative` swaps the two.
-export default function DateTime({
-  value,
-  seconds = true,
-  ms = false,
-  relative = false,
-  mono = true,
-}: {
-  value: string | number | Date | undefined | null;
-  seconds?: boolean;
-  ms?: boolean;
-  // Show "3 min ago" and keep the absolute time for the hover.
-  relative?: boolean;
-  // Tabular digits so timestamps line up in a column.
-  mono?: boolean;
-}): JSX.Element {
+// A timestamp on the chosen clock, with the UTC instant and age in the tooltip; `relative` swaps the two.
+export default function DateTime({ value, seconds = true, ms = false, relative = false, mono = true }: { value: string | number | Date | undefined | null; seconds?: boolean; ms?: boolean; relative?: boolean; mono?: boolean }): JSX.Element {
   const { zone, label } = useTimeZone();
   if (value === undefined || value === null || value === '') return <span>—</span>;
   const absolute = formatDateTime(value, { seconds, ms, zone });

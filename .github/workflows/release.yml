@@ -73,7 +73,6 @@ jobs:
       - name: Setup pnpm
         uses: pnpm/action-setup@v2
         with:
-          # The committed lockfile is lockfileVersion 9, which pnpm 8 cannot read.
           version: 10
 
       - name: Install frontend dependencies

@@ -21,8 +21,7 @@ import { useMemo, type ReactElement } from 'react';
 import type { InstanceGraph, ModelGraphNode } from '../../api/workflows';
 import { diagramColors, paletteColor, softPrimary, statusColorName } from './graphVisuals';
 
-// The agent's star, drawn compactly: channels in on the left (events, human tasks), the agent in the middle,
-// capabilities out on the right (the model, tools, activities).
+// The agent's star: inbound channels (events, human tasks) on the left, the agent centre, capabilities on the right.
 
 const clip = (text: string, maxChars: number): string => (text.length <= maxChars ? text : `${text.slice(0, Math.max(1, maxChars - 1))}…`);
 
@@ -47,7 +46,6 @@ export default function AgentStarRail({ data, selectedStepId, onSelect }: { data
     const nodes = graph?.nodes ?? [];
     const agent = nodes.find((n) => n.kind.toUpperCase() === 'AGENT');
     if (!agent) return null;
-    // Inbound: what wakes the agent. Outbound: what it may run.
     const inbound = nodes.filter((n) => ['EVENT', 'HUMAN_TASK'].includes(n.kind.toUpperCase()));
     const outbound = nodes.filter((n) => ['MODEL', 'TOOL'].includes(n.kind.toUpperCase()));
     const rows = Math.max(inbound.length, outbound.length, 1);
@@ -92,7 +90,6 @@ export default function AgentStarRail({ data, selectedStepId, onSelect }: { data
           const isAgent = kind === 'AGENT';
           const selected = selectedStepId === p.node.stepId;
           const title = p.node.target ?? p.node.stepId.replace(/^(tool|event|task):/, '');
-          // The same status→colour vocabulary as everywhere else, from the server-side join.
           const exec = data.steps?.[p.node.stepId];
           const statusColor = exec ? paletteColor(theme, statusColorName(exec.status)) : null;
           return (
@@ -110,8 +107,7 @@ export default function AgentStarRail({ data, selectedStepId, onSelect }: { data
                 width={NODE_W}
                 height={NODE_H}
                 rx={isAgent ? NODE_H / 2 : 6}
-                // softPrimary, not alpha(): under CSS-variables theming the accent is the string
-                // `var(--oxygen-palette-primary-main)`, which alpha() cannot parse — toggling to the agent map crashed the whole.
+                // softPrimary, not alpha(): the accent is a var() string that alpha() cannot parse.
                 fill={selected ? softPrimary(theme, 0.12) : isAgent ? softPrimary(theme, 0.08) : c.paper}
                 stroke={selected ? accent : isAgent ? accent : (statusColor ?? c.divider)}
                 strokeWidth={selected ? 1.75 : statusColor ? 1.5 : 1}

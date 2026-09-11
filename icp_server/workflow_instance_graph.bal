@@ -114,8 +114,6 @@ isolated function handleInstanceGraphRequest(string componentId, string environm
         // is still worth returning; the console can draw it as a chain.
         return instanceGraphResponse(workflowType, info, (), (), "workflow", executedNodes, []);
     }
-    // An agent's executions join the star exactly the way a workflow's join its flow: by the step id each
-    // call was stamped with (the model node, tool:<name>, task:<name>).
     return instanceGraphResponse(workflowType, info, model[0], model[1], model[2], executedNodes,
             graphNodesOf(model[0]));
 }
@@ -206,8 +204,7 @@ isolated function instanceGraphResponse(string workflowType, map<json> info, jso
         if stepId is string {
             resolved = stepId;
         } else if graphKind == "agent" {
-            // The model chose this call, so there is no lexical order to interpolate against — an unstamped agent
-            // execution (an integration built before the site carriers) can only be reported, not placed.
+            // An agent's calls have no lexical order to interpolate against, so an unstamped one is only reported.
             unmatched.push(unmatchedEntry(node, "no step id, and an agent has no order to place it by"));
             continue;
         } else {
@@ -268,8 +265,7 @@ isolated function recordExecution(map<map<json>> steps, string stepId, map<json>
     map<json> step = steps.hasKey(stepId) ? steps.get(stepId) : {count: 0, eventIds: []};
     int count = step["count"] is int ? <int>step["count"] : 0;
     step["count"] = count + 1;
-    // Every history event this step produced, in order, so a consumer can pull the input and result
-    // of a particular iteration: a step inside a loop has one entry per pass, not one per node.
+    // One entry per pass, in order, so a step inside a loop keeps every iteration's event id.
     json[] eventIds = step["eventIds"] is json[] ? <json[]>step["eventIds"] : [];
     eventIds.push(node["id"]);
     step["eventIds"] = eventIds;
@@ -393,12 +389,11 @@ isolated function stringField(map<json> value, string key) returns string? {
     return raw is string ? raw : ();
 }
 
-// The graph of one workflow type — a workflow's control flow or an agent's star — from any RUNNING
-// runtime's published descriptor, with the descriptor's checksum and which of the two it is.
+// The graph of one workflow type — a workflow's control flow or an agent's star — from any RUNNING runtime's
+// published descriptor, with its checksum and which of the two it is. () when no runtime described the type.
 isolated function workflowGraphFromStoredMetadata(string componentId, string environmentId,
         string workflowType, string? taskQueue) returns [json, string, string]?|error {
-    // Project-wide: the console may read a run through a sibling integration. Within a project a task
-    // queue names one integration, so the run's own queue picks its owner before any other match.
+    // Project-wide: a task queue names one integration, so the run's own queue picks its owner before any other.
     types:WorkflowMetadataRecord[] metadataRecords =
         check storage:getWorkflowMetadataForProjectEnv(componentId, environmentId);
     types:WorkflowMetadataRecord[] ordered = [];
@@ -435,8 +430,7 @@ isolated function workflowGraphFromStoredMetadata(string componentId, string env
                 }
             }
         }
-        // A durable agent's runner registers under the agent's own name, so an instance of it
-        // asks for this same graph — the star the compiler drew, not lexical control flow.
+        // A durable agent's runner registers under the agent's own name, so an instance asks for this same graph.
         json agents = descriptor["agents"];
         if agents is json[] {
             foreach json agent in agents {

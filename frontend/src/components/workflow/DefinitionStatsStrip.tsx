@@ -26,13 +26,11 @@ interface StripCell {
   label: string;
   value: string;
   help: string;
-  // Where the number leads — the page that lists what it counts.
   to: string;
   alarm?: boolean;
 }
 
-// The selected definition's figures on the integration overview — the project table's columns, scoped to one
-// workflow type.
+// The selected definition's figures on the integration overview, scoped to one workflow type.
 export function DefinitionStatsStrip({
   scope,
   componentId,

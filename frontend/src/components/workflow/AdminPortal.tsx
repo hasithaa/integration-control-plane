@@ -69,14 +69,12 @@ const emptySx = { py: 4, textAlign: 'center', color: 'text.secondary' } as const
 
 const statusLabel = (s: string) => (s === 'All' ? 'All' : s.charAt(0) + s.slice(1).toLowerCase().replace(/_/g, ' '));
 
-// Converts a `datetime-local` input value to an ISO-8601 string, or undefined when empty/invalid.
 const localToIso = (v: string): string | undefined => {
   if (!v) return undefined;
   const d = new Date(v);
   return isNaN(d.getTime()) ? undefined : d.toISOString();
 };
 
-// Formats a Date as a `datetime-local` input value (YYYY-MM-DDTHH:MM).
 const toLocalInput = (d: Date): string => {
   const pad = (n: number) => String(n).padStart(2, '0');
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
@@ -96,7 +94,6 @@ export type Toast = { severity: 'success' | 'error'; message: string } | null;
 
 export type { PortalScope };
 
-// Integration filter, offered only when the portal spans more than one.
 export function IntegrationFilter({ targets, value, onChange }: { targets: WorkflowTarget[]; value: WorkflowTarget | null; onChange: (v: WorkflowTarget | null) => void }) {
   return (
     <Autocomplete
@@ -112,8 +109,6 @@ export function IntegrationFilter({ targets, value, onChange }: { targets: Workf
   );
 }
 
-// Warns that some integrations did not return their workflow definitions, so the workflow names on offer — for
-// filtering and for starting — may be short a few.
 function DefinitionsUnavailableNotice({ failed }: { failed: { componentName: string; message: string }[] }) {
   if (failed.length === 0) return null;
   return (
@@ -144,7 +139,6 @@ export function WorkflowNameFilter({ definitions, value, onChange }: { definitio
   );
 }
 
-// Owns the time-range dropdown (relative presets + custom bounds) and resolves it to ISO bounds.
 export function useTimeRangeFilter() {
   const [timeRange, setTimeRange] = useState(ANY_TIME);
   const [customStart, setCustomStart] = useState(() => toLocalInput(new Date(Date.now() - 24 * 3600_000)));
@@ -269,13 +263,9 @@ function WorkflowsAdmin({
   };
   // Paged the way Temporal's visibility API pages — forward-only tokens — so "Load more" appends.
   const { data, isLoading, error, refetch, isFetching, hasNextPage, fetchNextPage, isFetchingNextPage } = useWorkflowInstancesInfinite(gatewayScope(scope), filters);
-  // Each page is a Fetchable, so only the ready ones contribute rows. A page still being prepared is announced
-  // instead of being flattened to nothing, which would read as "no instances" while the answer is on its way.
   const pages = (data?.pages ?? []).map((page) => valueOf(page)).filter((page) => page !== undefined);
   const items = sortByStartTimeDesc(pages.flatMap((page) => page?.items ?? []));
   const preparing = (data?.pages ?? []).some((page) => isPreparing(page));
-  // A page marked stale is being replaced: a mutation invalidated it and the queries are
-  // polling for the fresh copy. Said out loud, since the rows on screen predate the action.
   const refreshing = (data?.pages ?? []).some((page) => isRefreshing(page));
   const updatedAt = (data?.pages ?? []).map((page) => fetchedAtOf(page)).filter((t): t is number => !!t)[0];
   const hasFilters = status !== 'All' || !!selectedType || !!search || !!integration || timeFilter.active;
@@ -563,21 +553,17 @@ export function StartWorkflowDialog({ scope, initialWorkflowType, onClose, onToa
 
 // ── Review activity detail (opened from the unified Human Tasks queue) ──────────
 
-// Why a review exists, in words: an approval gate before the run, or a decision after a failure.
 export function reviewTriggerLabel(trigger?: string): string {
   if (trigger === 'PRE_RUN') return 'Approval gate — review before the activity runs';
   if (trigger === 'ON_FAILURE') return 'Review failure — decide the failed activity\u2019s retry';
   return trigger || '—';
 }
 
-// Display name for a review activity: the task part of its qualified name (e.g.
-// `placeOrderWorkflow.validatePayment` → `validatePayment`), else the task ID.
 function reviewActivityDisplayName(taskName?: string, activityName?: string, fallback = ''): string {
   const { task } = splitQualifiedName(taskName ?? activityName);
   return task ?? fallback;
 }
 
-// The reviewer's decision, in words — the three ways a review can end.
 function reviewDecisionLabel(action: unknown): string | undefined {
   switch (action) {
     case 'proceed':
@@ -591,7 +577,6 @@ function reviewDecisionLabel(action: unknown): string | undefined {
   }
 }
 
-// The review-activity drawer.
 export function ReviewActivityDetailDialog({ scope, taskId, onClose, onToast }: { scope: WorkflowScope; taskId: string; onClose: () => void; onToast: (t: Toast) => void }) {
   const [pausePolling, setPausePolling] = useState(false);
   const { data: activityResult, isLoading, error: loadError } = useReviewActivity(scope, taskId, pausePolling);
@@ -601,16 +586,13 @@ export function ReviewActivityDetailDialog({ scope, taskId, onClose, onToast }: 
   const refreshing = isRefreshing(activityResult);
   const decide = useReviewDecision(scope);
   const [mode, setMode] = useState<'view' | 'edit'>('view');
-  // Confirmations and the reject operation are modal overlays: the decision happens in front of
-  // the activity's arguments, not on a screen the context has scrolled away from.
   const [confirmProceedOpen, setConfirmProceedOpen] = useState(false);
   const [reviewChangesOpen, setReviewChangesOpen] = useState(false);
   const [rejectOpen, setRejectOpen] = useState(false);
-  // Editing or confirming pauses the detail's polling — no world-shift under a decision.
+  // Polling pauses while deciding; mirrored into state because the hook call sits above these declarations.
   const editing = mode === 'edit' || confirmProceedOpen || reviewChangesOpen || rejectOpen;
   if (editing !== pausePolling) setPausePolling(editing);
   const [formValues, setFormValues] = useState<Record<string, string | boolean>>({});
-  // What the workflow recorded — the baseline every edit is compared against.
   const [originalValues, setOriginalValues] = useState<Record<string, string | boolean>>({});
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [rawText, setRawText] = useState('{}');
@@ -628,8 +610,7 @@ export function ReviewActivityDetailDialog({ scope, taskId, onClose, onToast }: 
   const heading = activity?.title || reviewActivityDisplayName(activity?.taskName, activity?.activityName, taskId);
   const argsJson = activity?.activityArgs ? jsonPretty(activity.activityArgs) : null;
 
-  // A review's decision — the action taken and any input the reviewer submitted — is not part of the
-  // review-activity detail; it lives in the review's own workflow result (a review IS a workflow, and its taskId.
+  // The decision is not in the activity detail: a review IS a workflow (id = taskId), so read its own result.
   const isCompleted = (activity?.status ?? '').toUpperCase() === 'COMPLETED';
   const { data: decisionHistory } = useWorkflowHistory(scope, isCompleted ? taskId : null);
   const decision = useMemo<Record<string, unknown> | null>(() => {
@@ -645,7 +626,6 @@ export function ReviewActivityDetailDialog({ scope, taskId, onClose, onToast }: 
     }
   }, [decisionHistory]);
 
-  // Seed both copies from the activity's arguments once the detail loads.
   useEffect(() => {
     if (!activity) return;
     const fields = parseFormSchema(activity.formSchema);
@@ -707,7 +687,6 @@ export function ReviewActivityDetailDialog({ scope, taskId, onClose, onToast }: 
     }
   };
 
-  // Deselecting the edit path keeps entered values but clears validation state.
   const closeEdit = () => {
     setMode('view');
     setFieldErrors({});
@@ -717,8 +696,6 @@ export function ReviewActivityDetailDialog({ scope, taskId, onClose, onToast }: 
 
   const busy = decide.isPending;
 
-  // A small right-aligned button row at the bottom of the active step's card — actions live
-  // beside the content they act on, not in a footer a screen-height away.
   const stepButtons = (...buttons: ReactNode[]) => (
     <Stack direction="row" justifyContent="flex-end" gap={1}>
       {buttons}
@@ -758,13 +735,8 @@ export function ReviewActivityDetailDialog({ scope, taskId, onClose, onToast }: 
             </Stack>
           </SectionCard>
 
-          {/* The arguments as the workflow recorded them: context to decide with. Editing happens
-              only on the explicit "Proceed with changes" path, never here. */}
           {mode !== 'edit' && argsJson && <StructuredValue title="Activity Arguments" readOnly raw={argsJson} environmentId={scope.environmentId} collapsible />}
 
-          {/* The decision, once one has been made: what the reviewer decided, who decided, when,
-              and — for a "proceed with changes" — the input they supplied. Read from the review's
-              own workflow result, so a completed review no longer reads as if nothing was decided. */}
           {isCompleted && (activity.decidedBy || activity.decidedAt || decision) && (
             <SectionCard title="Decision">
               <Stack gap={1.25}>
@@ -777,15 +749,11 @@ export function ReviewActivityDetailDialog({ scope, taskId, onClose, onToast }: 
           )}
           {isCompleted && decision?.['input'] != null && <StructuredValue title="Submitted Input" raw={jsonPretty(decision['input']) || ''} environmentId={scope.environmentId} collapsible />}
 
-          {/* Deciding a review is human-task work as much as workflow management: either
-              manage permission offers the decision (the proxy accepts both). */}
+          {/* Either manage permission can decide a review — the proxy accepts both. */}
           {canDecide && (
             <Authorized permissions={[Permissions.WORKFLOW_MANAGE_WORKFLOWS, Permissions.WORKFLOW_MANAGE_HUMAN_TASKS]}>
               <SectionCard title="Decisions">
                 <Stack gap={2}>
-                  {/* Every way the review can end, side by side and scannable: proceed as-is,
-                      proceed with edits, or reject. Reject is a decision the reviewer makes here,
-                      so it belongs beside the others — not tucked in an overflow menu. */}
                   <Stack direction="row" flexWrap="wrap" gap={1.5}>
                     <ActionCard
                       title="Proceed"
@@ -797,8 +765,7 @@ export function ReviewActivityDetailDialog({ scope, taskId, onClose, onToast }: 
                       }
                       disabled={busy}
                       onClick={() => {
-                        // Opening one decision closes the other. Without this, Proceed's modal rose over the still-open edit form — two
-                        // half-taken decisions at once, and Back landed the user on an editor they never meant to keep.
+                        // Only one decision open at a time: close any open editor first.
                         closeEdit();
                         setConfirmProceedOpen(true);
                       }}
@@ -818,15 +785,12 @@ export function ReviewActivityDetailDialog({ scope, taskId, onClose, onToast }: 
                       selected={rejectOpen}
                       disabled={busy}
                       onClick={() => {
-                        // Same single-decision discipline as Proceed: close any open editor
-                        // so the reject dialog is the only decision on screen.
                         closeEdit();
                         setRejectOpen(true);
                       }}
                     />
                   </Stack>
 
-                  {/* The edit path's inputs, revealed in place beneath the cards. */}
                   {mode === 'edit' && (
                     <Stack gap={2} sx={{ borderTop: '1px solid', borderColor: 'divider', pt: 2 }}>
                       <Typography variant="body2" color="text.secondary">
@@ -865,8 +829,6 @@ export function ReviewActivityDetailDialog({ scope, taskId, onClose, onToast }: 
             </Authorized>
           )}
 
-          {/* Confirmations overlay the review instead of replacing it: the arguments and the
-              error that triggered it stay on screen behind the decision. */}
           <Dialog open={confirmProceedOpen} onClose={() => !busy && setConfirmProceedOpen(false)} maxWidth="sm" fullWidth>
             <DialogTitle>Confirm Proceed</DialogTitle>
             <DialogContent>

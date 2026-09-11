@@ -6,8 +6,7 @@ import ballerina/log;
 import wso2/icp_server.storage;
 import wso2/icp_server.types;
 
-// GET .../task-queues — the Temporal task queue of every workflow integration in the asked component's
-// project and environment, keyed by component id.
+// GET .../task-queues — the task queue of every workflow integration in the project/environment, by component id.
 isolated function handleTaskQueuesRequest(string componentId, string environmentId) returns http:Response {
     types:WorkflowMetadataRecord[]|error metadataRecords =
         storage:getWorkflowMetadataForProjectEnv(componentId, environmentId);

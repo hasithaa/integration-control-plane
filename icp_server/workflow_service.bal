@@ -362,8 +362,8 @@ function handleWorkflowRequest(string componentId, string environmentId, string[
 
     // 2. Authorize with the dedicated workflow permissions (scoped to the integration).
     //    - human-tasks: browsing needs view_human_tasks; acting needs manage_human_tasks.
-    // - review-activities: a review is a human decision about a gated or failed activity, so the
-    // human-task permissions cover it alongside the workflow ones — a task worker must be able to see and.
+    //    - review-activities and work-items: either permission domain grants the listing.
+    //    - everything else (workflows lifecycle, definitions):
     //      browsing needs view_workflows; any mutation needs manage_workflows.
     string|error projectId = storage:getProjectIdByComponentId(componentId);
     if projectId is error {
@@ -383,8 +383,7 @@ function handleWorkflowRequest(string componentId, string environmentId, string[
             ? [auth:PERMISSION_WORKFLOW_VIEW_HUMAN_TASKS, auth:PERMISSION_WORKFLOW_MANAGE_HUMAN_TASKS]
             : [auth:PERMISSION_WORKFLOW_MANAGE_HUMAN_TASKS];
     } else if firstSeg == "work-items" {
-        // The unified queue spans both permission domains: holding either side grants the
-        // listing, and the kinds the caller may see are narrowed below.
+        // Either domain grants the listing; the kinds the caller may see are narrowed below.
         allowedPermissions = [
             auth:PERMISSION_WORKFLOW_VIEW_HUMAN_TASKS, auth:PERMISSION_WORKFLOW_MANAGE_HUMAN_TASKS,
             auth:PERMISSION_WORKFLOW_VIEW_WORKFLOWS, auth:PERMISSION_WORKFLOW_MANAGE_WORKFLOWS
@@ -422,8 +421,7 @@ function handleWorkflowRequest(string componentId, string environmentId, string[
         escapedRoles.push("admin");
     }
 
-    // The task-queue map is served from stored metadata alone, so it is answered before a tunnel target is
-    // even looked for: the console needs it to scope every other request, and it must not fail just.
+    // Served from stored metadata, before any tunnel lookup: it must answer even when the runtime is offline.
     if method == http:GET && wfPath.length() == 1 && wfPath[0] == "task-queues" {
         return handleTaskQueuesRequest(componentId, environmentId);
     }
@@ -452,8 +450,7 @@ function handleWorkflowRequest(string componentId, string environmentId, string[
     // refreshing the one everyone reads.
     boolean forceRefresh = queryParams.removeIfHasKey("refresh") == "true";
 
-    // `all` is likewise this layer's instruction — stripped whatever the path, so it never reaches the
-    // cache key or the operation — and honoured on two reads: the pending-task count, and the work-items.
+    // `all` is stripped whatever the path, so it never reaches the cache key or the operation.
     boolean wantTotal = queryParams.removeIfHasKey("all") == "true";
     boolean totalCapablePath = (wfPath.length() == 2 && wfPath[0] == "human-tasks" && wfPath[1] == "pending-count")
             || (wfPath.length() == 1 && wfPath[0] == "work-items");
@@ -497,11 +494,8 @@ function handleWorkflowRequest(string componentId, string environmentId, string[
             return workflowErrorResponse(400, "Request body must be a JSON object");
         }
     }
-    // Mutates the map declared above rather than re-reading the query: that one has already had
-    // `refresh` stripped, and a second copy would carry it into the cache key.
+    // Mutates the map above rather than re-reading the query: a fresh copy would carry `refresh` into the key.
     if firstSeg == "work-items" {
-        // Narrow the queue to the kinds this caller's permissions cover, intersected with any kind they asked
-        // for.
         string?|http:Response kinds = resolveWorkItemKinds(userContext.userId, scope,
                 queryParams["kind"]);
         if kinds is http:Response {
@@ -539,10 +533,9 @@ function handleWorkflowRequest(string componentId, string environmentId, string[
             userContext.username, userContext.userId, escapedRoles);
 }
 
-# The kinds of work a caller may list, as the operation's `kinds` parameter: the intersection
-# of their permissions (human-task perms → HUMAN_TASK and REVIEW_ACTIVITY, workflow perms →
-# REVIEW_ACTIVITY) and the `kind` they requested. A request for a kind outside their
-# permissions is answered 403.
+# The kinds of work a caller may list: the intersection of their permissions (human-task perms
+# → HUMAN_TASK and REVIEW_ACTIVITY, workflow perms → REVIEW_ACTIVITY) and the `kind` requested.
+# A kind outside their permissions is answered 403.
 #
 # + userId - the caller
 # + scope - the integration/environment scope the permissions are checked in
@@ -561,8 +554,6 @@ isolated function resolveWorkItemKinds(string userId, types:AccessScope scope, j
     if canTasks {
         allowed.push("HUMAN_TASK");
     }
-    // Reviews belong to both domains: they are human decisions (see the authorization
-    // branches above), so holding either side of either domain lists them.
     if canTasks || canReviews {
         allowed.push("REVIEW_ACTIVITY");
     }

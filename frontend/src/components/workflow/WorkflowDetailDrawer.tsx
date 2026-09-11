@@ -45,15 +45,13 @@ import DateTime from '../DateTime';
 // The drawer fills the main content area only — right-anchored, its left edge lands at the sidebar
 // width so the left navigation stays visible. `sidebarWidth` is supplied live so the panel tracks
 // the sidebar's collapsed/expanded state.
-// A flex column, so only the body scrolls: the header (and its close button) and the lifecycle
-// bar stay put however far down the execution the reader is.
+// A flex column so only the body scrolls — the header and the lifecycle bar stay put.
 const drawerPaperSx = (sidebarWidth: number) => ({
   '& .MuiDrawer-paper': { width: `calc(100% - ${sidebarWidth}px)`, position: 'fixed', top: 64, height: 'calc(100% - 64px)', borderLeft: '1px solid', borderColor: 'divider', display: 'flex', flexDirection: 'column', overflow: 'hidden' },
 });
 const headerSx = { px: 2, py: 1.5, borderBottom: '1px solid', borderColor: 'divider', flexShrink: 0 };
 const emptySx = { py: 4, textAlign: 'center', color: 'text.secondary' };
 
-// A reset point named by the workflow's own steps rather than by history internals.
 function resetPointLabel(points: ResetPoint[], index: number): string {
   const names = (p: ResetPoint) => p.nodeNames.map((n) => splitQualifiedName(n).task ?? n);
   const own = names(points[index]);
@@ -69,14 +67,12 @@ function resetPointLabel(points: ResetPoint[], index: number): string {
 export default function WorkflowDetailDrawer({ scope, workflowId, onClose }: { scope: WorkflowScope; workflowId: string; onClose: () => void }) {
   const [historyOpen, setHistoryOpen] = useState(false);
   const [terminateOpen, setTerminateOpen] = useState(false);
-  // Reset and bulk retry: the module's recovery tools, surfaced where the run they recover is.
   const [resetOpen, setResetOpen] = useState(false);
   const [resetType, setResetType] = useState<ResetType>('last-workflow-task');
   const [resetEventId, setResetEventId] = useState<number | null>(null);
   const [resetReason, setResetReason] = useState('');
   const resetMutation = useResetWorkflow(scope);
-  // The points load only while the dialog is open: a history read has a cost, and most drawer
-  // visits never reset anything.
+  // Reset points load only while the dialog is open — the history read has a cost.
   const { data: resetPointsResult } = useResetPoints(scope, workflowId, resetOpen);
   const resetPoints = valueOf(resetPointsResult) ?? [];
   const [reason, setReason] = useState('');
@@ -90,7 +86,6 @@ export default function WorkflowDetailDrawer({ scope, workflowId, onClose }: { s
   // Fetched for the Execution Graph tab (1) and also the Timeline tab (0), which uses the graph's
   // authoritative node types to fix categories/icons the history alone can't determine.
   const { data: graphResult, isLoading: loadingGraph } = useWorkflowExecutionGraph(scope, workflowId);
-  // The Flow tab (1) draws the workflow's own structure with this run's path on it.
   const { data: instanceGraphResult, isLoading: loadingInstanceGraph } = useWorkflowInstanceGraph(scope, workflowId);
   const instanceGraph = valueOf(instanceGraphResult);
   // These reads are materialized through the integration, so a freshly opened drawer is still being prepared.
@@ -128,8 +123,6 @@ export default function WorkflowDetailDrawer({ scope, workflowId, onClose }: { s
   return (
     <Drawer anchor="right" open variant="persistent" sx={drawerPaperSx(sidebarWidth)} onClose={onClose}>
       <Stack direction="row" alignItems="center" justifyContent="space-between" sx={headerSx}>
-        {/* The id and status live in the Execution card below — repeating them here said
-            nothing twice. The header names the page. */}
         <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
           Execution Details
         </Typography>
@@ -138,9 +131,7 @@ export default function WorkflowDetailDrawer({ scope, workflowId, onClose }: { s
         </IconButton>
       </Stack>
 
-      {/* Lifecycle and recovery actions — only for users who can manage workflow executions.
-          The bar renders for CLOSED runs too: reset exists precisely for a run that failed, and
-          bulk retry for reviews its failures left behind. */}
+      {/* Renders for CLOSED runs too: reset exists for runs that failed, bulk retry for the reviews they left. */}
       {info && (
         <Authorized permissions={[Permissions.WORKFLOW_MANAGE_WORKFLOWS]}>
           <Stack direction="row" gap={1} sx={{ px: 2, py: 1.5, borderBottom: '1px solid', borderColor: 'divider', flexWrap: 'wrap', justifyContent: 'flex-end', flexShrink: 0 }}>
@@ -148,8 +139,7 @@ export default function WorkflowDetailDrawer({ scope, workflowId, onClose }: { s
               Reset…
             </Button>
             {isRunning && instanceGraph?.graphKind === 'agent' && (
-              // The durable agent's built-in wake signal: ends an in-progress sleep tool
-              // call early. Harmless when the agent is not sleeping.
+              // Wake ends an in-progress sleep tool call early; harmless when the agent is not sleeping.
               <Button size="small" variant="outlined" startIcon={<BellRing size={14} />} disabled={lifecycle.isPending} onClick={() => runAction('wake')}>
                 Wake
               </Button>
@@ -189,7 +179,6 @@ export default function WorkflowDetailDrawer({ scope, workflowId, onClose }: { s
         )}
       </Box>
 
-      {/* The raw event history: debugging material, an overlay rather than a place in the page. */}
       <Dialog open={historyOpen} onClose={() => setHistoryOpen(false)} maxWidth="lg" fullWidth>
         <DialogTitle sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           Event History
@@ -231,11 +220,7 @@ export default function WorkflowDetailDrawer({ scope, workflowId, onClose }: { s
         <DialogTitle>Reset Workflow</DialogTitle>
         <DialogContent>
           <Stack gap={2} sx={{ pt: 0.5 }}>
-            {/* Replay semantics, stated accurately per choice: steps BEFORE the point are
-                replayed from the run's own history — their side effects are not repeated. Only
-                what comes after the point runs again for real. The first draft of this warning
-                claimed completed activities re-run wholesale, which overstated every option
-                except "from the beginning". */}
+            {/* Steps before the reset point are replayed from history — their side effects are not repeated. */}
             <Alert severity="warning">
               {resetType === 'first-workflow-task'
                 ? 'The whole workflow runs again as a new run of the same workflow ID, with its original input — every activity happens again, side effects included, and every human task is asked again. This cannot be undone.'

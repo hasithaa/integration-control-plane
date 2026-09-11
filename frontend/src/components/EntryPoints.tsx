@@ -496,7 +496,6 @@ function EntryPointDetail({ selected, onOpenDrawerTab }: { selected: SelectedArt
             ))}
           </Box>
         )}
-        {/* The selected definition's figures; hasComponent narrows the scope for the links. */}
         {artifactType === 'Workflow' && hasComponent(scope) && (
           <Authorized permissions={[Permissions.WORKFLOW_VIEW_WORKFLOWS, Permissions.WORKFLOW_MANAGE_WORKFLOWS]}>
             <DefinitionStatsStrip scope={scope} componentId={componentId} environmentId={envId} workflowType={artifactName} canViewReviews canViewTasks={canViewTasks} />

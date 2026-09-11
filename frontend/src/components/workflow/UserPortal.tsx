@@ -50,12 +50,10 @@ import {
 
 const emptySx = { py: 4, textAlign: 'center', color: 'text.secondary' } as const;
 
-// Maps a runtime human-task status to its display status: a pending task's child workflow reports RUNNING (shown
-// as PENDING). Failed tasks report FAILED directly.
+// A pending task's child workflow reports RUNNING at runtime; the queue shows that as PENDING.
 const taskDisplayStatus = (s?: string) => (s === 'RUNNING' ? 'PENDING' : s);
 
-// Display name for a human task: the title when set, else the task name with its `<workflowType>.` qualifier
-// stripped (runtime reports names as e.g. `placeOrderWorkflow.approveOrder`).
+// Task names arrive qualified as `<workflowType>.<taskName>`; the display name drops the qualifier.
 function taskDisplayName(t?: HumanTask): string {
   if (!t) return '';
   if (t.title) return t.title;
@@ -68,8 +66,7 @@ function taskDisplayName(t?: HumanTask): string {
 
 type Toast = { severity: 'success' | 'error'; message: string } | null;
 
-// ── The unified work queue ── A review is a human task with a fixed decision contract, and the person is the
-// same — so both kinds share one queue and one filter row.
+// ── The unified work queue: reviews and human tasks share one queue and one filter row ──
 
 type WorkKind = 'task' | 'review';
 
@@ -82,7 +79,7 @@ export interface WorkItem {
   taskQueue?: string;
   status?: string;
   startTime?: string;
-  // Review only: why it exists — PRE_RUN (approval gate) or ON_FAILURE (rerun decision).
+  // Review only: PRE_RUN (approval gate) or ON_FAILURE (rerun decision).
   trigger?: string;
   // Task only: pending but the caller holds no completing role.
   readOnly?: boolean;
@@ -97,14 +94,11 @@ const WORK_TYPE_OPTIONS = [
 ] as const;
 type WorkTypeFilter = (typeof WORK_TYPE_OPTIONS)[number]['value'];
 
-// The union of both kinds' statuses; FAILED is task-only (a rejected review completes — the
-// failure travels to the workflow, not into the review's own status).
+// Union of both kinds' statuses; FAILED is task-only — a rejected review completes, the failure goes to the workflow.
 const WORK_STATUSES = ['All', 'PENDING', 'COMPLETED', 'FAILED', 'CANCELED', 'TERMINATED'];
 
-// Compact trigger label for list chips.
 const triggerChipLabel = (trigger?: string): string => (trigger === 'ON_FAILURE' ? 'Review failure' : trigger === 'PRE_RUN' ? 'Approval gate' : 'Review');
 
-// One work-queue row as the table shows it.
 export function toWorkItem(t: WorkItemRow): WorkItem {
   const kind: WorkKind = t.kind === 'REVIEW_ACTIVITY' ? 'review' : 'task';
   const { workflow, task } = splitQualifiedName(t.taskName);
@@ -122,7 +116,6 @@ export function toWorkItem(t: WorkItemRow): WorkItem {
   };
 }
 
-// Hosts the unified queue and owns the toast everything under it reports through.
 export default function UserPortal({
   targets,
   environmentId,
@@ -188,7 +181,6 @@ export function WorkItemTable({ items, onOpen, environmentId, integrationLabel, 
                   {selection.selectable(w) ? (
                     <Checkbox size="small" checked={selection.selected.has(w.id)} onChange={() => selection.onToggle(w.id)} inputProps={{ 'aria-label': `select ${w.title}` }} />
                   ) : (
-                    // Non-selectable rows keep a disabled box so the column reads the same.
                     <Tooltip title={w.kind === 'task' ? 'Human tasks are completed one at a time, through their own form.' : 'Only pending reviews can be decided in bulk.'}>
                       <span>
                         <Checkbox size="small" disabled inputProps={{ 'aria-label': `${w.title} cannot be selected` }} />
@@ -261,8 +253,7 @@ function WorkQueue({
   // Each kind opens against the integration that owns it, per the row's own task queue.
   const [openTask, setOpenTask] = useState<{ taskId: string; taskQueue?: string; status?: string } | null>(null);
   const [openReview, setOpenReview] = useState<{ taskId: string; taskQueue?: string } | null>(null);
-  // A deep link names an item this list may not hold (a completed one, another page); fetch it
-  // directly and open its drawer once it arrives.
+  // A deep link may name an item this list does not hold, so it is fetched directly and opened on arrival.
   const { data: linkedTaskResult } = useHumanTask(gatewayScope(scope), initialTaskId ?? null);
   const linkedTask = valueOf(linkedTaskResult);
   useEffect(() => {
@@ -273,8 +264,6 @@ function WorkQueue({
   }, [initialReviewId]);
 
   const [workType, setWorkType] = useState<WorkTypeFilter>(initialKind === 'reviews' ? 'review' : 'all');
-  // Bulk retry lives here, on a selection — retrying several failed reviews in one go is the actual use, since
-  // workflows do not run reviews in parallel and a per-instance bulk always found exactly one.
   const [selecting, setSelecting] = useState(false);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [bulkOpen, setBulkOpen] = useState(false);
@@ -293,8 +282,7 @@ function WorkQueue({
   const taskQueue = integration?.handler ?? scope.taskQueue;
   const definitions = useWorkflowDefinitionsAcross(scope.targets, scope.environmentId);
 
-  // One source: the module's unified work-items listing. The proxy narrows the kinds to the caller's permissions,
-  // so an unpermitted side simply never appears; the Type filter narrows further by choice.
+  // The proxy already narrows kinds to the caller's permissions; the Type filter only narrows further.
   const query = useWorkItemsInfinite(gatewayScope(scope), {
     kind: workType === 'task' ? 'HUMAN_TASK' : workType === 'review' ? 'REVIEW_ACTIVITY' : undefined,
     status: status === 'All' ? undefined : status,
@@ -305,8 +293,6 @@ function WorkQueue({
     startTimeTo: timeFilter.bounds.startTimeTo,
     limit: 50,
   });
-  // Pages are Fetchable now: only ready ones contribute rows, a page being prepared is
-  // announced, and a stale one keeps the rows visible while saying fresher ones are coming.
   const queuePreparing = (query.data?.pages ?? []).some((p) => isPreparing(p));
   const queueRefreshing = (query.data?.pages ?? []).some((p) => isRefreshing(p));
   const queueUpdatedAt = (query.data?.pages ?? []).map((p) => fetchedAtOf(p)).filter((ts): ts is number => !!ts)[0];
@@ -325,8 +311,7 @@ function WorkQueue({
   const hasMore = query.hasNextPage;
 
   const selectable = items.filter((w) => w.kind === 'review' && taskDisplayStatus(w.status) === 'PENDING');
-  // Pruned against what is on screen, so a row that got decided (or scrolled out by a filter)
-  // does not linger invisibly in the selection and get acted on blind.
+  // Selection is pruned against on-screen rows so a decided or filtered-out row is never acted on blind.
   const selected = new Set(selectedIds.filter((id) => selectable.some((w) => w.id === id)));
   const toggleSelected = (id: string) => setSelectedIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
   const toggleAll = () => setSelectedIds(selected.size === selectable.length ? [] : selectable.map((w) => w.id));
@@ -438,8 +423,6 @@ function WorkQueue({
       ) : error ? (
         <Typography sx={emptySx}>{error instanceof Error ? error.message : 'Failed to load tasks.'}</Typography>
       ) : queuePreparing && items.length === 0 ? (
-        // Not the same statement as "no tasks": the integration has not answered this view yet
-        // and the query is already coming back for it.
         <Typography sx={emptySx}>Fetching tasks from the integration…</Typography>
       ) : items.length === 0 ? (
         <Typography sx={emptySx}>{status === 'All' ? 'No tasks.' : `No ${status.toLowerCase()} tasks.`}</Typography>
@@ -527,28 +510,20 @@ function WorkQueue({
   );
 }
 
-// The human-task drawer.
 export function TaskDetailDialog({ scope, taskId, actionable, onClose, onToast }: { scope: WorkflowScope; taskId: string; actionable?: boolean; onClose: () => void; onToast: (t: Toast) => void }) {
   const [pausePolling, setPausePolling] = useState(false);
   const { data: taskResult, isLoading, error: taskError } = useHumanTask(scope, taskId, pausePolling);
   const task = valueOf(taskResult);
-  // A dialog whose detail is still being prepared shows its spinner rather than a form with
-  // every field blank.
   const waiting = isLoading || isPreparing(taskResult);
   const refreshing = isRefreshing(taskResult);
   const complete = useCompleteHumanTask(scope);
   const fail = useFailHumanTask(scope);
   const [mode, setMode] = useState<'view' | 'complete'>('view');
-  // Confirmation and the fail operation are modal overlays: the decision happens in front of the
-  // task, not on a screen the context has scrolled away from.
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [failOpen, setFailOpen] = useState(false);
-  // Editing pauses the detail's own polling; the confirm and fail overlays pause it too, so the world does not
-  // shift behind a decision mid-flight. Mirrored into state because the hook call sits above these declarations.
+  // Polling pauses while deciding; mirrored into state because the hook call sits above these declarations.
   const editing = mode === 'complete' || confirmOpen || failOpen;
   if (editing !== pausePolling) setPausePolling(editing);
-  // The escape hatch: a generated form cannot express every value (and a schema bug should not
-  // block a completion), so the result is always editable as raw JSON too.
   const [rawMode, setRawMode] = useState(false);
   const [resultText, setResultText] = useState('{}');
   const [reason, setReason] = useState('');
@@ -602,8 +577,6 @@ export function TaskDetailDialog({ scope, taskId, actionable, onClose, onToast }
       {
         onSuccess: () => {
           onClose();
-          // The person stays in their queue: the decision marks the listing stale and the query re-polls until the fresh
-          // copy lands (seconds), so the task drops out where they are.
           onToast({ severity: 'success', message: 'Task completed.' });
         },
         onError: (e) => {
@@ -635,8 +608,6 @@ export function TaskDetailDialog({ scope, taskId, actionable, onClose, onToast }
     );
   };
 
-  // Deselecting the action keeps entered values but clears validation state, so a second look
-  // at the context does not cost the half-filled form.
   const closeComplete = () => {
     setMode('view');
     setErr('');
@@ -644,8 +615,6 @@ export function TaskDetailDialog({ scope, taskId, actionable, onClose, onToast }
     setSubmitError(null);
   };
 
-  // A small right-aligned button row at the bottom of the active step's card — actions live
-  // beside the content they act on, not in a footer a screen-height away.
   const stepButtons = (...buttons: ReactNode[]) => (
     <Stack direction="row" justifyContent="flex-end" gap={1}>
       {buttons}
@@ -694,13 +663,9 @@ export function TaskDetailDialog({ scope, taskId, actionable, onClose, onToast }
             </Stack>
           </SectionCard>
 
-          {/* What the workflow handed this task — context to decide with, never something to edit. */}
           {taskInputJson && <StructuredValue title="Task Input" readOnly raw={taskInputJson} environmentId={scope.environmentId} collapsible />}
 
-          {/* The decision, once there is one: who completed or rejected the task, when, and the
-              result the workflow resumed with. Present on the execution but previously shown
-              nowhere here — a completed task read as if nothing had been decided. Blank for
-              tasks decided before the runtime recorded the completer. */}
+          {/* Blank for tasks decided before the runtime recorded the completer. */}
           {(task.completedBy || task.completedAt || (task.result !== undefined && task.result !== null)) && (
             <SectionCard title="Decision">
               <Stack gap={1.25}>
@@ -715,9 +680,6 @@ export function TaskDetailDialog({ scope, taskId, actionable, onClose, onToast }
             <Authorized permissions={[Permissions.WORKFLOW_MANAGE_HUMAN_TASKS]}>
               <SectionCard title="Actions">
                 <Stack gap={2}>
-                  {/* Cards, so the two decisions read side by side before either is chosen —
-                      complete the task with a result, or fail it. Failing is a decision the
-                      reviewer makes here, next to Complete, not an action hidden in a menu. */}
                   <Stack direction="row" flexWrap="wrap" gap={1.5}>
                     <ActionCard
                       title="Complete Task"
@@ -734,16 +696,13 @@ export function TaskDetailDialog({ scope, taskId, actionable, onClose, onToast }
                       selected={failOpen}
                       disabled={busy}
                       onClick={() => {
-                        // Same single-decision discipline as Complete: close the completion
-                        // editor so the fail dialog is the only decision on screen.
+                        // Only one decision open at a time: close the completion editor first.
                         closeComplete();
                         setFailOpen(true);
                       }}
                     />
                   </Stack>
 
-                  {/* The selected action's inputs, revealed in place — the context above stays
-                      where it was read. */}
                   {mode === 'complete' && (
                     <Stack gap={2} sx={{ borderTop: '1px solid', borderColor: 'divider', pt: 2 }}>
                       <Stack direction="row" alignItems="center" justifyContent="space-between" gap={2}>
@@ -755,8 +714,7 @@ export function TaskDetailDialog({ scope, taskId, actionable, onClose, onToast }
                             size="small"
                             variant="text"
                             onClick={() => {
-                              // Entering raw mode carries the form's current state along; a raw edit
-                              // can express what the form cannot, so it never converts back.
+                              // Raw mode carries the form's values across; it never converts back.
                               if (!rawMode) {
                                 const { result } = buildFormResult(formFields, formValues);
                                 setResultText(jsonPretty(result) || '{}');
@@ -801,8 +759,6 @@ export function TaskDetailDialog({ scope, taskId, actionable, onClose, onToast }
             </Authorized>
           )}
 
-          {/* Confirmation overlays the task instead of replacing it: the payload and the metadata
-              stay on screen behind the decision. */}
           <Dialog open={confirmOpen} onClose={() => !busy && setConfirmOpen(false)} maxWidth="sm" fullWidth>
             <DialogTitle>Confirm Completion</DialogTitle>
             <DialogContent>

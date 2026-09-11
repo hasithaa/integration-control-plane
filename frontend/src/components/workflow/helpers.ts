@@ -94,10 +94,7 @@ export const STATUS_COLORS: Record<string, ChipColor> = {
   PENDING: 'info',
 };
 
-// An instance id as a person reads it: without the kind prefix the runtime bakes in.
-// The rail row for an agent's model calls on one activity: `model#<activity>`.
 export const modelStepId = (activity: string): string => `model#${activity}`;
-// The activity behind a `model#<activity>` step id, or null for any other id.
 export const modelStepActivity = (stepId: string): string | null => (stepId.startsWith('model#') ? stepId.slice('model#'.length) : null);
 
 export function displayWorkflowId(id?: string): string {
@@ -140,8 +137,7 @@ export interface FormField {
 // Joins a parent path and a field name into the dotted key used for a leaf field's value.
 export const fieldPath = (prefix: string, name: string): string => (prefix ? `${prefix}.${name}` : name);
 
-// The type and value set of one leaf schema, read defensively: `type` may be a string, an array (nullable unions
-// spell `["string","null"]`), or absent; an enum may be a plain `enum`, or an `anyOf`/`oneOf` of `const`/`enum`.
+// `type` may be a string, an array (`["string","null"]`) or absent; an enum may arrive as `anyOf`/`oneOf` of `const`.
 function normalizeLeafSchema(d: Record<string, unknown>): { type: string; enumValues?: string[] } {
   let type: string | undefined;
   if (typeof d.type === 'string') type = d.type;
@@ -171,7 +167,6 @@ function normalizeLeafSchema(d: Record<string, unknown>): { type: string; enumVa
       }
     }
   }
-  // A value set without a declared type still says what it holds.
   if (!type && enumSamples.length > 0) {
     type = enumSamples.every((v) => typeof v === 'number') ? (enumSamples.every((v) => Number.isInteger(v)) ? 'integer' : 'number') : enumSamples.every((v) => typeof v === 'boolean') ? 'boolean' : 'string';
   }
@@ -312,7 +307,6 @@ export function formValuesFromObject(fields: FormField[], source: Record<string,
   return values;
 }
 
-// One field a person edited away from its original value — what a review confirms before acting.
 export interface FieldChange {
   path: string;
   label: string;
@@ -320,8 +314,6 @@ export interface FieldChange {
   to: string;
 }
 
-// Which leaf fields differ from their seeded values, with display labels — the evidence an edited-rerun
-// confirmation shows, so what changed is stated rather than remembered.
 export function diffFormValues(fields: FormField[], original: Record<string, string | boolean>, current: Record<string, string | boolean>): FieldChange[] {
   const changes: FieldChange[] = [];
   const asText = (v: string | boolean | undefined): string => (v === undefined ? '' : typeof v === 'boolean' ? (v ? 'Yes' : 'No') : v);
@@ -352,7 +344,6 @@ export function sortByStartTimeDesc<T extends { startTime?: string }>(items: T[]
 }
 
 // Formats an ISO-8601 timestamp for compact display; passes through on failure.
-// A timestamp as text, on the console's clock — `2026-09-09 14:32:05`.
 export function formatTime(value?: string): string {
   return formatDateTime(value);
 }
@@ -399,11 +390,7 @@ export function formatStopwatch(ms: number): string {
 export type SpanCategory = 'WORKFLOW' | 'ACTIVITY' | 'HUMAN_TASK' | 'TIMER' | 'CHILD_WORKFLOW' | 'SIGNAL';
 
 // ── The agent's vocabulary ──
-//
-// The module's built-in model activities keep their precise wire names (llmChat, generate, generateResult) in
-// history and in Temporal tooling; everywhere a person reads, the renderer speaks plainly instead. llmChat is.
 
-// Display names for the built-in model activities.
 export const MODEL_ACTIVITY_LABELS: Record<string, string> = {
   llmChat: 'Thinking',
   generate: 'Generate',
@@ -413,7 +400,6 @@ export const MODEL_ACTIVITY_LABELS: Record<string, string> = {
 // The wrapper activity an AI-function tool runs inside; its lane is named by the tool, not by it.
 const EXECUTE_AGENT_TOOL = 'executeAgentTool';
 
-// The tool name buried in an executeAgentTool call's arguments, or null.
 function wrappedToolName(attrs: Record<string, unknown>): string | null {
   const input = decodePayloads(attrs['input']);
   const first = Array.isArray(input) ? input[0] : input;
@@ -424,8 +410,7 @@ function wrappedToolName(attrs: Record<string, unknown>): string | null {
 
 export interface TimelineSpan {
   key: string;
-  // The open (scheduled/initiated/started) history event's id — what joins this span to a step's eventIds and to
-  // the detail extractor. Absent only where no single event opens the span.
+  // Id of the event that opened the span — the join key to a step's eventIds.
   eventId?: string;
   label: string;
   category: SpanCategory;
@@ -509,11 +494,9 @@ interface Group {
   start: number;
   end?: number;
   status?: string;
-  // The opening event's id, carried through to the span for joins with per-step eventIds.
   eventId?: string;
 }
 
-// Pairs each "open" event with its matching "close" event into duration groups.
 function collectDurationGroups(parsed: ParsedEvent[], openType: string, closeStatus: Record<string, string>, openKey: (p: ParsedEvent) => string, closeKey: (p: ParsedEvent) => string, make: (p: ParsedEvent, time: number) => Group): Map<string, Group> {
   const groups = new Map<string, Group>();
   for (const p of parsed) {
@@ -532,8 +515,7 @@ function collectDurationGroups(parsed: ParsedEvent[], openType: string, closeSta
   return groups;
 }
 
-// Display label for a review activity's span. A review runs as a child workflow whose type is the gated
-// activity's qualified name prefixed `reviewactivity-`, e.g.
+// A review runs as a child workflow whose type is the gated activity's qualified name prefixed `reviewactivity-`.
 function reviewSpanLabel(bareName: string): string {
   const { workflow, task } = splitQualifiedName(bareName);
   if (!task) return bareName || 'Review';
@@ -583,8 +565,6 @@ export function buildTimeline(events: ReadonlyArray<Record<string, unknown>>): T
     (p) => asStr(p.attrs['scheduledEventId']) ?? '',
     (p, time) => {
       const name = asStr(asRecord(p.attrs['activityType'])['name']) ?? asStr(p.attrs['activityId']) ?? 'Activity';
-      // An agent's lanes speak the reader's language: model calls by what they do, a wrapped
-      // AI tool by the tool the model actually called.
       let label = MODEL_ACTIVITY_LABELS[name] ?? name;
       if (name === EXECUTE_AGENT_TOOL) label = wrappedToolName(p.attrs) ?? name;
       return { label, category: /humantask/i.test(name) ? 'HUMAN_TASK' : 'ACTIVITY', start: time };
@@ -680,8 +660,8 @@ export function extractWorkflowInput(events: ReadonlyArray<Record<string, unknow
 
 // ── Execution-graph node → history mapping ──
 //
-// A graph node's `id` is the history `eventId` of the event that opened that step (activity scheduled,
-// child workflow initiated, sleep/signal started); the input lives in that event's attributes.
+// A graph node's `id` is the history `eventId` of the event that OPENED that step:
+//   ACTIVITY      → ACTIVITY_TASK_SCHEDULED               (input in attributes.input)
 //   HUMAN_TASK    → START_CHILD_WORKFLOW_EXECUTION_INITIATED (input in attributes.input)
 //   WORKFLOW root → WORKFLOW_EXECUTION_STARTED
 // The matching CLOSE event carries the result and echoes the open event's id — activities via
@@ -703,11 +683,7 @@ export interface NodeExecutionDetail {
   startTimeMs: number | null;
   // Epoch ms of the close event, or null when still running.
   endTimeMs: number | null;
-  // The module's call configuration, separated from the input: stepId, retryOnError, and whatever future keys ride
-  // in the __callConfig__ envelope. Null when the input carried none.
   callConfig: Record<string, unknown> | null;
-  // For a child-workflow span — a human task, a review, a spawned workflow — the child's own instance id, from the
-  // initiated event. The handle every management operation needs.
   childWorkflowId: string | null;
 }
 
@@ -725,8 +701,7 @@ export function extractNodeExecutionDetail(node: { id: string; type: string; sta
   let inputDecoded = open ? decodePayloads(asRecord(open['attributes'])['input']) : null;
   const childWorkflowId = open && eventTypeOf(open) === 'START_CHILD_WORKFLOW_EXECUTION_INITIATED' ? (asStr(asRecord(open['attributes'])['workflowId']) ?? null) : null;
 
-  // The module appends its call configuration as the input's last element, marked __callConfig__ — runtime
-  // metadata (stepId, retryOnError), not data the activity was called with.
+  // The module appends its call configuration as the input's last element, marked __callConfig__.
   let callConfig: Record<string, unknown> | null = null;
   const isCallConfig = (v: unknown): v is Record<string, unknown> => v !== null && typeof v === 'object' && !Array.isArray(v) && (v as Record<string, unknown>)['__callConfig__'] === true;
   const stripMarker = (v: Record<string, unknown>) => Object.fromEntries(Object.entries(v).filter(([k]) => k !== '__callConfig__'));
@@ -780,28 +755,18 @@ export function extractNodeExecutionDetail(node: { id: string; type: string; sta
 }
 
 // ── Model-call rendering ──
-//
-// A model call's raw envelope is the whole conversation plus every tool definition — noise for a reader who
-// asked "what did the agent think?".
 
-// One tool invocation the model requested, with its arguments as compact JSON.
 export interface ModelToolCall {
   name: string;
   args: string;
 }
 
 export interface ModelCallView {
-  // The newest conversation message the model was answering, or null when none was recorded.
   lastMessage: { role: string; text: string } | null;
-  // Messages before the newest one.
   earlierCount: number;
-  // Tool definitions offered alongside the conversation.
   toolsOffered: number;
-  // The assistant's text reply, when it replied in prose.
   assistantText: string | null;
-  // Tool calls the model requested instead of (or beside) prose.
   toolCalls: ModelToolCall[];
-  // True when the result is a typed business value (generate/generateResult), not a chat turn.
   structuredResult: boolean;
 }
 
@@ -814,7 +779,6 @@ const parseJson = (text: string | null): unknown => {
   }
 };
 
-// Interprets a model call's input/result, or returns null when the detail is not a model call.
 export function parseModelCall(detail: NodeExecutionDetail): ModelCallView | null {
   if (detail.callConfig?.['stepId'] !== 'model') return null;
 
@@ -853,7 +817,6 @@ export function parseModelCall(detail: NodeExecutionDetail): ModelCallView | nul
   };
 }
 
-// Event ids of the WORKFLOW_EXECUTION_SIGNALED events carrying one named data event.
 export function signalEventIds(events: ReadonlyArray<Record<string, unknown>>, name: string): Set<string> {
   const ids = new Set<string>();
   for (const e of events) {
@@ -866,15 +829,12 @@ export function signalEventIds(events: ReadonlyArray<Record<string, unknown>>, n
   return ids;
 }
 
-// Why the structural view can't be drawn — null when it can.
 export function flowUnavailable(data: InstanceGraph | undefined): string | null {
   if (!data) return "The workflow's structure could not be loaded, so this run is shown as its history.";
   if (!data.graph) {
     return "This integration hasn't published the workflow's structure, so this run is shown as its history. Redeploy it with a current runtime to see the flow.";
   }
   if (data.stepIdsAvailable === false) {
-    // The structure exists but no step of this run could be placed on it; drawing it would show every step as
-    // "not reached", which is a wrong statement rather than a missing one.
     return 'This run could not be placed on the workflow’s structure, so it is shown as its history. Its steps carry no step ids — typically an integration built against an older workflow module.';
   }
   return null;

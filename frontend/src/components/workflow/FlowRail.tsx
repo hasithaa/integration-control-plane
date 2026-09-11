@@ -23,15 +23,12 @@ import type { InstanceGraph, ModelGraphNode, StepExecution } from '../../api/wor
 import { diagramColors, iconForType, paletteColor, softPrimary, statusColorName } from './graphVisuals';
 import { isContainer, layoutFloorPlan, type PlacedArm, type PlacedNode } from './floorPlan';
 
-// The flow rail: the workflow as written, rendered the way it is written — a left-aligned list, one element per
-// row, nesting as indentation, keywords lowercase, `else` on the same level as its `if`, exactly like reading.
-
 interface TreeNode {
   node: ModelGraphNode;
   arms: { name: string; children: TreeNode[] }[];
 }
 
-// The nodes (already in source order) as a tree, arms in first-appearance order.
+// Input nodes are already in source order; arms come out in first-appearance order.
 function buildTree(nodes: ModelGraphNode[]): TreeNode[] {
   const known = new Set(nodes.map((n) => n.stepId));
   const byId = new Map<string, TreeNode>();
@@ -58,7 +55,7 @@ function buildTree(nodes: ModelGraphNode[]): TreeNode[] {
 const CONTAINER_KINDS = new Set(['BRANCH', 'LOOP', 'TRY']);
 const MARK_KINDS = new Set(['CODE', 'EXIT']);
 
-// The construct as written — `if`, `while`, `foreach`, `match`, `do` — from the ordinal id.
+// A stepId is `<construct>#<ordinal>`, so its prefix is the construct as written.
 const constructOf = (node: ModelGraphNode): string => node.stepId.split('#')[0];
 
 const CONSTRUCT_ICONS: Record<string, ComponentType<{ size?: number }>> = {
@@ -69,7 +66,6 @@ const CONSTRUCT_ICONS: Record<string, ComponentType<{ size?: number }>> = {
   do: Shield,
 };
 
-// Lowercase, keyword-first, like the source: `if req.priority == "express"`.
 function containerTitle(node: ModelGraphNode, prefix = ''): string {
   const construct = constructOf(node);
   return `${prefix}${construct}${node.label ? ` ${node.label}` : ''}`;
@@ -90,13 +86,10 @@ function KeywordRow({
   icon?: ComponentType<{ size?: number }>;
   text: string;
   title?: string;
-  // Present only on rows that can collapse; undefined renders a plain keyword row.
   collapsed?: boolean;
   onToggle?: () => void;
-  // Aggregate colour of what a collapsed row hides, so folding never hides an outcome.
   collapsedStatusColor?: string;
   chart?: boolean;
-  // Nothing under this keyword ran: render it quiet, so unexecuted structure stops shouting.
   muted?: boolean;
 }): ReactElement {
   const toggle = onToggle !== undefined;
@@ -160,12 +153,10 @@ function StepRow({
   const theme = useTheme();
   const c = diagramColors(theme);
   const ran = exec !== undefined;
-  // The execution graph's own status→colour mapping, so both panes speak one vocabulary.
   const statusColor = ran ? paletteColor(theme, statusColorName(exec.status)) : c.textDisabled;
   const Icon = iconForType(node.kind);
   const title = node.target ?? node.stepId;
-  // Failed at some point, but the latest execution succeeded — a retry or a review decision. Worth
-  // a mark, or the green here would quietly erase a failure the history still shows.
+  // Failed at some point but the latest execution succeeded — a retry or a review decision.
   const recovered = ran && exec.failure !== undefined && (exec.status ?? '').toUpperCase() === 'COMPLETED';
   return (
     <Box
@@ -183,10 +174,8 @@ function StepRow({
         py: 0.5,
         cursor: 'pointer',
         borderRadius: 1,
-        // The execution path as a line down the rail: executed rows carry their status colour.
         borderLeft: '3px solid',
         borderLeftColor: ran ? statusColor : 'transparent',
-        // Chart mode: each line is one boxed item, indented by nesting — a single-column flowchart.
         ...(chart && {
           border: '1px solid',
           borderColor: ran ? statusColor : 'divider',
@@ -246,7 +235,6 @@ export default function FlowRail({
   selectedStepId: string | null;
   currentStepId: string | null;
   onSelect: (stepId: string | null) => void;
-  // 'chart' boxes each row, one item per row; 'uml' draws the same rows as a UML activity diagram.
   variant?: 'chart' | 'uml';
 }): ReactElement | null {
   const theme = useTheme();
@@ -256,7 +244,6 @@ export default function FlowRail({
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set());
   const chart = true; // rows are always boxed now; 'uml' swaps the whole renderer below
 
-  // The reverse link: when the execution graph names a step, bring its row into view.
   useEffect(() => {
     if (!selectedStepId) return;
     rowRefs.current.get(selectedStepId)?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
@@ -273,7 +260,7 @@ export default function FlowRail({
       return next;
     });
 
-  // Aggregate status of everything under these nodes: the worst outcome wins, so folding hides nothing.
+  // Aggregate status of everything under these nodes: the worst outcome wins.
   const aggregateStatusColor = (children: TreeNode[]): string | undefined => {
     let best: string | undefined;
     const rank = (status: string): number => (['FAILED', 'TERMINATED', 'TIMED_OUT'].includes(status) ? 3 : status === 'RUNNING' ? 2 : 1);
@@ -294,7 +281,6 @@ export default function FlowRail({
     return best;
   };
 
-  // One foldable group of rows: a keyword row and the children it hides when collapsed.
   const foldableGroup = (key: string, children: TreeNode[], childDepth: number, keyword: (folded: boolean) => ReactNode): ReactNode => {
     const folded = collapsed.has(key);
     return (
@@ -322,8 +308,6 @@ export default function FlowRail({
     />
   );
 
-  // A container the way the source spells it: the keyword row, then each arm by its own rule — `then`/`body`/`do`
-  // children sit directly under the keyword (the arm name adds nothing a reader of code expects to see), `else`.
   const renderContainer = (t: TreeNode, depth: number, prefix = ''): ReactNode => {
     const Icon = CONSTRUCT_ICONS[constructOf(t.node)] ?? Diamond;
     const isCollapsed = collapsed.has(t.node.stepId);
@@ -353,7 +337,6 @@ export default function FlowRail({
         if (only && only.node.kind.toUpperCase() === 'BRANCH' && constructOf(only.node) === 'if') {
           rows.push(renderContainer(only, depth, 'else '));
         } else {
-          // A keyword group folds exactly like a container: same chevron, same aggregate dot.
           const key = `${t.node.stepId}/else`;
           rows.push(
             foldableGroup(key, arm.children, depth + 1, (folded) => (
@@ -378,7 +361,7 @@ export default function FlowRail({
           )),
         );
       } else {
-        // A match clause's patterns, or any arm name this rail does not know: a case label.
+        // A match clause's patterns, or any arm name this rail does not know, render as a case label.
         const key = `${t.node.stepId}/${arm.name}`;
         rows.push(
           foldableGroup(key, arm.children, depth + 2, (folded) => (
@@ -436,10 +419,9 @@ export default function FlowRail({
   );
 }
 
-// ── UML activity diagram ─────────────────────────────────────────────────────
+// ── UML activity diagram ──────────────────── ──
 
-// A balanced UML activity diagram: sibling arms sit side by side under their decision diamond and merge below
-// it, laid out by the same recursive box-packing the floor plan used — a workflow body is single-threaded, so.
+// Sibling arms sit side by side under their decision diamond and merge below, laid out by layoutFloorPlan.
 function UmlActivityDiagram({
   data,
   steps,
@@ -540,7 +522,6 @@ function UmlActivityDiagram({
       return { x: cx, flows: true };
     }
 
-    // A container: arms side by side, flow merging below.
     const construct = constructOf(node);
     const isLoop = kind === 'LOOP';
     const isTry = kind === 'TRY';
@@ -586,7 +567,6 @@ function UmlActivityDiagram({
         prev = drawn;
         prevBox = child;
       }
-      // The arm's tail: back to the loop head, or down to the merge.
       if (prev && prevBox && prev.flows) {
         if (isLoop) {
           const gx = box.x + 2;
@@ -607,8 +587,7 @@ function UmlActivityDiagram({
         }
       }
     }
-    // The skip path: a loop may run zero times; a branch without an else may not be entered.
-    // A do block has no skip — its body always runs.
+    // Skip path: a loop may run zero times and an else-less branch may not be entered; a do block always runs.
     if (isLoop || (!hasElse && !isTry)) {
       wires.push(<path key={`w${wireKey++}`} d={`M ${cx - 8} ${dy} L ${box.x - 2} ${dy} L ${box.x - 2} ${mergeY} L ${cx - 2} ${mergeY}`} fill="none" stroke={line} strokeWidth={1} markerEnd="url(#uml2-arrow)" />);
       anyFlow = true;
@@ -616,7 +595,6 @@ function UmlActivityDiagram({
     return { x: cx, flows: anyFlow || isLoop };
   };
 
-  // The top-level sequence, bracketed by the UML start and end dots on the centre line.
   let prevX = plan.axis;
   let prevBottom = plan.start.y + 14;
   shapes.push(<circle key="start" cx={plan.axis} cy={plan.start.y + 7} r={6} fill={c.textPrimary} />);

@@ -25,8 +25,7 @@ import WorkflowPageFrame from '../components/workflow/WorkflowPageFrame';
 import { useWorkflowPageScope } from '../components/workflow/useWorkflowPageScope';
 import { resourceUrl, broaden, hasComponent, type ComponentScope, type ProjectScope } from '../nav';
 
-// The person's own workflow work: human tasks assigned to their roles, and review activities awaiting their
-// decision.
+// The person's own workflow work: human tasks for their roles and review activities awaiting their decision.
 export default function WorkflowTasks(scope: ComponentScope | ProjectScope): JSX.Element {
   const componentLevel = hasComponent(scope);
   const [searchParams, setSearchParams] = useSearchParams();
@@ -34,11 +33,10 @@ export default function WorkflowTasks(scope: ComponentScope | ProjectScope): JSX
 
   const pageScope = useWorkflowPageScope(scope, selectedEnvId);
   const { environments, activeEnvId, targets, taskQueue, component, project, canViewHumanTasks, canViewWorkflows, workflowIntegrations, soleWorkflowIntegration } = pageScope;
-  // The project level lists per integration: with several workflow integrations this page is a
-  // dashboard that selects one; with exactly one it behaves as that integration.
+  // The project level is a dashboard that selects an integration unless there is exactly one workflow integration.
   const dashboard = !componentLevel && !soleWorkflowIntegration;
 
-  // One queue now holds both kinds of work; an old ?tab=reviews link presets the type filter.
+  // One queue holds both kinds of work; an old ?tab=reviews link presets the type filter.
   const initialKind = searchParams.get('tab') === 'reviews' ? ('reviews' as const) : undefined;
   void setSearchParams;
   const permitted = canViewHumanTasks || canViewWorkflows;

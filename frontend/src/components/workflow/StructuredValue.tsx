@@ -24,34 +24,16 @@ import { humanizeKey } from './helpers';
 import { IdText, SectionCard, WorkflowIdLink } from './shared';
 import DateTime from '../DateTime';
 
-// A JSON value read the way its shape wants to be read.
-// Ids are bare UUIDs now (child ids are name-<uuid>), so the value's shape alone can't say "this is an instance
-// id" — the key has to claim it, and the value has to look like one.
+// Renders a JSON value as labelled rows.
+// Ids are bare UUIDs (child ids are name-<uuid>), so shape alone can't identify one: the key must claim it too.
 const ENDS_WITH_UUID = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const ID_KEY = /(workflowid|taskid|reviewid|instanceid)$/i;
 const isWorkflowId = (key: string, value: unknown): value is string => typeof value === 'string' && (/^(workflow|humantask|reviewactivity|childwf|childagent)-/.test(value) || (ID_KEY.test(key) && ENDS_WITH_UUID.test(value)));
 
-// A value that IS a UUID but whose key claims nothing navigable (completedBy, runId, correlation ids) still
-// deserves the id treatment — truncated with a copy button — instead of a 36-character monospace string wrapping.
 const BARE_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-// A machine timestamp (RFC 3339, any fractional precision) reads as a local time, with the raw
-// value kept in the tooltip — `2026-08-25T15:55:56.106171571Z` is for logs, not for people.
 const ISO_TIMESTAMP = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}:?\d{2})$/;
 
-export default function StructuredValue({
-  title,
-  raw,
-  environmentId,
-  collapsible,
-  readOnly,
-}: {
-  title: string;
-  raw: string;
-  environmentId?: string;
-  collapsible?: boolean;
-  // Shows a Read-only badge beside the title.
-  readOnly?: boolean;
-}): ReactElement {
+export default function StructuredValue({ title, raw, environmentId, collapsible, readOnly }: { title: string; raw: string; environmentId?: string; collapsible?: boolean; readOnly?: boolean }): ReactElement {
   const [showRaw, setShowRaw] = useState(false);
 
   let parsed: unknown;
@@ -65,7 +47,6 @@ export default function StructuredValue({
   const isFormable = !parseFailed && parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed);
   const isBare = !parseFailed && !isFormable && (parsed === null || typeof parsed !== 'object');
 
-  // Same SectionCard as every other drawer section.
   const actions = (
     <>
       <Tooltip title={showRaw ? 'Show as a form' : 'Show the raw JSON'}>
@@ -84,7 +65,6 @@ export default function StructuredValue({
 
   let body: ReactElement;
   if (showRaw || parseFailed || (!isFormable && !isBare)) {
-    // Raw on demand, or when the value has no structure to show.
     body = (
       <Box sx={{ minWidth: 0, overflow: 'auto', maxHeight: '32vh' }}>
         <Box component="pre" sx={{ m: 0, fontFamily: 'monospace', fontSize: 12, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
@@ -105,18 +85,14 @@ export default function StructuredValue({
   );
 }
 
-// Whether every element is a primitive, so an array can read as one line rather than a block.
 const isPrimitiveArray = (v: unknown): v is Array<string | number | boolean | null> => Array.isArray(v) && v.every((e) => e === null || ['string', 'number', 'boolean'].includes(typeof e));
 
-// An object as labelled rows, recursively: nested plain objects become indented sub-forms — one consistent
-// reading whether the value is a task envelope, its payload, or an activity's argument — with primitive arrays.
+// An object as labelled rows; nested plain objects become indented sub-forms.
 function ObjectRows({ value, depth, environmentId }: { value: Record<string, unknown>; depth: number; environmentId?: string }): ReactElement {
   const entries = Object.entries(value);
   return (
     <Stack gap={0.5} sx={{ minWidth: 0, pl: depth * 1.5, borderLeft: depth > 0 ? '2px solid' : 'none', borderColor: 'divider' }}>
       {entries.map(([key, v]) => {
-        // Labels wrap rather than ellipsize: "Workflow Definition Na…" hides the one word that
-        // distinguishes the row, and these keys are two or three words at most.
         const label = (
           <Typography variant="caption" sx={{ color: 'text.secondary', width: 132, flexShrink: 0, overflowWrap: 'break-word' }} title={key}>
             {humanizeKey(key)}

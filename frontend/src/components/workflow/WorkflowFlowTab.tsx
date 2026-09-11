@@ -29,8 +29,7 @@ import NodeDetailPanel from './NodeDetailPanel';
 import WorkflowTimeline from './WorkflowTimeline';
 import { buildTimeline, extractNodeExecutionDetail, extractWorkflowInput, flowUnavailable, jsonPretty, signalEventIds, type TimelineSpan, modelStepId, modelStepActivity } from './helpers';
 
-// The instance's Overview: everything an operator reads first, on one page. summary cards (start input ·
-// execution summary) [ flow / agent rail ] [ timeline — or the execution graph, one toggle away ] The rail is.
+// The instance Overview: summary cards, the flow/agent rail, and the timeline or execution graph.
 
 export default function WorkflowFlowTab({
   instanceGraph,
@@ -51,7 +50,6 @@ export default function WorkflowFlowTab({
   const [selectedStepId, setSelectedStepId] = useState<string | null>(null);
   const [railHighlight, setRailHighlight] = useState<string | null>(null);
   const [railVariant, setRailVariant] = useState<'chart' | 'uml'>('chart');
-  // The rail's share of the split, resizable by the divider. 40/60 by default.
   const [railPct, setRailPct] = useState(40);
   const splitRef = useRef<HTMLDivElement>(null);
   const startResize = (e: { preventDefault: () => void }) => {
@@ -73,15 +71,13 @@ export default function WorkflowFlowTab({
   const isAgent = instanceGraph?.graphKind === 'agent';
   const reason = flowUnavailable(instanceGraph);
   const startInput = extractWorkflowInput(events);
-  // The instances payload carries no times; the history does. The spans stay around so a rail
-  // click can name the first execution it filtered to.
+  // The instances payload carries no times; the history does.
   const timeline = useMemo(() => buildTimeline(events), [events]);
   const historyRange = timeline.spans.length > 0 ? { start: timeline.start, end: timeline.end } : null;
   // The run's real result: the instances payload reports null, the terminal event does not.
   const workflowResult = useMemo(() => extractNodeExecutionDetail({ id: '', type: 'WORKFLOW' }, events).result, [events]);
 
-  // The last executed step, for the rail's "you are here" mark. Approximate by nature. An
-  // agent's model events answer to the split rail row, not the shared model node.
+  // The last executed step is approximate; for agents, model events map to the split rail row, not the model node.
   const currentStepId = useMemo(() => {
     if (!executionGraph) return null;
     const nodes = executionGraph.nodes ?? [];
@@ -92,14 +88,12 @@ export default function WorkflowFlowTab({
     return null;
   }, [executionGraph, isAgent]);
 
-  // Event id → step id, for naming a clicked span's step back on the rail.
   const stepOfEvent = useMemo(() => {
     const map = new Map<string, string>();
     for (const [stepId, exec] of Object.entries(instanceGraph?.steps ?? {})) {
       for (const id of exec.eventIds ?? []) map.set(id, stepId);
     }
     if (isAgent) {
-      // Model events name the split row; signals name their event node.
       for (const n of executionGraph?.nodes ?? []) {
         if ((n.metadata?.['stepId'] as string | undefined) === 'model' && n.label) map.set(n.id, modelStepId(n.label));
       }
@@ -133,8 +127,6 @@ export default function WorkflowFlowTab({
     setRailHighlight(span?.eventId ? (stepOfEvent.get(span.eventId) ?? null) : null);
   };
 
-  // A rail click filters the timeline AND opens the clicked step's details — always, not only when the overlay
-  // happened to be open.
   const selectStep = (stepId: string | null) => {
     setSelectedStepId(stepId);
     if (stepId) {
@@ -143,8 +135,6 @@ export default function WorkflowFlowTab({
     }
   };
 
-  // The details ride in an overlay pinned to the pane's right edge, so opening one never reflows
-  // the lanes — clicking down the timeline keeps every row exactly where it was.
   const spanDetail = useMemo(() => {
     if (!selectedSpan) return null;
     const node = { id: selectedSpan.eventId ?? selectedSpan.key, label: selectedSpan.label, type: selectedSpan.category, status: selectedSpan.status };
@@ -157,7 +147,6 @@ export default function WorkflowFlowTab({
     </Box>
   );
 
-  // The instances payload reports result: null even for completed runs; the history knows better.
   const resultRaw = info && info['result'] != null ? jsonPretty(info['result']) : workflowResult;
   const completedNoResult = (info?.status ?? '').toUpperCase() === 'COMPLETED' && resultRaw == null;
   const cards = (
@@ -239,8 +228,6 @@ export default function WorkflowFlowTab({
           <Box sx={{ width: 3, height: 44, borderRadius: 1.5, bgcolor: 'divider', transition: 'background-color 0.15s' }} />
         </Box>
         <Box sx={{ flex: 1, minWidth: 0, display: 'flex' }}>{timelinePane}</Box>
-        {/* The details ride over the whole split, not over the timeline alone: a short timeline
-            would otherwise crop them. Rows never reflow either way. */}
         {spanDetail && (
           <Box
             sx={{
@@ -255,8 +242,7 @@ export default function WorkflowFlowTab({
               zIndex: 2,
               display: 'flex',
               borderRadius: 1,
-              // The theme's paper is translucent (#ffffffe1) — invisible on the page ground, but floating over the timeline it
-              // let the tick rows bleed through the panel.
+              // background.paper is translucent here, so tick rows bleed through a panel floating over the timeline.
               bgcolor: 'background.default',
             }}>
             <NodeDetailPanel node={spanDetail.node} detail={spanDetail.detail} hasHistory={events.length > 0} onClose={() => selectSpan(null)} fullWidth environmentId={environmentId} />

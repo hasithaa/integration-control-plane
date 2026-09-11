@@ -24,24 +24,17 @@ import { useAccessControl } from '../../contexts/AccessControlContext';
 import { useLoadComponentPermissions, useLoadProjectPermissions } from '../../hooks/usePermissionLoader';
 import { hasComponent, type ComponentScope, type ProjectScope } from '../../nav';
 
-// Everything the two workflow pages (executions, tasks) share: the resolved project/component, the environments,
-// the permission gates, and — the part that must never be duplicated — the targets.
-// One integration as the project-level dashboard shows it.
 export interface WorkflowIntegrationEntry {
   componentId: string;
   name: string;
-  // The route handler, for building the integration's own page URL — distinct from the Temporal task queue that
-  // overwrites `handler` on WorkflowTarget once queues resolve.
+  // The route URL handler — distinct from the task queue that overwrites `handler` on WorkflowTarget.
   routeHandler: string;
   workflow: boolean;
 }
 
 export interface WorkflowPageScope {
-  // Every integration in the project (component level: just this one).
   integrations: WorkflowIntegrationEntry[];
-  // The workflow-typed ones — what the project dashboard lists.
   workflowIntegrations: WorkflowIntegrationEntry[];
-  // Set when the project has exactly one workflow integration: the page behaves as it.
   soleWorkflowIntegration?: WorkflowIntegrationEntry;
   componentLevel: boolean;
   project: ReturnType<typeof useProjectByHandler>['data'];
@@ -49,12 +42,8 @@ export interface WorkflowPageScope {
   projectId: string;
   componentId: string;
   environments: GqlEnvironment[];
-  // The environment everything on the page reads: the selection when it names a real environment, else the first
-  // one.
   activeEnvId: string;
   targets: WorkflowTarget[];
-  // Integration scope (or a sole-workflow-integration project): that integration's real task queue, undefined
-  // until published.
   taskQueue?: string;
   loading: boolean;
   canViewHumanTasks: boolean;
@@ -75,8 +64,7 @@ export function useWorkflowPageScope(scope: ComponentScope | ProjectScope, selec
   useLoadProjectPermissions(scope.org, projectId);
   const { hasAnyPermission } = useAccessControl();
 
-  // Base targets, before their queues are known. Project scope puts workflow-typed integrations first so
-  // targets[0] — the gateway every read goes through — has a workflow engine.
+  // Workflow-typed integrations sort first so targets[0], the gateway every read goes through, hosts a workflow engine.
   const baseTargets: WorkflowTarget[] = componentLevel
     ? component
       ? [{ componentId: component.id, componentName: component.displayName ?? component.name, handler: component.handler }]
@@ -88,8 +76,7 @@ export function useWorkflowPageScope(scope: ComponentScope | ProjectScope, selec
   const { data: queues = {} } = useWorkflowTaskQueues({ componentId: gatewayComponentId, environmentId: activeEnvId });
   const targets = baseTargets.map((t) => ({ ...t, handler: queues[t.componentId] ?? t.handler }));
 
-  // Every integration in the project, with whether it hosts workflows: typed as one, or a runtime of it
-  // has published a worker's task queue — management is enabled per runtime, not per integration type.
+  // Typed as a workflow integration, or a runtime of it published a task queue: management is per runtime.
   const integrations = allComponents.map((c) => ({
     componentId: c.id,
     name: c.displayName ?? c.name,
@@ -98,17 +85,13 @@ export function useWorkflowPageScope(scope: ComponentScope | ProjectScope, selec
   }));
   const workflowIntegrations = integrations.filter((i) => i.workflow);
 
-  // A project with exactly ONE workflow integration behaves as that integration: a dashboard of
-  // one card would be a detour, and scoping to it is what the user meant anyway.
   const soleWorkflowIntegration = !componentLevel && workflowIntegrations.length === 1 ? workflowIntegrations[0] : undefined;
 
-  // Integration scope narrows every listing to this integration's queue. Undefined until the queue is published:
-  // filtering by the fallback name would silently return nothing.
+  // Undefined until the queue is published: filtering by the fallback handler name would silently return nothing.
   const taskQueue = componentLevel ? queues[componentId] : soleWorkflowIntegration ? queues[soleWorkflowIntegration.componentId] : undefined;
 
   const permScope = componentLevel ? componentId : undefined;
   const canViewHumanTasks = hasAnyPermission([Permissions.WORKFLOW_VIEW_HUMAN_TASKS, Permissions.WORKFLOW_MANAGE_HUMAN_TASKS], projectId, permScope);
-  // Workflow executions are gated on the workflow permissions.
   const canViewWorkflows = hasAnyPermission([Permissions.WORKFLOW_VIEW_WORKFLOWS, Permissions.WORKFLOW_MANAGE_WORKFLOWS], projectId, permScope);
 
   const effectiveTargets = soleWorkflowIntegration ? targets.filter((t) => t.componentId === soleWorkflowIntegration.componentId) : targets;

@@ -25,8 +25,7 @@ import { displayWorkflowId, formatDuration, jsonPretty } from './helpers';
 import { DebugInfoIcon, DetailRow, SectionCard, StatusChip } from './shared';
 import DateTime from '../DateTime';
 
-// What happened to this run, extracted: the raw instances.get payload is a debugging document — per-activity
-// invocation records, nulls for everything a closed run no longer carries — and showing it verbatim made the.
+// What happened to this run, read out of the instances.get payload rather than shown verbatim.
 export default function ExecutionSummary({
   info,
   fallbackStartMs,
@@ -37,7 +36,6 @@ export default function ExecutionSummary({
   // From the run's history — the instances payload itself carries no times.
   fallbackStartMs?: number | null;
   fallbackEndMs?: number | null;
-  // Opens the raw event history — debugging material, so it lives behind this rather than a tab.
   onOpenHistory?: () => void;
 }): ReactElement {
   const status = (info.status ?? '').toUpperCase();

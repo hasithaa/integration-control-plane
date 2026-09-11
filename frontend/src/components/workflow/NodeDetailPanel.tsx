@@ -25,8 +25,7 @@ import { formatDuration, humanizeKey, parseModelCall, splitQualifiedName, type M
 import { SectionCard, StatusChip, WorkflowIdLink } from './shared';
 import { typeLabel } from './graphVisuals';
 
-// A model call, told as a conversation rather than as its envelope: the newest message the model was answering,
-// then what it replied — prose, tool calls, or the typed business value — with the full raw input one click away.
+// A model call as a conversation: the message it was answering, then its reply, with the raw input one click away.
 function ModelCallSections({ view, detail, environmentId }: { view: ModelCallView; detail: NodeExecutionDetail; environmentId?: string }) {
   const [showRaw, setShowRaw] = useState(false);
   return (

@@ -42,8 +42,7 @@ const HUE_BY_STATUS: Record<ChipColor, Hue> = {
   default: colors.blueGrey,
 };
 
-// Bar/marker colour: status, and only status — green completed, blue running, red failed — the
-// same vocabulary as the rail and the summary chip, so one glance reads the same everywhere.
+// Colour keys off status only, never category — the same vocabulary as the rail and the summary chip.
 function spanShades(span: Pick<TimelineSpan, 'category' | 'status'>): { main: string; accent: string } {
   const hue = HUE_BY_STATUS[statusColorName(span.status)] ?? colors.blueGrey;
   return { main: hue[500], accent: hue[600] };
@@ -109,7 +108,6 @@ function SpanBar({ span, total, rangeStart, now }: { span: TimelineSpan; total: 
   );
 }
 
-// Renders a workflow's history as a Gantt timeline: one duration bar per activity / human task / timer.
 export default function WorkflowTimeline({
   events,
   graph,
@@ -119,7 +117,7 @@ export default function WorkflowTimeline({
 }: {
   events: ReadonlyArray<Record<string, unknown>>;
   graph?: ExecutionGraph;
-  // When set, spans whose opening EVENT id is outside the set are dimmed — the flow rail's filter.
+  // When set, spans whose opening event id is outside the set are dimmed rather than hidden.
   visibleIds?: ReadonlySet<string> | null;
   // The selected span's opening event id.
   selectedKey?: string | null;
@@ -162,8 +160,7 @@ export default function WorkflowTimeline({
   // The axis extends to the live clock while running so growing bars stay within range.
   const rangeEnd = isLive ? Math.max(end, now) : end;
   const total = Math.max(1, rangeEnd - start);
-  // Sub-minute runs get millisecond-scale labels: a stopwatch that floors to seconds renders an
-  // 84ms run as a row of 0:00, which reads as "no data" rather than "fast".
+  // Sub-minute runs need ms labels: a seconds-floor stopwatch renders an 84ms run as 0:00, i.e. "no data".
   const tickLabel = (ms: number) => (total < 60_000 ? formatDuration(ms) : formatStopwatch(ms));
   const ticks = Array.from({ length: TICK_COUNT }, (_, i) => {
     const pct = (i / (TICK_COUNT - 1)) * 100;
@@ -202,7 +199,6 @@ export default function WorkflowTimeline({
                     bgcolor: selected ? (t) => softPrimary(t, 0.08) : 'transparent',
                     '&:hover': onSelectSpan ? { bgcolor: (t) => softPrimary(t, 0.05) } : undefined,
                   }}>
-                  {/* Lane label: name, then the execution's own facts — status colour and duration. */}
                   <Stack direction="row" alignItems="center" gap={0.75} sx={{ width: LABEL_W, flexShrink: 0, px: 1, borderRight: '1px solid', borderColor: 'divider', minWidth: 0 }}>
                     <Box sx={{ color, display: 'flex', flexShrink: 0 }}>
                       <Icon size={14} />
@@ -216,7 +212,6 @@ export default function WorkflowTimeline({
                       {s.running ? formatStopwatch(durationMs) : formatDuration(durationMs)}
                     </Typography>
                   </Stack>
-                  {/* Bar cell: gridlines at the shared tick positions, then the span bar. */}
                   <Box sx={{ flex: 1, position: 'relative', minWidth: 360 }}>
                     {ticks.map((t) => (
                       <Box key={t.pct} sx={{ position: 'absolute', top: 0, bottom: 0, width: '1px', bgcolor: 'divider', opacity: 0.5, ...(t.anchor === 'right' ? { right: 0 } : { left: `${t.pct}%` }) }} />
@@ -227,7 +222,6 @@ export default function WorkflowTimeline({
               </Box>
             );
           })}
-          {/* The time axis */}
           <Box sx={{ display: 'flex' }}>
             <Box sx={{ width: LABEL_W, flexShrink: 0, borderRight: '1px solid', borderColor: 'divider', height: AXIS_H }} />
             <Box sx={{ flex: 1, position: 'relative', height: AXIS_H, borderTop: '1px solid', borderColor: 'divider', minWidth: 360 }}>

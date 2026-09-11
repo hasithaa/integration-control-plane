@@ -16,28 +16,23 @@
  * under the License.
  */
 
-// Turns a workflow's published structure into a floor plan: nested boxes, one per control-flow block, with its
-// steps laid out inside. This is deliberately *not* general graph layout.
+// Lays out a workflow's published structure as nested boxes: one box per control-flow block, with its steps inside.
 
 import type { ModelGraph, ModelGraphNode } from '../../api/workflows';
 
 // ── Geometry (px) ──
 export const STEP_W = 148;
 export const STEP_H = 40;
-// Between siblings in a sequence — the gap the connector line is drawn in.
 export const V_GAP = 18;
-// Between the arms of a branch or do/on-fail block, laid side by side.
 export const ARM_GAP = 14;
 // Container padding: the top leaves room for the decision diamond, the bottom for the merge.
 export const PAD_X = 10;
 export const PAD_TOP = 34;
 export const PAD_BOTTOM = 16;
-// The arm's label chip ("then", "else", "onFail"), drawn at the top of the arm's column.
 export const ARM_LABEL_H = 18;
 // An arm with no steps in it still needs a slot, or the block collapses and reads as if it had one arm.
 export const EMPTY_ARM_W = 72;
 export const EMPTY_ARM_H = 20;
-// The Start and End pills that bracket the whole plan.
 export const PILL_W = 84;
 export const PILL_H = 24;
 export const CANVAS_PAD = 14;
@@ -46,7 +41,6 @@ export const CANVAS_PAD = 14;
 const CONTAINER_KINDS = new Set(['BRANCH', 'LOOP', 'TRY']);
 export const isContainer = (kind: string): boolean => CONTAINER_KINDS.has(kind.toUpperCase());
 
-// One arm of a container: its name, the sequence inside it, and where it was placed.
 export interface PlacedArm {
   name: string;
   children: PlacedNode[];
@@ -54,7 +48,6 @@ export interface PlacedArm {
   y: number;
   w: number;
   h: number;
-  // True when nothing inside this arm ran, which is what greys the whole column out.
   empty: boolean;
 }
 
@@ -68,7 +61,6 @@ export interface PlacedNode {
 }
 
 export interface FloorPlan {
-  // The top-level sequence, in source order.
   nodes: PlacedNode[];
   width: number;
   height: number;
@@ -92,7 +84,6 @@ interface MeasuredArm {
   h: number;
 }
 
-// Groups the flat node list into `parent → arm → children`, preserving source order.
 function groupByParent(nodes: ModelGraphNode[]): { roots: ModelGraphNode[]; armsOf: Map<string, Map<string, ModelGraphNode[]>> } {
   const known = new Set(nodes.map((n) => n.stepId));
   const roots: ModelGraphNode[] = [];
@@ -104,8 +95,7 @@ function groupByParent(nodes: ModelGraphNode[]): { roots: ModelGraphNode[]; arms
       roots.push(n);
       continue;
     }
-    // A child with no branch name sits in the container's only unnamed arm; the compiler always
-    // names them, so this is just a guard against a malformed descriptor.
+    // The compiler always names arms; the `?? ''` fallback only guards a malformed descriptor.
     const arm = n.branch ?? '';
     let byArm = armsOf.get(parent);
     if (!byArm) {
@@ -119,8 +109,7 @@ function groupByParent(nodes: ModelGraphNode[]): { roots: ModelGraphNode[]; arms
   return { roots, armsOf };
 }
 
-// Arm order for a container. Taken from the edges leaving it, because those are emitted in the order the
-// compiler walked the arms — `then` before `else`, `do` before `onFail`.
+// Arm order comes from the container's outgoing edges: the compiler emits them in the order it walked the arms.
 function armOrder(containerId: string, graph: ModelGraph, byArm: Map<string, ModelGraphNode[]>): string[] {
   const order: string[] = [];
   for (const e of graph.edges ?? []) {
@@ -140,11 +129,9 @@ function measureSequence(nodes: ModelGraphNode[], graph: ModelGraph, armsOf: Map
   return { children, w, h };
 }
 
-// Bottom-up size of one node: a step is fixed, a container is as big as its arms need.
 function measure(node: ModelGraphNode, graph: ModelGraph, armsOf: Map<string, Map<string, ModelGraphNode[]>>, depth: number): Measured {
   if (!isContainer(node.kind) || depth > 24) {
-    // The depth cap is a cycle guard: a descriptor whose parent links form a loop would otherwise
-    // recurse forever. Real workflows nest a handful deep.
+    // The depth cap is a cycle guard: parent links that form a loop would otherwise recurse forever.
     return { node, w: STEP_W, h: STEP_H, arms: [] };
   }
 
@@ -165,14 +152,12 @@ function measure(node: ModelGraphNode, graph: ModelGraph, armsOf: Map<string, Ma
   const innerH = arms.reduce((max, a) => Math.max(max, a.h), 0);
   return {
     node,
-    // A container is never narrower than a step, so a loop around one activity doesn't look pinched.
     w: Math.max(innerW + PAD_X * 2, STEP_W),
     h: PAD_TOP + innerH + PAD_BOTTOM,
     arms: arms.map((a) => ({ ...a })),
   };
 }
 
-// Top-down placement: each node is centred on `axis`, and each arm column on its own centre.
 function place(measured: Measured, x: number, y: number): PlacedNode {
   const placed: PlacedNode = { node: measured.node, x, y, w: measured.w, h: measured.h, arms: [] };
   if (measured.arms.length === 0) return placed;
@@ -194,8 +179,6 @@ function place(measured: Measured, x: number, y: number): PlacedNode {
   return placed;
 }
 
-// Lays out a whole workflow: the top-level sequence bracketed by Start and End pills. Returns canvas dimensions
-// the caller can hand straight to an `<svg viewBox>`.
 export function layoutFloorPlan(graph: ModelGraph): FloorPlan {
   const nodes = graph.nodes ?? [];
   const { roots, armsOf } = groupByParent(nodes);

@@ -34,10 +34,8 @@ export interface WorkflowScope {
   environmentId: string;
 }
 
-// The app bar's height; drawers open below it.
 export const APP_BAR_HEIGHT = 64;
 
-// Props that make a clickable table row keyboard-reachable: focusable, a button role, Enter/Space open it.
 export function rowOpenProps(open: () => void) {
   return {
     onClick: open,
@@ -53,8 +51,6 @@ export function rowOpenProps(open: () => void) {
   };
 }
 
-// Returns a handler that opens the Workflows admin view pre-filtered by a workflow ID — the same destination as
-// the start-workflow dialog's "View Running Workflow" action.
 function useViewWorkflowById(environmentId: string): (workflowId: string) => void {
   const navigate = useNavigate();
   const scope = useScope();
@@ -63,13 +59,10 @@ function useViewWorkflowById(environmentId: string): (workflowId: string) => voi
   };
 }
 
-// Middle-ellipsizes a long identifier: `8ee1613c-5795-…-abf552fae5bb` reads as well as the whole thing and stops
-// a 36-character UUID from dominating a label column.
 export function truncateId(id: string, head = 8, tail = 6): string {
   return id.length <= head + tail + 1 ? id : `${id.slice(0, head)}…${id.slice(-tail)}`;
 }
 
-// Renders a workflow ID as a monospace link that opens the Workflows admin view filtered by that ID.
 export function WorkflowIdLink({ workflowId, environmentId, onNavigate, truncate, copy }: { workflowId?: string; environmentId: string; onNavigate?: () => void; truncate?: boolean; copy?: boolean }): JSX.Element {
   const viewWorkflow = useViewWorkflowById(environmentId);
   if (!workflowId) return <NotProvided />;
@@ -105,8 +98,6 @@ export function WorkflowIdLink({ workflowId, environmentId, onNavigate, truncate
   );
 }
 
-// The freshness line under a cached view: when the data was produced, a switch for the automatic refresh (per
-// viewer, persisted in the browser — useful on a wall screen, distracting mid-thought), and, while an answer is.
 export function RefreshingNote({ show, fetchedAt, label = 'refreshing — fetching the latest from the integration…' }: { show: boolean; fetchedAt?: number; label?: string }): JSX.Element | null {
   const qc = useQueryClient();
   const [auto, setAuto] = useState(autoRefreshEnabled());
@@ -129,8 +120,6 @@ export function RefreshingNote({ show, fetchedAt, label = 'refreshing — fetchi
                 const on = e.target.checked;
                 setAutoRefreshEnabled(on);
                 setAuto(on);
-                // Turning it back on refetches immediately: the point of flipping the switch is
-                // wanting fresh data now, not at the next 30s boundary.
                 if (on) qc.invalidateQueries({ predicate: (q) => q.queryKey[0] === 'wf' });
               }}
             />
@@ -142,8 +131,6 @@ export function RefreshingNote({ show, fetchedAt, label = 'refreshing — fetchi
   );
 }
 
-// A long identifier in a table cell: middle-ellipsized with the full value in the title, and a copy button — the
-// one thing anyone does with an id a list is too narrow to show whole.
 export function IdText({ id, muted }: { id?: string; muted?: boolean }): JSX.Element {
   if (!id) return <NotProvided />;
   return (
@@ -166,7 +153,6 @@ export function IdText({ id, muted }: { id?: string; muted?: boolean }): JSX.Ele
   );
 }
 
-// A missing value stated as such — an em-dash reads as a rendering bug, "Not provided" as a fact.
 export function NotProvided({ label = 'Not provided' }: { label?: string }): JSX.Element {
   return (
     <Typography component="span" variant="body2" sx={{ color: 'text.disabled', fontStyle: 'italic' }}>
@@ -175,11 +161,7 @@ export function NotProvided({ label = 'Not provided' }: { label?: string }): JSX
   );
 }
 
-// A bug badged with an information mark. What it opens is not a debugger — it is the debug *information* the run
-// left behind, and the two glyphs together say that where the bug alone read as "start debugging".
 export function DebugInfoIcon({ size = 14 }: { size?: number }): JSX.Element {
-  // Large enough to read as an "i" rather than a smudge, and stroked heavier because the
-  // glyph is drawn at roughly half the size it was designed for.
   const badge = Math.round(size * 0.7);
   return (
     <Box component="span" sx={{ position: 'relative', display: 'inline-flex', lineHeight: 0 }}>
@@ -192,7 +174,6 @@ export function DebugInfoIcon({ size = 14 }: { size?: number }): JSX.Element {
           bottom: -2,
           display: 'inline-flex',
           borderRadius: '50%',
-          // Sat on the page behind it, so the badge reads as a badge and not as part of the bug.
           bgcolor: 'background.paper',
           lineHeight: 0,
         }}>
@@ -202,8 +183,6 @@ export function DebugInfoIcon({ size = 14 }: { size?: number }): JSX.Element {
   );
 }
 
-// The drawer header's overflow menu: fallback and destructive operations live here rather than in their own
-// section, so the page's visual weight stays on the task's purpose.
 export function HeaderMenu({ items }: { items: { label: string; color?: 'warning' | 'error'; disabled?: boolean; onClick: () => void }[] }): JSX.Element {
   const [anchor, setAnchor] = useState<HTMLElement | null>(null);
   return (
@@ -229,8 +208,6 @@ export function HeaderMenu({ items }: { items: { label: string; color?: 'warning
   );
 }
 
-// The full-page detail surface every workflow entity shares: a right drawer covering everything but the left
-// navigation, with a fixed header (title, status, close), a scrollable body, and a pinned action bar.
 export function DetailDrawer({ title, status, onClose, actions, menu, children }: { title: ReactNode; status?: string; onClose: () => void; actions?: ReactNode; menu?: ReactNode; children: ReactNode }): JSX.Element {
   const { sidebarWidth } = useLayout();
   return (
@@ -255,8 +232,6 @@ export function DetailDrawer({ title, status, onClose, actions, menu, children }
         </Stack>
       </Stack>
       <Box sx={{ flex: 1, overflow: 'auto', px: 3, py: 2.5 }}>
-        {/* Centered like the listing pages behind it — pinned left, the drawer read as a different
-            surface from the lists it opens over. */}
         <Box sx={{ maxWidth: 860, mx: 'auto' }}>{children}</Box>
       </Box>
       {actions && (
@@ -268,10 +243,7 @@ export function DetailDrawer({ title, status, onClose, actions, menu, children }
   );
 }
 
-// The card every drawer section is made of. `badge` sits beside the title; `actions` sit at the header's right
-// edge, outside the clickable title.
 export function SectionCard({ title, badge, actions, collapsible, defaultOpen = true, children }: { title: string; badge?: ReactNode; actions?: ReactNode; collapsible?: boolean; defaultOpen?: boolean; children: ReactNode }): JSX.Element {
-  // Open by default; `defaultOpen={false}` is for sections most readers never need.
   const [open, setOpen] = useState(defaultOpen);
   const titleBlock = (
     <Stack direction="row" alignItems="center" gap={1} sx={{ flex: 1, minWidth: 0, px: 2, py: 1.5 }}>
@@ -316,8 +288,6 @@ export function SectionCard({ title, badge, actions, collapsible, defaultOpen = 
   );
 }
 
-// One action as a card: a bold name, a one-line subtitle, and — when a sentence cannot carry the whole
-// consequence — the full explanation behind an info icon.
 export function ActionCard({ title, subtitle, info, selected, disabled, disabledReason, onClick }: { title: string; subtitle: string; info?: string; selected?: boolean; disabled?: boolean; disabledReason?: string; onClick: () => void }): JSX.Element {
   const card = (
     <Card
@@ -359,8 +329,6 @@ export function ActionCard({ title, subtitle, info, selected, disabled, disabled
   );
 }
 
-// Under every listing: how much is on screen, and how to get the rest. A page that happens to be complete is
-// otherwise indistinguishable from one that was silently cut off.
 export function ListFooter({ count, singular, plural, hasMore, loadingMore, onLoadMore }: { count: number; singular: string; plural: string; hasMore: boolean; loadingMore?: boolean; onLoadMore?: () => void }): JSX.Element {
   return (
     <Stack direction="row" alignItems="center" justifyContent="center" gap={1.5} sx={{ mt: 1.5 }}>
@@ -377,7 +345,6 @@ export function ListFooter({ count, singular, plural, hasMore, loadingMore, onLo
   );
 }
 
-// A listing-column header that explains its concept on hover — run ids especially need the sentence.
 export function HeaderCell({ label, help }: { label: string; help: string }): JSX.Element {
   return (
     <ListingTable.Cell>
@@ -390,7 +357,6 @@ export function HeaderCell({ label, help }: { label: string; help: string }): JS
   );
 }
 
-// Renders a status string as a colour-coded chip.
 export function StatusChip({ status }: { status?: string }): JSX.Element {
   const normalized = (status ?? '').toUpperCase();
   const color = STATUS_COLORS[normalized] ?? 'default';
@@ -398,7 +364,6 @@ export function StatusChip({ status }: { status?: string }): JSX.Element {
   return <Chip label={label} size="small" color={color} variant="outlined" />;
 }
 
-// A label/value row used in task and activity detail cards. String children render as body text.
 export function DetailRow({ label, children }: { label: string; children: ReactNode }): JSX.Element {
   return (
     <Stack direction="row" gap={2}>
@@ -416,7 +381,6 @@ export function DetailRow({ label, children }: { label: string; children: ReactN
   );
 }
 
-// Dialog-level banner for a submission the runtime rejected.
 export function SubmitError({ message, onClear }: { message: string | null; onClear: () => void }): JSX.Element | null {
   if (!message) return null;
   return (
@@ -426,7 +390,6 @@ export function SubmitError({ message, onClear }: { message: string | null; onCl
   );
 }
 
-// A compact, theme-consistent expandable panel for revealing a JSON schema/payload.
 export function SchemaDisclosure({ schema, label = 'Click to see Input Schema' }: { schema: string; label?: string }): JSX.Element {
   const [open, setOpen] = useState(false);
   return (
