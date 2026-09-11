@@ -49,6 +49,20 @@ function sum(ts: Record<string, number>): number {
   return Object.values(ts).reduce((a, b) => a + b, 0);
 }
 
+/**
+ * A duration a person can read at any scale: a run can take milliseconds or —
+ * waiting on a human — days, and "342201.4 s" says nothing.
+ */
+function formatDuration(seconds: number): string {
+  if (seconds < 1) return `${Math.round(seconds * 1000)} ms`;
+  if (seconds < 120) return `${seconds.toFixed(1)} s`;
+  if (seconds < 7200) return `${(seconds / 60).toFixed(1)} min`;
+  if (seconds < 172800) return `${(seconds / 3600).toFixed(1)} h`;
+  const days = Math.floor(seconds / 86400);
+  const hours = Math.round((seconds - days * 86400) / 3600);
+  return `${days}d ${hours}h`;
+}
+
 /** Adds one series' per-interval counts into `into`, keyed by timestamp. */
 function addInto(into: Record<string, number>, ts: Record<string, number>): void {
   for (const [k, v] of Object.entries(ts)) into[k] = (into[k] ?? 0) + v;
@@ -181,7 +195,7 @@ export default function WorkflowMetricsSection({ request, getTimeRange, makeLabe
           <StatCard title="Runs Failed" value={`${runs.totalFailed.toLocaleString()} (${runs.failurePct.toFixed(1)}%)`} color="error.main" />
         </Grid>
         <Grid size={{ xs: 12, sm: 6, md: 3 }}>
-          <StatCard title="Run Duration P95 (Latest)" value={`${runs.latestP95.toFixed(1)} s`} />
+          <StatCard title="Run Duration P95 (Latest)" value={formatDuration(runs.latestP95)} />
         </Grid>
       </Grid>
 
