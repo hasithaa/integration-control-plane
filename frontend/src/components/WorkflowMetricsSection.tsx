@@ -195,7 +195,7 @@ export default function WorkflowMetricsSection({ request, getTimeRange, makeLabe
           <StatCard title="Runs Failed" value={`${runs.totalFailed.toLocaleString()} (${runs.failurePct.toFixed(1)}%)`} color="error.main" />
         </Grid>
         <Grid size={{ xs: 12, sm: 6, md: 3 }}>
-          <StatCard title="Run Duration P95 (Latest)" value={formatDuration(runs.latestP95)} />
+          <StatCard title="Run Duration 95th Percentile (Latest)" value={formatDuration(runs.latestP95)} />
         </Grid>
       </Grid>
 
