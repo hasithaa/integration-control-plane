@@ -55,7 +55,10 @@ export interface MetricsResponse {
 // ── Workflow metrics ──
 // One record per workflow event from the Ballerina workflow module; the server groups them into series by tags.
 
-export type WorkflowSample = 'workflow.started' | 'workflow.closed' | 'activity.executed' | 'data.sent' | 'task.decided';
+export type WorkflowSample =
+  | 'workflow.started' | 'workflow.closed' | 'activity.executed' | 'data.sent' | 'task.decided'
+  | 'workflow.suspended' | 'workflow.resumed' | 'workflow.terminated' | 'workflow.cancelled'
+  | 'agent.model_called' | 'agent.tool_called' | 'agent.event_received' | 'agent.slept' | 'agent.task_awaited' | 'agent.tool_reviewed';
 
 export interface WorkflowMetricEntry {
   sample: WorkflowSample;
@@ -74,6 +77,9 @@ export interface WorkflowMetricsResponse {
   activities: WorkflowMetricEntry[];
   decisions: WorkflowMetricEntry[];
   dataEvents: WorkflowMetricEntry[];
+  // The AI agent's steps (agent.*) and the management control operations (workflow.suspended, …).
+  agentSteps?: WorkflowMetricEntry[];
+  controls?: WorkflowMetricEntry[];
 }
 
 async function fetchMetrics(req: MetricsRequest): Promise<MetricsResponse> {

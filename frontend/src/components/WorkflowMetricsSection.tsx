@@ -83,6 +83,30 @@ interface DecisionRow {
   denied: number;
 }
 
+interface AgentStepRow {
+  step: string;
+  name: string;
+  count: number;
+  failures: number;
+  avgSeconds: number;
+}
+
+const AGENT_STEP_LABELS: Record<string, string> = {
+  'agent.model_called': 'Model call',
+  'agent.tool_called': 'Tool call',
+  'agent.event_received': 'Event wait',
+  'agent.slept': 'Sleep',
+  'agent.task_awaited': 'Human task',
+  'agent.tool_reviewed': 'Tool review',
+};
+
+const CONTROL_LABELS: Record<string, string> = {
+  'workflow.suspended': 'Suspended',
+  'workflow.resumed': 'Resumed',
+  'workflow.terminated': 'Terminated',
+  'workflow.cancelled': 'Cancelled',
+};
+
 function aggregateRuns(runs: WorkflowMetricEntry[]) {
   const started: Record<string, number> = {};
   const completed: Record<string, number> = {};
@@ -140,6 +164,35 @@ function aggregateDecisions(decisions: WorkflowMetricEntry[]): DecisionRow[] {
   return Object.values(rows).sort((x, y) => y.accepted + y.denied - (x.accepted + x.denied));
 }
 
+// One row per step kind and the thing it acted on: the tool, the event, the task, or the model activity.
+function aggregateAgentSteps(steps: WorkflowMetricEntry[]): AgentStepRow[] {
+  const rows: Record<string, AgentStepRow & { durationWeighted: number }> = {};
+  for (const s of steps) {
+    const name = s.tags.tool_name ?? s.tags.data_name ?? s.tags.task_name ?? s.tags.activity_type ?? '';
+    const key = `${s.sample}|${name}`;
+    const row = (rows[key] ??= { step: AGENT_STEP_LABELS[s.sample] ?? s.sample, name, count: 0, failures: 0, avgSeconds: 0, durationWeighted: 0 });
+    const n = sum(s.count.timeSeriesData);
+    row.count += n;
+    if (s.tags.outcome === 'failure') row.failures += n;
+    for (const [ts, c] of Object.entries(s.count.timeSeriesData)) {
+      row.durationWeighted += (s.duration_seconds_avg.timeSeriesData[ts] ?? 0) * c;
+    }
+  }
+  return Object.values(rows)
+    .map((r) => ({ step: r.step, name: r.name, count: r.count, failures: r.failures, avgSeconds: r.count > 0 ? r.durationWeighted / r.count : 0 }))
+    .sort((x, y) => y.failures - x.failures || y.count - x.count);
+}
+
+// Control operations, accepted ones only: a refused suspend never touched a run.
+function aggregateControls(controls: WorkflowMetricEntry[]): Record<string, number> {
+  const totals: Record<string, number> = {};
+  for (const c of controls) {
+    if (c.tags.outcome === 'failure') continue;
+    totals[c.sample] = (totals[c.sample] ?? 0) + sum(c.count.timeSeriesData);
+  }
+  return totals;
+}
+
 function StatCard({ title, value, color }: { title: string; value: string; color?: string }): JSX.Element {
   return (
     <Card variant="outlined" sx={{ height: '100%' }}>
@@ -161,9 +214,17 @@ export default function WorkflowMetricsSection({ request, getTimeRange, makeLabe
   const runs = useMemo(() => aggregateRuns(data?.runs ?? []), [data]);
   const activities = useMemo(() => aggregateActivities(data?.activities ?? []), [data]);
   const decisions = useMemo(() => aggregateDecisions(data?.decisions ?? []), [data]);
+  const agentSteps = useMemo(() => aggregateAgentSteps(data?.agentSteps ?? []), [data]);
+  const controls = useMemo(() => aggregateControls(data?.controls ?? []), [data]);
   const runChart = useMemo(() => runs.chart.map((p) => ({ ...p, label: makeLabel(p.ts) })), [runs.chart, makeLabel]);
 
-  const hasAnything = (data?.runs.length ?? 0) + (data?.activities.length ?? 0) + (data?.decisions.length ?? 0) + (data?.dataEvents.length ?? 0) > 0;
+  const hasAnything =
+    (data?.runs.length ?? 0) + (data?.activities.length ?? 0) + (data?.decisions.length ?? 0) + (data?.dataEvents.length ?? 0) +
+      (data?.agentSteps?.length ?? 0) + (data?.controls?.length ?? 0) > 0;
+  const controlSummary = Object.entries(CONTROL_LABELS)
+    .filter(([sample]) => (controls[sample] ?? 0) > 0)
+    .map(([sample, label]) => `${label} ${controls[sample].toLocaleString()}`)
+    .join(' · ');
   // A failed or absent workflow-metrics call must never take the HTTP metrics down with it: say nothing.
   if (!data || !hasAnything) return null;
 
@@ -252,8 +313,51 @@ export default function WorkflowMetricsSection({ request, getTimeRange, makeLabe
         </Grid>
       </Grid>
 
-      {decisions.length > 0 && (
+      {(decisions.length > 0 || agentSteps.length > 0 || controlSummary) && (
         <Grid container spacing={2} sx={{ mb: 3 }}>
+          {agentSteps.length > 0 && (
+            <Grid size={{ xs: 12, md: 6 }}>
+              <Card variant="outlined" sx={{ height: '100%' }}>
+                <CardContent>
+                  <Typography variant="h6" sx={{ mb: 1 }}>
+                    AI Agent Steps
+                  </Typography>
+                  <TableContainer>
+                    <Table size="small">
+                      <TableHead>
+                        <TableRow>
+                          <TableCell>Step</TableCell>
+                          <TableCell>Name</TableCell>
+                          <TableCell align="right">Count</TableCell>
+                          <TableCell align="right">Failures</TableCell>
+                          <TableCell align="right">Avg</TableCell>
+                        </TableRow>
+                      </TableHead>
+                      <TableBody>
+                        {agentSteps.map((row) => (
+                          <TableRow key={`${row.step}|${row.name}`}>
+                            <TableCell>{row.step}</TableCell>
+                            <TableCell>{row.name}</TableCell>
+                            <TableCell align="right">{row.count.toLocaleString()}</TableCell>
+                            <TableCell align="right" sx={{ color: row.failures > 0 ? 'error.main' : undefined }}>
+                              {row.failures.toLocaleString()}
+                            </TableCell>
+                            <TableCell align="right">{formatDuration(row.avgSeconds)}</TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </TableContainer>
+                  {controlSummary && (
+                    <Typography variant="body2" color="text.secondary" sx={{ mt: 1.5 }}>
+                      Control operations: {controlSummary}
+                    </Typography>
+                  )}
+                </CardContent>
+              </Card>
+            </Grid>
+          )}
+          {decisions.length > 0 && (
           <Grid size={{ xs: 12, md: 6 }}>
             <Card variant="outlined">
               <CardContent>
@@ -287,6 +391,21 @@ export default function WorkflowMetricsSection({ request, getTimeRange, makeLabe
               </CardContent>
             </Card>
           </Grid>
+          )}
+          {decisions.length === 0 && agentSteps.length === 0 && controlSummary && (
+            <Grid size={{ xs: 12, md: 6 }}>
+              <Card variant="outlined">
+                <CardContent>
+                  <Typography variant="h6" sx={{ mb: 1 }}>
+                    Control Operations
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    {controlSummary}
+                  </Typography>
+                </CardContent>
+              </Card>
+            </Grid>
+          )}
         </Grid>
       )}
       <Stack />

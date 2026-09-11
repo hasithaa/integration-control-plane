@@ -101,6 +101,32 @@ function testWorkflowMetricsAreShapedBySampleKind() returns error? {
                             "deployment": "claims", "activity_type": (), "outcome": (), "task_kind": (),
                             "task_name": (), "action": (), "data_name": ()},
                     "time_buckets": {"buckets": []}
+                },
+                {
+                    "key": {"sample": "agent.tool_called", "workflow_type": "workflow-claimAgent", "tool_name": "fileClaim",
+                            "activity_type": "fileClaim", "outcome": "failure", "error_type": "error",
+                            "icp_runtimeId": "rt-1", "app_name": "claims-agent", "deployment": "claims-agent",
+                            "task_kind": (), "task_name": (), "action": (), "data_name": ()},
+                    "time_buckets": {
+                        "buckets": [
+                            {"key_as_string": "2026-09-08T00:00:00.000Z", "doc_count": 1,
+                             "avg_duration": {"value": 0.4}, "max_duration": {"value": 0.4},
+                             "percentiles_duration": {"values": {"50.0": 0.4, "95.0": 0.4, "99.0": 0.4}}}
+                        ]
+                    }
+                },
+                {
+                    "key": {"sample": "workflow.suspended", "outcome": "success", "icp_runtimeId": "rt-1",
+                            "app_name": "claims", "deployment": "claims", "workflow_type": (), "activity_type": (),
+                            "task_kind": (), "task_name": (), "action": (), "data_name": (), "tool_name": (),
+                            "error_type": ()},
+                    "time_buckets": {
+                        "buckets": [
+                            {"key_as_string": "2026-09-08T00:00:00.000Z", "doc_count": 2,
+                             "avg_duration": {"value": ()}, "max_duration": {"value": ()},
+                             "percentiles_duration": {"values": {"50.0": (), "95.0": (), "99.0": ()}}}
+                        ]
+                    }
                 }
             ]
         }
@@ -112,6 +138,11 @@ function testWorkflowMetricsAreShapedBySampleKind() returns error? {
     test:assertEquals(shaped.decisions.length(), 1, "the decision group is a decision series");
     test:assertEquals(shaped.activities.length(), 0);
     test:assertEquals(shaped.dataEvents.length(), 0, "a group without a sample kind is not a series at all");
+    test:assertEquals(shaped.agentSteps.length(), 1, "an agent.* sample is an agent-step series");
+    test:assertEquals(shaped.agentSteps[0].tags["tool_name"], "fileClaim");
+    test:assertEquals(shaped.agentSteps[0].tags["error_type"], "error");
+    test:assertEquals(shaped.controls.length(), 1, "a control operation sample is a control series");
+    test:assertEquals(shaped.controls[0].sample, "workflow.suspended");
 
     types:WorkflowMetricEntry run = shaped.runs[0];
     test:assertEquals(run.sample, "workflow.closed");

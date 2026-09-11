@@ -2219,7 +2219,8 @@ public type MetricEntriesResponse record {
 };
 
 # One series of workflow samples sharing a tag combination; `sample` says which event it counts.
-# + tags - `workflow_type`, `activity_type`, `outcome`, `task_kind`, `task_name`, `action`, `data_name` + runtime tags
+# + tags - `workflow_type`, `activity_type`, `outcome`, `error_type`, `task_kind`, `task_name`, `tool_name`, `action`,
+#          `data_name` + runtime tags
 # + count - Events per interval; the duration fields apply where the sample carries `duration_seconds`
 public type WorkflowMetricEntry record {
     string sample;
@@ -2232,12 +2233,16 @@ public type WorkflowMetricEntry record {
     Metric duration_seconds_percentile_99;
 };
 
-# Workflow metrics for a set of runtimes, grouped by what each series counts: runs, activities, decisions, data events.
+# Workflow metrics for a set of runtimes, grouped by what each series counts.
+# + agentSteps - `agent.*` series: model calls, tool calls, event waits, sleeps, task waits, tool reviews
+# + controls - `workflow.suspended|resumed|terminated|cancelled` series
 public type WorkflowMetricEntriesResponse record {
     WorkflowMetricEntry[] runs;
     WorkflowMetricEntry[] activities;
     WorkflowMetricEntry[] decisions;
     WorkflowMetricEntry[] dataEvents;
+    WorkflowMetricEntry[] agentSteps = [];
+    WorkflowMetricEntry[] controls = [];
 };
 
 // === Auth Related Types ===

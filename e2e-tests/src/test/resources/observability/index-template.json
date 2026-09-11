@@ -92,6 +92,12 @@
         },
         "duration_seconds": {
           "type": "float"
+        },
+        "tool_name": {
+          "type": "keyword"
+        },
+        "error_type": {
+          "type": "keyword"
         }
       }
     }

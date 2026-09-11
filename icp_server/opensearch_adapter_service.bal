@@ -1166,7 +1166,9 @@ final readonly & string[] WORKFLOW_METRICS_TAG_FIELDS = [
     "data_name",
     "task_kind",
     "task_name",
-    "action"
+    "tool_name",
+    "action",
+    "error_type"
 ];
 
 isolated function fetchBIWorkflowMetrics(types:MetricEntryRequest metricRequest) returns types:WorkflowMetricEntriesResponse|error {
@@ -1188,7 +1190,7 @@ isolated function fetchBIWorkflowMetrics(types:MetricEntryRequest metricRequest)
     json|error aggregations = result.aggregations;
     if aggregations is error {
         log:printWarn("No aggregations in BI workflow metrics response. Returning empty result.");
-        return {runs: [], activities: [], decisions: [], dataEvents: []};
+        return {runs: [], activities: [], decisions: [], dataEvents: [], agentSteps: [], controls: []};
     }
     return shapeWorkflowMetrics(aggregations);
 }
@@ -1278,7 +1280,8 @@ isolated function getBIWorkflowMetricQuery(types:MetricEntryRequest metricReques
 // Turns the aggregation result into series, grouped by what each sample counts. Separated from
 // the query so it can be exercised on a canned response.
 isolated function shapeWorkflowMetrics(json aggregations) returns types:WorkflowMetricEntriesResponse|error {
-    types:WorkflowMetricEntriesResponse response = {runs: [], activities: [], decisions: [], dataEvents: []};
+    types:WorkflowMetricEntriesResponse response =
+            {runs: [], activities: [], decisions: [], dataEvents: [], agentSteps: [], controls: []};
     json tagGroups = check aggregations.tag_groups;
     json[] buckets = check tagGroups.buckets.ensureType();
 
@@ -1350,13 +1353,21 @@ isolated function shapeWorkflowMetrics(json aggregations) returns types:Workflow
             "data.sent" => {
                 response.dataEvents.push(entry);
             }
+            "workflow.suspended"|"workflow.resumed"|"workflow.terminated"|"workflow.cancelled" => {
+                response.controls.push(entry);
+            }
             _ => {
-                log:printDebug("Ignoring unknown workflow sample kind: " + sample);
+                if sample.startsWith("agent.") {
+                    response.agentSteps.push(entry);
+                } else {
+                    log:printDebug("Ignoring unknown workflow sample kind: " + sample);
+                }
             }
         }
     }
     log:printDebug(string `BI workflow metrics: ${response.runs.length()} run, ${response.activities.length()} activity, ` +
-            string `${response.decisions.length()} decision, ${response.dataEvents.length()} data-event series`);
+            string `${response.decisions.length()} decision, ${response.dataEvents.length()} data-event, ` +
+            string `${response.agentSteps.length()} agent-step, ${response.controls.length()} control series`);
     return response;
 }
 
