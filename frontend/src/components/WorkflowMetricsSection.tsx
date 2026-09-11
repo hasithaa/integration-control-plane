@@ -83,7 +83,7 @@ function aggregateRuns(runs: WorkflowMetricEntry[]) {
   for (const r of runs) {
     if (r.sample === 'workflow.started') addInto(started, r.count.timeSeriesData);
     if (r.sample === 'workflow.closed') {
-      addInto(r.tags.status === 'failed' ? failed : completed, r.count.timeSeriesData);
+      addInto(r.tags.outcome === 'failure' ? failed : completed, r.count.timeSeriesData);
       latestP95 = Math.max(latestP95, latestNonZero(r.duration_seconds_percentile_95.timeSeriesData));
     }
   }
@@ -103,7 +103,7 @@ function aggregateActivities(activities: WorkflowMetricEntry[]): ActivityRow[] {
     const row = (rows[key] ??= { activity: key, attempts: 0, failures: 0, avgMs: 0, durationWeighted: 0 });
     const n = sum(a.count.timeSeriesData);
     row.attempts += n;
-    if (a.tags.outcome === 'failed') row.failures += n;
+    if (a.tags.outcome === 'failure') row.failures += n;
     // Weight each interval's mean by its count so the row's mean is the true mean.
     for (const [ts, c] of Object.entries(a.count.timeSeriesData)) {
       row.durationWeighted += (a.duration_seconds_avg.timeSeriesData[ts] ?? 0) * c;
@@ -120,7 +120,7 @@ function aggregateDecisions(decisions: WorkflowMetricEntry[]): DecisionRow[] {
     const key = d.tags.task_name ?? 'unknown';
     const row = (rows[key] ??= { task: key, kind: d.tags.task_kind ?? '', accepted: 0, denied: 0 });
     const n = sum(d.count.timeSeriesData);
-    if (d.tags.outcome === 'denied') row.denied += n;
+    if (d.tags.outcome === 'failure') row.denied += n;
     else row.accepted += n;
   }
   return Object.values(rows).sort((x, y) => y.accepted + y.denied - (x.accepted + x.denied));

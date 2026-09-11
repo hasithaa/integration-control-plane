@@ -2219,13 +2219,13 @@ public type MetricEntriesResponse record {
 };
 
 # One series of workflow samples sharing a tag combination — a workflow type's closed runs with
-# status "failed", an activity type's attempts with outcome "completed", a task's decisions with
-# outcome "denied". The workflow module publishes one record per event under
+# outcome "failure", an activity type's attempts with outcome "success", a task's decisions with
+# outcome "failure" (denied). The workflow module publishes one record per event under
 # `logger = "workflow-metrics"`; `sample` says which event, and `count` is how many landed in each
 # interval. The duration series are meaningful for `workflow.closed` and `activity.executed`.
 #
 # + sample - `workflow.started` | `workflow.closed` | `activity.executed` | `data.sent` | `task.decided`
-# + tags - The combination's tags: `workflow_type`, `activity_type`, `status`, `outcome`,
+# + tags - The combination's tags: `workflow_type`, `activity_type`, `outcome` (`success` | `failure`),
 #          `task_kind`, `task_name`, `action`, `data_name`, plus `icp_runtimeId`, `app_name`,
 #          `deployment` — whichever the sample carries
 # + count - Events per interval
@@ -2247,7 +2247,7 @@ public type WorkflowMetricEntry record {
 
 # Workflow metrics for a set of runtimes, grouped by what each series counts.
 #
-# + runs - `workflow.started` and `workflow.closed` series, by workflow type (and status for closed)
+# + runs - `workflow.started` and `workflow.closed` series, by workflow type (and outcome for closed)
 # + activities - `activity.executed` series, by activity type and outcome
 # + decisions - `task.decided` series, by task kind, task name, action and outcome
 # + dataEvents - `data.sent` series, by data name

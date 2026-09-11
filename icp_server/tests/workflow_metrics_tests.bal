@@ -70,8 +70,8 @@ function testWorkflowMetricsAreShapedBySampleKind() returns error? {
         "tag_groups": {
             "buckets": [
                 {
-                    "key": {"sample": "workflow.closed", "workflow_type": "workflow-claimApproval", "status": "completed",
-                            "icp_runtimeId": "rt-1", "app_name": "claims", "activity_type": (), "outcome": (),
+                    "key": {"sample": "workflow.closed", "workflow_type": "workflow-claimApproval", "outcome": "success",
+                            "icp_runtimeId": "rt-1", "app_name": "claims", "activity_type": (),
                             "task_kind": (), "task_name": (), "action": (), "data_name": (), "deployment": "claims"},
                     "time_buckets": {
                         "buckets": [
@@ -86,8 +86,8 @@ function testWorkflowMetricsAreShapedBySampleKind() returns error? {
                 },
                 {
                     "key": {"sample": "task.decided", "task_kind": "HUMAN_TASK", "task_name": "claimApproval.reviewClaim",
-                            "action": "complete", "outcome": "accepted", "icp_runtimeId": "rt-1", "app_name": "claims",
-                            "deployment": "claims", "workflow_type": (), "activity_type": (), "status": (), "data_name": ()},
+                            "action": "complete", "outcome": "failure", "icp_runtimeId": "rt-1", "app_name": "claims",
+                            "deployment": "claims", "workflow_type": (), "activity_type": (), "data_name": ()},
                     "time_buckets": {
                         "buckets": [
                             {"key_as_string": "2026-09-08T00:00:00.000Z", "doc_count": 3,
@@ -98,7 +98,7 @@ function testWorkflowMetricsAreShapedBySampleKind() returns error? {
                 },
                 {
                     "key": {"sample": (), "workflow_type": (), "icp_runtimeId": "rt-1", "app_name": "claims",
-                            "deployment": "claims", "activity_type": (), "status": (), "outcome": (), "task_kind": (),
+                            "deployment": "claims", "activity_type": (), "outcome": (), "task_kind": (),
                             "task_name": (), "action": (), "data_name": ()},
                     "time_buckets": {"buckets": []}
                 }
@@ -116,7 +116,7 @@ function testWorkflowMetricsAreShapedBySampleKind() returns error? {
     types:WorkflowMetricEntry run = shaped.runs[0];
     test:assertEquals(run.sample, "workflow.closed");
     test:assertEquals(run.tags["workflow_type"], "workflow-claimApproval");
-    test:assertEquals(run.tags["status"], "completed");
+    test:assertEquals(run.tags["outcome"], "success");
     test:assertFalse(run.tags.hasKey("activity_type"), "absent tags are not reported as empty strings");
     test:assertEquals(run.count.timeSeriesData["2026-09-08T00:00:00.000Z"], 2);
     test:assertEquals(run.count.timeSeriesData["2026-09-08T00:05:00.000Z"], 0, "an empty interval is a zero, not a gap");
@@ -125,7 +125,7 @@ function testWorkflowMetricsAreShapedBySampleKind() returns error? {
 
     types:WorkflowMetricEntry decision = shaped.decisions[0];
     test:assertEquals(decision.tags["task_name"], "claimApproval.reviewClaim");
-    test:assertEquals(decision.tags["outcome"], "accepted");
+    test:assertEquals(decision.tags["outcome"], "failure", "a denied decision is a failure outcome");
     test:assertEquals(decision.count.timeSeriesData["2026-09-08T00:00:00.000Z"], 3);
     test:assertEquals(decision.duration_seconds_avg.timeSeriesData["2026-09-08T00:00:00.000Z"], <decimal>0,
             "a decision has no duration; the series is zeros rather than an error");

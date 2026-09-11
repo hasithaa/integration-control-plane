@@ -1155,10 +1155,10 @@ isolated function getMIMetricQuery(types:MetricEntryRequest metricRequest) retur
 // ballerinax/metrics.logs publishes one per HTTP request. The log pipeline routes them to
 // this index. Document schema (flat):
 //   @timestamp, sample, icp_runtimeId, app_name, deployment,
-//   workflow_type, workflow_id, run_id, status (completed|failed), duration_seconds,
-//   activity_type, attempt, outcome (completed|failed),
+//   workflow_type, workflow_id, run_id, outcome (success|failure), duration_seconds,
+//   activity_type, attempt, outcome (success|failure),
 //   data_name,
-//   task_kind (HUMAN_TASK|REVIEW_ACTIVITY), task_name, action, outcome (accepted|denied)
+//   task_kind (HUMAN_TASK|REVIEW_ACTIVITY), task_name, action, outcome (success|failure)
 // Every series is grouped by the tag fields below and bucketed over time; duration statistics
 // apply where the sample carries duration_seconds (workflow.closed, activity.executed).
 // ──────────────────────────────────────────────────────────────────────────────
@@ -1172,7 +1172,6 @@ final readonly & string[] WORKFLOW_METRICS_TAG_FIELDS = [
     "deployment",
     "workflow_type",
     "activity_type",
-    "status",
     "outcome",
     "data_name",
     "task_kind",
