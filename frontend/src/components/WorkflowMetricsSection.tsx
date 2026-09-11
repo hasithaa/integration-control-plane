@@ -164,11 +164,15 @@ function aggregateDecisions(decisions: WorkflowMetricEntry[]): DecisionRow[] {
   return Object.values(rows).sort((x, y) => y.accepted + y.denied - (x.accepted + x.denied));
 }
 
+// The module writes `none` into a tag that does not apply to a sample, so every sample carries every key.
+const tagValue = (tags: Record<string, string>, ...keys: string[]): string =>
+  keys.map((k) => tags[k]).find((v) => v && v !== 'none') ?? '';
+
 // One row per step kind and the thing it acted on: the tool, the event, the task, or the model activity.
 function aggregateAgentSteps(steps: WorkflowMetricEntry[]): AgentStepRow[] {
   const rows: Record<string, AgentStepRow & { durationWeighted: number }> = {};
   for (const s of steps) {
-    const name = s.tags.tool_name ?? s.tags.data_name ?? s.tags.task_name ?? s.tags.activity_type ?? '';
+    const name = tagValue(s.tags, 'tool_name', 'data_name', 'task_name', 'activity_type');
     const key = `${s.sample}|${name}`;
     const row = (rows[key] ??= { step: AGENT_STEP_LABELS[s.sample] ?? s.sample, name, count: 0, failures: 0, avgSeconds: 0, durationWeighted: 0 });
     const n = sum(s.count.timeSeriesData);
