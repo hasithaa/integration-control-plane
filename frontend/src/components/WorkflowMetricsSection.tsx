@@ -108,8 +108,7 @@ const CONTROL_LABELS: Record<string, string> = {
 };
 
 // The module writes `none` into a tag that does not apply to a sample, so every sample carries every key.
-const tagValue = (tags: Record<string, string>, ...keys: string[]): string =>
-  keys.map((k) => tags[k]).find((v) => v && v !== 'none') ?? '';
+const tagValue = (tags: Record<string, string>, ...keys: string[]): string => keys.map((k) => tags[k]).find((v) => v && v !== 'none') ?? '';
 
 function aggregateRuns(runs: WorkflowMetricEntry[]) {
   const started: Record<string, number> = {};
@@ -231,9 +230,7 @@ export default function WorkflowMetricsSection({ request, getTimeRange, makeLabe
   const controls = useMemo(() => aggregateControls(data?.controls ?? []), [data]);
   const runChart = useMemo(() => runs.chart.map((p) => ({ ...p, label: makeLabel(p.ts) })), [runs.chart, makeLabel]);
 
-  const hasAnything =
-    (data?.runs.length ?? 0) + (data?.activities.length ?? 0) + (data?.decisions.length ?? 0) + (data?.dataEvents.length ?? 0) +
-      (data?.agentSteps?.length ?? 0) + (data?.controls?.length ?? 0) > 0;
+  const hasAnything = (data?.runs.length ?? 0) + (data?.activities.length ?? 0) + (data?.decisions.length ?? 0) + (data?.dataEvents.length ?? 0) + (data?.agentSteps?.length ?? 0) + (data?.controls?.length ?? 0) > 0;
   const controlSummary = Object.entries(CONTROL_LABELS)
     .filter(([sample]) => (controls[sample] ?? 0) > 0)
     .map(([sample, label]) => `${label} ${controls[sample].toLocaleString()}`)
@@ -371,47 +368,46 @@ export default function WorkflowMetricsSection({ request, getTimeRange, makeLabe
             </Grid>
           )}
           {(decisions.length > 0 || unresolvedRefusals > 0) && (
-          <Grid size={{ xs: 12, md: 6 }}>
-            <Card variant="outlined">
-              <CardContent>
-                <Typography variant="h6" sx={{ mb: 1 }}>
-                  Human Decisions
-                </Typography>
-                {decisions.length > 0 && (
-                <TableContainer>
-                  <Table size="small">
-                    <TableHead>
-                      <TableRow>
-                        <TableCell>Task</TableCell>
-                        <TableCell>Kind</TableCell>
-                        <TableCell align="right">Accepted</TableCell>
-                        <TableCell align="right">Denied</TableCell>
-                      </TableRow>
-                    </TableHead>
-                    <TableBody>
-                      {decisions.map((row) => (
-                        <TableRow key={row.task}>
-                          <TableCell>{row.task}</TableCell>
-                          <TableCell>{row.kind === 'REVIEW_ACTIVITY' ? 'Review' : 'Human task'}</TableCell>
-                          <TableCell align="right">{row.accepted.toLocaleString()}</TableCell>
-                          <TableCell align="right" sx={{ color: row.denied > 0 ? 'error.main' : undefined }}>
-                            {row.denied.toLocaleString()}
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </TableContainer>
-                )}
-                {unresolvedRefusals > 0 && (
-                  <Typography variant="body2" color="text.secondary" sx={{ mt: 1.5 }}>
-                    {unresolvedRefusals.toLocaleString()} {unresolvedRefusals === 1 ? 'decision was' : 'decisions were'} refused
-                    before a task was resolved (unknown task, already decided, or an unauthorized role).
+            <Grid size={{ xs: 12, md: 6 }}>
+              <Card variant="outlined">
+                <CardContent>
+                  <Typography variant="h6" sx={{ mb: 1 }}>
+                    Human Decisions
                   </Typography>
-                )}
-              </CardContent>
-            </Card>
-          </Grid>
+                  {decisions.length > 0 && (
+                    <TableContainer>
+                      <Table size="small">
+                        <TableHead>
+                          <TableRow>
+                            <TableCell>Task</TableCell>
+                            <TableCell>Kind</TableCell>
+                            <TableCell align="right">Accepted</TableCell>
+                            <TableCell align="right">Denied</TableCell>
+                          </TableRow>
+                        </TableHead>
+                        <TableBody>
+                          {decisions.map((row) => (
+                            <TableRow key={row.task}>
+                              <TableCell>{row.task}</TableCell>
+                              <TableCell>{row.kind === 'REVIEW_ACTIVITY' ? 'Review' : 'Human task'}</TableCell>
+                              <TableCell align="right">{row.accepted.toLocaleString()}</TableCell>
+                              <TableCell align="right" sx={{ color: row.denied > 0 ? 'error.main' : undefined }}>
+                                {row.denied.toLocaleString()}
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </TableContainer>
+                  )}
+                  {unresolvedRefusals > 0 && (
+                    <Typography variant="body2" color="text.secondary" sx={{ mt: 1.5 }}>
+                      {unresolvedRefusals.toLocaleString()} {unresolvedRefusals === 1 ? 'decision was' : 'decisions were'} refused before a task was resolved (unknown task, already decided, or an unauthorized role).
+                    </Typography>
+                  )}
+                </CardContent>
+              </Card>
+            </Grid>
           )}
           {decisions.length === 0 && unresolvedRefusals === 0 && agentSteps.length === 0 && controlSummary && (
             <Grid size={{ xs: 12, md: 6 }}>

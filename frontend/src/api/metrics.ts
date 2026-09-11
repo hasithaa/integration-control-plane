@@ -56,9 +56,21 @@ export interface MetricsResponse {
 // One record per workflow event from the Ballerina workflow module; the server groups them into series by tags.
 
 export type WorkflowSample =
-  | 'workflow.started' | 'workflow.closed' | 'activity.executed' | 'data.sent' | 'task.decided'
-  | 'workflow.suspended' | 'workflow.resumed' | 'workflow.terminated' | 'workflow.cancelled'
-  | 'agent.model_called' | 'agent.tool_called' | 'agent.event_received' | 'agent.slept' | 'agent.task_awaited' | 'agent.tool_reviewed';
+  | 'workflow.started'
+  | 'workflow.closed'
+  | 'activity.executed'
+  | 'data.sent'
+  | 'task.decided'
+  | 'workflow.suspended'
+  | 'workflow.resumed'
+  | 'workflow.terminated'
+  | 'workflow.cancelled'
+  | 'agent.model_called'
+  | 'agent.tool_called'
+  | 'agent.event_received'
+  | 'agent.slept'
+  | 'agent.task_awaited'
+  | 'agent.tool_reviewed';
 
 export interface WorkflowMetricEntry {
   sample: WorkflowSample;
