@@ -21,20 +21,15 @@ import { LineChart } from '@wso2/oxygen-ui-charts-react';
 import { useMemo, type JSX } from 'react';
 import { useWorkflowMetrics, type MetricsRequest, type WorkflowMetricEntry } from '../api/metrics';
 
-/**
- * Workflow metrics for the metrics page: what the runtime's workflows did in the window —
- * runs started, completed and failed with their durations, activity attempts and failures by
- * activity, and task decisions by task. Fed by the workflow module's samples through
- * `/icp/observability/workflow-metrics`; renders nothing for an integration that has none, so
- * a plain HTTP integration's page is unchanged.
- */
+// Workflow metrics for the metrics page: runs, activities and task decisions from the workflow module's samples.
+// Renders nothing for an integration that has none.
 
 interface WorkflowMetricsSectionProps {
   request: MetricsRequest | null;
   getTimeRange: () => { startTime: string; endTime: string };
-  /** Formats a bucket's ISO timestamp for the x axis, the way the page's other charts do. */
+  // Formats a bucket's ISO timestamp for the x axis, as the page's other charts do.
   makeLabel: (iso: string) => string;
-  /** Bumped by the page's Refresh action so this section refetches with the rest of the page. */
+  // Bumped by the page's Refresh action so this section refetches with the rest of the page.
   refreshKey: number;
 }
 
@@ -49,10 +44,7 @@ function sum(ts: Record<string, number>): number {
   return Object.values(ts).reduce((a, b) => a + b, 0);
 }
 
-/**
- * A duration a person can read at any scale: a run can take milliseconds or —
- * waiting on a human — days, and "342201.4 s" says nothing.
- */
+// A duration readable at any scale: runs take milliseconds, or days when waiting on a person.
 function formatDuration(seconds: number): string {
   if (seconds < 1) return `${Math.round(seconds * 1000)} ms`;
   if (seconds < 120) return `${seconds.toFixed(1)} s`;
@@ -63,12 +55,12 @@ function formatDuration(seconds: number): string {
   return `${days}d ${hours}h`;
 }
 
-/** Adds one series' per-interval counts into `into`, keyed by timestamp. */
+// Adds one series' per-interval counts into `into`, keyed by timestamp.
 function addInto(into: Record<string, number>, ts: Record<string, number>): void {
   for (const [k, v] of Object.entries(ts)) into[k] = (into[k] ?? 0) + v;
 }
 
-/** The latest interval that has a value, as [timestamp, value] — so a duration card reads the most recent number, not zero. */
+// The latest interval with a value, as [timestamp, value]; null when none.
 function latestNonZero(ts: Record<string, number>): [string, number] | null {
   const keys = Object.keys(ts).sort();
   for (let i = keys.length - 1; i >= 0; i--) {

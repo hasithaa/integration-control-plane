@@ -53,16 +53,13 @@ export interface MetricsResponse {
 }
 
 // ── Workflow metrics ──
-//
-// The Ballerina workflow module publishes one record per workflow event (a run started or
-// closed, an activity attempt, a data event, a task decision); the server groups them into
-// series by tag combination. `sample` says which event a series counts.
+// One record per workflow event from the Ballerina workflow module; the server groups them into series by tags.
 
 export type WorkflowSample = 'workflow.started' | 'workflow.closed' | 'activity.executed' | 'data.sent' | 'task.decided';
 
 export interface WorkflowMetricEntry {
   sample: WorkflowSample;
-  /** workflow_type, activity_type, status, outcome, task_kind, task_name, action, data_name, icp_runtimeId, app_name, deployment — whichever the sample carries. */
+  // Whichever tags the sample carries: workflow_type, activity_type, outcome, task_kind, task_name, action, data_name.
   tags: Record<string, string>;
   count: TimeSeriesData;
   duration_seconds_avg: TimeSeriesData;
@@ -153,11 +150,7 @@ async function fetchWorkflowMetrics(req: MetricsRequest): Promise<WorkflowMetric
   }
 }
 
-/**
- * The workflow-domain counterpart of {@link useMetrics}: same request, answered from the workflow
- * module's samples. `refreshKey` re-keys the query so the page's Refresh action refetches this
- * section too, not only the HTTP metrics query it holds a `refetch` handle for.
- */
+// Workflow counterpart of useMetrics; refreshKey re-keys the query so the page's Refresh refetches this too.
 export function useWorkflowMetrics(req: MetricsRequest | null, getTimeRange?: () => { startTime: string; endTime: string }, refreshKey = 0) {
   const getTimeRangeRef = useRef(getTimeRange);
   getTimeRangeRef.current = getTimeRange;

@@ -2218,22 +2218,9 @@ public type MetricEntriesResponse record {
     MetricEntry[] outboundMetrics;
 };
 
-# One series of workflow samples sharing a tag combination — a workflow type's closed runs with
-# outcome "failure", an activity type's attempts with outcome "success", a task's decisions with
-# outcome "failure" (denied). The workflow module publishes one record per event under
-# `logger = "workflow-metrics"`; `sample` says which event, and `count` is how many landed in each
-# interval. The duration series are meaningful for `workflow.closed` and `activity.executed`.
-#
-# + sample - `workflow.started` | `workflow.closed` | `activity.executed` | `data.sent` | `task.decided`
-# + tags - The combination's tags: `workflow_type`, `activity_type`, `outcome` (`success` | `failure`),
-#          `task_kind`, `task_name`, `action`, `data_name`, plus `icp_runtimeId`, `app_name`,
-#          `deployment` — whichever the sample carries
-# + count - Events per interval
-# + duration_seconds_avg - Mean duration per interval, where the sample has one
-# + duration_seconds_max - Longest duration per interval
-# + duration_seconds_percentile_50 - Median duration per interval
-# + duration_seconds_percentile_95 - 95th-percentile duration per interval
-# + duration_seconds_percentile_99 - 99th-percentile duration per interval
+# One series of workflow samples sharing a tag combination; `sample` says which event it counts.
+# + tags - `workflow_type`, `activity_type`, `outcome`, `task_kind`, `task_name`, `action`, `data_name` + runtime tags
+# + count - Events per interval; the duration fields apply where the sample carries `duration_seconds`
 public type WorkflowMetricEntry record {
     string sample;
     map<string> tags;
@@ -2245,12 +2232,7 @@ public type WorkflowMetricEntry record {
     Metric duration_seconds_percentile_99;
 };
 
-# Workflow metrics for a set of runtimes, grouped by what each series counts.
-#
-# + runs - `workflow.started` and `workflow.closed` series, by workflow type (and outcome for closed)
-# + activities - `activity.executed` series, by activity type and outcome
-# + decisions - `task.decided` series, by task kind, task name, action and outcome
-# + dataEvents - `data.sent` series, by data name
+# Workflow metrics for a set of runtimes, grouped by what each series counts: runs, activities, decisions, data events.
 public type WorkflowMetricEntriesResponse record {
     WorkflowMetricEntry[] runs;
     WorkflowMetricEntry[] activities;

@@ -1149,18 +1149,8 @@ isolated function getMIMetricQuery(types:MetricEntryRequest metricRequest) retur
 
 // ──────────────────────────────────────────────────────────────────────────────
 // Workflow metrics — index: ballerina-workflow-metrics-*
-//
-// The ballerina/workflow module publishes one record per workflow event under
-// logger="workflow-metrics" (its publishMetricSamples switch), the way
-// ballerinax/metrics.logs publishes one per HTTP request. The log pipeline routes them to
-// this index. Document schema (flat):
-//   @timestamp, sample, icp_runtimeId, app_name, deployment,
-//   workflow_type, workflow_id, run_id, outcome (success|failure), duration_seconds,
-//   activity_type, attempt, outcome (success|failure),
-//   data_name,
-//   task_kind (HUMAN_TASK|REVIEW_ACTIVITY), task_name, action, outcome (success|failure)
-// Every series is grouped by the tag fields below and bucketed over time; duration statistics
-// apply where the sample carries duration_seconds (workflow.closed, activity.executed).
+// One document per workflow event from ballerina/workflow (logger="workflow-metrics"), routed here by the log
+// pipeline; series group by the tag fields below and bucket over time. Durations apply where duration_seconds is set.
 // ──────────────────────────────────────────────────────────────────────────────
 
 // The tag fields a workflow sample can carry. Composite sources use missing_bucket, so a sample
