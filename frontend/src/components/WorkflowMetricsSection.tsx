@@ -152,21 +152,28 @@ function aggregateActivities(activities: WorkflowMetricEntry[]): ActivityRow[] {
     .sort((x, y) => y.failures - x.failures || y.attempts - x.attempts);
 }
 
-function aggregateDecisions(decisions: WorkflowMetricEntry[]): DecisionRow[] {
-  const rows: Record<string, DecisionRow> = {};
-  for (const d of decisions) {
-    const key = d.tags.task_name ?? 'unknown';
-    const row = (rows[key] ??= { task: key, kind: d.tags.task_kind ?? '', accepted: 0, denied: 0 });
-    const n = sum(d.count.timeSeriesData);
-    if (d.tags.outcome === 'failure') row.denied += n;
-    else row.accepted += n;
-  }
-  return Object.values(rows).sort((x, y) => y.accepted + y.denied - (x.accepted + x.denied));
-}
-
 // The module writes `none` into a tag that does not apply to a sample, so every sample carries every key.
 const tagValue = (tags: Record<string, string>, ...keys: string[]): string =>
   keys.map((k) => tags[k]).find((v) => v && v !== 'none') ?? '';
+
+// One row per task. A decision refused before any task was resolved (unknown id, already decided,
+// wrong role) names no task; those are counted apart rather than shown as a task called "none".
+function aggregateDecisions(decisions: WorkflowMetricEntry[]): { rows: DecisionRow[]; unresolvedRefusals: number } {
+  const rows: Record<string, DecisionRow> = {};
+  let unresolvedRefusals = 0;
+  for (const d of decisions) {
+    const n = sum(d.count.timeSeriesData);
+    const task = tagValue(d.tags, 'task_name');
+    if (!task) {
+      unresolvedRefusals += n;
+      continue;
+    }
+    const row = (rows[task] ??= { task, kind: tagValue(d.tags, 'task_kind'), accepted: 0, denied: 0 });
+    if (d.tags.outcome === 'failure') row.denied += n;
+    else row.accepted += n;
+  }
+  return { rows: Object.values(rows).sort((x, y) => y.accepted + y.denied - (x.accepted + x.denied)), unresolvedRefusals };
+}
 
 // One row per step kind and the thing it acted on: the tool, the event, the task, or the model activity.
 function aggregateAgentSteps(steps: WorkflowMetricEntry[]): AgentStepRow[] {
@@ -217,7 +224,7 @@ export default function WorkflowMetricsSection({ request, getTimeRange, makeLabe
 
   const runs = useMemo(() => aggregateRuns(data?.runs ?? []), [data]);
   const activities = useMemo(() => aggregateActivities(data?.activities ?? []), [data]);
-  const decisions = useMemo(() => aggregateDecisions(data?.decisions ?? []), [data]);
+  const { rows: decisions, unresolvedRefusals } = useMemo(() => aggregateDecisions(data?.decisions ?? []), [data]);
   const agentSteps = useMemo(() => aggregateAgentSteps(data?.agentSteps ?? []), [data]);
   const controls = useMemo(() => aggregateControls(data?.controls ?? []), [data]);
   const runChart = useMemo(() => runs.chart.map((p) => ({ ...p, label: makeLabel(p.ts) })), [runs.chart, makeLabel]);
@@ -317,7 +324,7 @@ export default function WorkflowMetricsSection({ request, getTimeRange, makeLabe
         </Grid>
       </Grid>
 
-      {(decisions.length > 0 || agentSteps.length > 0 || controlSummary) && (
+      {(decisions.length > 0 || unresolvedRefusals > 0 || agentSteps.length > 0 || controlSummary) && (
         <Grid container spacing={2} sx={{ mb: 3 }}>
           {agentSteps.length > 0 && (
             <Grid size={{ xs: 12, md: 6 }}>
@@ -361,13 +368,14 @@ export default function WorkflowMetricsSection({ request, getTimeRange, makeLabe
               </Card>
             </Grid>
           )}
-          {decisions.length > 0 && (
+          {(decisions.length > 0 || unresolvedRefusals > 0) && (
           <Grid size={{ xs: 12, md: 6 }}>
             <Card variant="outlined">
               <CardContent>
                 <Typography variant="h6" sx={{ mb: 1 }}>
                   Human Decisions
                 </Typography>
+                {decisions.length > 0 && (
                 <TableContainer>
                   <Table size="small">
                     <TableHead>
@@ -392,11 +400,18 @@ export default function WorkflowMetricsSection({ request, getTimeRange, makeLabe
                     </TableBody>
                   </Table>
                 </TableContainer>
+                )}
+                {unresolvedRefusals > 0 && (
+                  <Typography variant="body2" color="text.secondary" sx={{ mt: 1.5 }}>
+                    {unresolvedRefusals.toLocaleString()} {unresolvedRefusals === 1 ? 'decision was' : 'decisions were'} refused
+                    before a task was resolved (unknown task, already decided, or an unauthorized role).
+                  </Typography>
+                )}
               </CardContent>
             </Card>
           </Grid>
           )}
-          {decisions.length === 0 && agentSteps.length === 0 && controlSummary && (
+          {decisions.length === 0 && unresolvedRefusals === 0 && agentSteps.length === 0 && controlSummary && (
             <Grid size={{ xs: 12, md: 6 }}>
               <Card variant="outlined">
                 <CardContent>
