@@ -107,6 +107,10 @@ const CONTROL_LABELS: Record<string, string> = {
   'workflow.cancelled': 'Cancelled',
 };
 
+// The module writes `none` into a tag that does not apply to a sample, so every sample carries every key.
+const tagValue = (tags: Record<string, string>, ...keys: string[]): string =>
+  keys.map((k) => tags[k]).find((v) => v && v !== 'none') ?? '';
+
 function aggregateRuns(runs: WorkflowMetricEntry[]) {
   const started: Record<string, number> = {};
   const completed: Record<string, number> = {};
@@ -116,6 +120,8 @@ function aggregateRuns(runs: WorkflowMetricEntry[]) {
   let latestP95 = 0;
   let latestP95At = '';
   for (const r of runs) {
+    // A human task or review runs as a child workflow of its own; its lifecycle is a task's, not a run's.
+    if (tagValue(r.tags, 'task_kind')) continue;
     if (r.sample === 'workflow.started') addInto(started, r.count.timeSeriesData);
     if (r.sample === 'workflow.closed') {
       addInto(r.tags.outcome === 'failure' ? failed : completed, r.count.timeSeriesData);
@@ -151,10 +157,6 @@ function aggregateActivities(activities: WorkflowMetricEntry[]): ActivityRow[] {
     .map((r) => ({ activity: r.activity, attempts: r.attempts, failures: r.failures, avgMs: r.attempts > 0 ? (r.durationWeighted / r.attempts) * 1000 : 0 }))
     .sort((x, y) => y.failures - x.failures || y.attempts - x.attempts);
 }
-
-// The module writes `none` into a tag that does not apply to a sample, so every sample carries every key.
-const tagValue = (tags: Record<string, string>, ...keys: string[]): string =>
-  keys.map((k) => tags[k]).find((v) => v && v !== 'none') ?? '';
 
 // One row per task. A decision refused before any task was resolved (unknown id, already decided,
 // wrong role) names no task; those are counted apart rather than shown as a task called "none".
