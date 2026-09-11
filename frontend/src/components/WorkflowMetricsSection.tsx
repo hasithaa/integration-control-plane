@@ -54,13 +54,13 @@ function addInto(into: Record<string, number>, ts: Record<string, number>): void
   for (const [k, v] of Object.entries(ts)) into[k] = (into[k] ?? 0) + v;
 }
 
-/** The latest interval that has a value, so a duration card reads the most recent number, not zero. */
-function latestNonZero(ts: Record<string, number>): number {
+/** The latest interval that has a value, as [timestamp, value] — so a duration card reads the most recent number, not zero. */
+function latestNonZero(ts: Record<string, number>): [string, number] | null {
   const keys = Object.keys(ts).sort();
   for (let i = keys.length - 1; i >= 0; i--) {
-    if (ts[keys[i]] > 0) return ts[keys[i]];
+    if (ts[keys[i]] > 0) return [keys[i], ts[keys[i]]];
   }
-  return 0;
+  return null;
 }
 
 interface ActivityRow {
@@ -81,12 +81,18 @@ function aggregateRuns(runs: WorkflowMetricEntry[]) {
   const started: Record<string, number> = {};
   const completed: Record<string, number> = {};
   const failed: Record<string, number> = {};
+  // "Latest" means the value at the newest interval across every closed-run series,
+  // not the largest value anywhere in the range.
   let latestP95 = 0;
+  let latestP95At = '';
   for (const r of runs) {
     if (r.sample === 'workflow.started') addInto(started, r.count.timeSeriesData);
     if (r.sample === 'workflow.closed') {
       addInto(r.tags.outcome === 'failure' ? failed : completed, r.count.timeSeriesData);
-      latestP95 = Math.max(latestP95, latestNonZero(r.duration_seconds_percentile_95.timeSeriesData));
+      const latest = latestNonZero(r.duration_seconds_percentile_95.timeSeriesData);
+      if (latest && (latest[0] > latestP95At || (latest[0] === latestP95At && latest[1] > latestP95))) {
+        [latestP95At, latestP95] = latest;
+      }
     }
   }
   const timestamps = Array.from(new Set([...Object.keys(started), ...Object.keys(completed), ...Object.keys(failed)])).sort();

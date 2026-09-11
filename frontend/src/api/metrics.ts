@@ -128,7 +128,6 @@ async function fetchWorkflowMetrics(req: MetricsRequest): Promise<WorkflowMetric
       body: JSON.stringify(req),
       signal: controller.signal,
     });
-    clearTimeout(timeoutId);
     if (!res.ok) {
       const text = await res.text();
       let errorMessage = text;
@@ -141,13 +140,16 @@ async function fetchWorkflowMetrics(req: MetricsRequest): Promise<WorkflowMetric
       error.status = res.status;
       throw error;
     }
+    // The timeout stays armed until the body is consumed: a response whose headers
+    // arrive but whose body stalls must still abort.
     return (await res.json()) as WorkflowMetricsResponse;
   } catch (error) {
-    clearTimeout(timeoutId);
     if (error instanceof Error && error.name === 'AbortError') {
       throw new Error('Observability service is unavailable. Request timed out.');
     }
     throw error;
+  } finally {
+    clearTimeout(timeoutId);
   }
 }
 
