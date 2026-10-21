@@ -158,7 +158,8 @@ export interface ExecutionGraph {
 export interface ModelGraphNode {
   // Identifies the call site, not the activity: two calls to the same activity have different step ids.
   stepId: string;
-  // ACTIVITY | HUMAN_TASK | CHILD_WORKFLOW | EVENT_WAIT | SLEEP | AWAIT_RESULT | BRANCH | LOOP | TRY.
+  // ACTIVITY | HUMAN_TASK | CHILD_WORKFLOW | EVENT_WAIT | SLEEP | AWAIT_RESULT | BRANCH | LOOP | TRY | CODE | EXIT,
+  // or REVIEW: hangs off the activity it gates through an `on failure` edge, never in the sequence.
   kind: string;
   // The activity, task, or child workflow named; absent for control flow.
   target?: string;

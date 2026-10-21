@@ -19,7 +19,7 @@
 // Pure helpers for the workflow feature. Kept separate from the component module
 // (shared.tsx) so React Fast Refresh works and concerns stay separated.
 
-import { targetForTaskQueue, type InstanceGraph, type WorkflowTarget } from '../../api/workflows';
+import { targetForTaskQueue, type InstanceGraph, type ModelGraphNode, type StepReview, type WorkflowTarget } from '../../api/workflows';
 import { formatDateTime } from '../../utils/time';
 
 // ── Portal scope ──
@@ -966,4 +966,28 @@ export function flowUnavailable(data: InstanceGraph | undefined): string | null 
     return 'This run could not be placed on the workflow’s structure, so it is shown as its history. Its steps carry no step ids — typically an integration built against an older workflow module.';
   }
   return null;
+}
+
+// A step's box text: its display name, else what it calls; a step that calls nothing reads as what it does, not its id.
+export function stepText(node: ModelGraphNode): string {
+  if (node.label) return node.label;
+  switch (node.kind.toUpperCase()) {
+    case 'SLEEP':
+      return 'sleep';
+    case 'EVENT_WAIT':
+      return node.target ? `wait ${node.target.split('|').join(' | ')}` : 'wait';
+    case 'AWAIT_RESULT':
+      return 'await result';
+    default:
+      return node.target ?? node.stepId;
+  }
+}
+
+// A review still running is waiting on a person; a decided one has completed or failed.
+export const isReviewPending = (review: StepReview): boolean => (review.status ?? '').toUpperCase() === 'RUNNING';
+
+// The review a badge opens: a pending one first, since that is what someone has to act on, else the latest.
+export function reviewToOpen(reviews: StepReview[]): StepReview | undefined {
+  const openable = reviews.filter((r) => r.taskId);
+  return openable.find(isReviewPending) ?? openable[openable.length - 1];
 }

@@ -84,6 +84,15 @@ interface MeasuredArm {
   h: number;
 }
 
+// Edge labels that hang a node off a step instead of placing it in the sequence.
+const SIDE_EDGES = new Set(['on failure', 'before run']);
+
+// The nodes drawn in sequence. A review hangs off the step it gates and is drawn on that step as a badge instead.
+export function sequenceNodes(graph: ModelGraph): ModelGraphNode[] {
+  const side = new Set((graph.edges ?? []).filter((e) => e.when !== undefined && SIDE_EDGES.has(e.when)).map((e) => e.to));
+  return (graph.nodes ?? []).filter((n) => n.kind.toUpperCase() !== 'REVIEW' && !side.has(n.stepId));
+}
+
 function groupByParent(nodes: ModelGraphNode[]): { roots: ModelGraphNode[]; armsOf: Map<string, Map<string, ModelGraphNode[]>> } {
   const known = new Set(nodes.map((n) => n.stepId));
   const roots: ModelGraphNode[] = [];
@@ -180,7 +189,7 @@ function place(measured: Measured, x: number, y: number): PlacedNode {
 }
 
 export function layoutFloorPlan(graph: ModelGraph): FloorPlan {
-  const nodes = graph.nodes ?? [];
+  const nodes = sequenceNodes(graph);
   const { roots, armsOf } = groupByParent(nodes);
   const top = measureSequence(roots, graph, armsOf, 0);
 
