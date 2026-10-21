@@ -986,7 +986,13 @@ export function stepText(node: ModelGraphNode): string {
 // A review still running is waiting on a person; a decided one has completed or failed.
 export const isReviewPending = (review: StepReview): boolean => (review.status ?? '').toUpperCase() === 'RUNNING';
 
-// The review a badge opens: a pending one first, since that is what someone has to act on, else the latest.
+// A step's reviews split by when they ran. A review with no trigger comes from a runtime that only had failure reviews.
+export function reviewsByTrigger(reviews: StepReview[]): { approvals: StepReview[]; failures: StepReview[] } {
+  const isApproval = (r: StepReview) => (r.trigger ?? '').toUpperCase() === 'PRE_RUN';
+  return { approvals: reviews.filter(isApproval), failures: reviews.filter((r) => !isApproval(r)) };
+}
+
+// The review a gate opens: a pending one first, since that is what someone has to act on, else the latest.
 export function reviewToOpen(reviews: StepReview[]): StepReview | undefined {
   const openable = reviews.filter((r) => r.taskId);
   return openable.find(isReviewPending) ?? openable[openable.length - 1];

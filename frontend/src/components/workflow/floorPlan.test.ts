@@ -18,8 +18,8 @@
 
 import { describe, expect, it } from 'vitest';
 import type { ModelGraph, StepReview } from '../../api/workflows';
-import { layoutFloorPlan, sequenceNodes, SIDE_GAP, SIDE_R, STEP_W } from './floorPlan';
-import { reviewToOpen, stepText } from './helpers';
+import { layoutFloorPlan, sequenceNodes, SIDE_GAP, SIDE_R, sideNodesOf, STEP_W } from './floorPlan';
+import { reviewsByTrigger, reviewToOpen, stepText } from './helpers';
 
 // A gated activity inside a do block, its review, and the step after it — the shape the compiler emits.
 const GRAPH: ModelGraph = {
@@ -36,20 +36,34 @@ const GRAPH: ModelGraph = {
   ],
 };
 
+// One call with both an approval policy and a review on failure.
+const GATED_TWICE: ModelGraph = {
+  nodes: [
+    { stepId: 'refund#1', kind: 'ACTIVITY', target: 'refund' },
+    { stepId: 'refund#1#approval', kind: 'APPROVAL', target: 'refund' },
+    { stepId: 'refund#1#review', kind: 'REVIEW', target: 'refund' },
+  ],
+  edges: [
+    { from: 'refund#1', to: 'refund#1#approval', when: 'before run' },
+    { from: 'refund#1', to: 'refund#1#review', when: 'on failure' },
+  ],
+};
+
 describe('sequenceNodes', () => {
   it('leaves a review out of the sequence, so its activity is not drawn twice', () => {
     expect(sequenceNodes(GRAPH).map((n) => n.stepId)).toEqual(['do#1', 'chargeCard#1', 'shipOrder#1']);
   });
 
-  it('leaves out any node reached only by a side edge, whatever its kind', () => {
-    const graph: ModelGraph = {
-      nodes: [
-        { stepId: 'a#1', kind: 'ACTIVITY', target: 'a' },
-        { stepId: 'gate#1', kind: 'APPROVAL', target: 'a' },
-      ],
-      edges: [{ from: 'gate#1', to: 'a#1', when: 'before run' }, { from: 'a#1', to: 'gate#1', when: 'before run' }],
-    };
-    expect(sequenceNodes(graph).map((n) => n.stepId)).toEqual([]);
+  it('leaves out an approval and a review on the same step, whatever their kind', () => {
+    expect(sequenceNodes(GATED_TWICE).map((n) => n.stepId)).toEqual(['refund#1']);
+  });
+});
+
+describe('sideNodesOf', () => {
+  it('files an approval and a review on the same step under their own sides', () => {
+    const gates = sideNodesOf(GATED_TWICE).get('refund#1');
+    expect(gates?.approval?.stepId).toBe('refund#1#approval');
+    expect(gates?.review?.stepId).toBe('refund#1#review');
   });
 });
 
@@ -65,8 +79,8 @@ describe('side nodes', () => {
   it('keeps a review beside its activity, with room for it on both sides so the flow stays centred', () => {
     const arm = layoutFloorPlan(GRAPH).nodes[0].arms[0];
     const [gated, plain] = arm.children;
-    expect(gated.side?.stepId).toBe('chargeCard#1#review');
-    expect(plain.side).toBeUndefined();
+    expect(gated.sides?.review?.stepId).toBe('chargeCard#1#review');
+    expect(plain.sides).toBeUndefined();
     expect(gated.w).toBe(STEP_W + (SIDE_GAP + SIDE_R * 2) * 2);
     expect(gated.x + gated.w / 2).toBe(plain.x + plain.w / 2);
   });
@@ -100,5 +114,14 @@ describe('reviewToOpen', () => {
 
   it('opens nothing when no review carries a task id', () => {
     expect(reviewToOpen([{ status: 'RUNNING' }])).toBeUndefined();
+  });
+});
+
+describe('reviewsByTrigger', () => {
+  it('splits approvals from failure reviews, and reads a review with no trigger as a failure review', () => {
+    const approval: StepReview = { taskId: 'a', trigger: 'PRE_RUN' };
+    const failure: StepReview = { taskId: 'b', trigger: 'ON_FAILURE' };
+    const legacy: StepReview = { taskId: 'c' };
+    expect(reviewsByTrigger([approval, failure, legacy])).toEqual({ approvals: [approval], failures: [failure, legacy] });
   });
 });

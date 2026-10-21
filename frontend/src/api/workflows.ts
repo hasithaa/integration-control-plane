@@ -195,6 +195,8 @@ export interface StepReview {
   status?: string;
   startTime?: string;
   endTime?: string;
+  // PRE_RUN for an approval before the step runs, ON_FAILURE for a review after it fails. Absent from older runtimes.
+  trigger?: string;
 }
 
 // What happened at one step during this run; a step that never ran has no entry at all.
