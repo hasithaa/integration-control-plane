@@ -17,7 +17,7 @@
  */
 
 import { Box, Stack, Tooltip, Typography, useTheme } from '@wso2/oxygen-ui';
-import { ChevronDown, ChevronRight, Diamond, GitBranch, Info, RefreshCw, Repeat, Shield, User, Wrench } from '@wso2/oxygen-ui-icons-react';
+import { BadgeCheck, ChevronDown, ChevronRight, Diamond, GitBranch, Info, RefreshCw, Repeat, Shield, User, Wrench } from '@wso2/oxygen-ui-icons-react';
 import { useEffect, useMemo, useRef, useState, type ComponentType, type ReactElement, type ReactNode } from 'react';
 import type { InstanceGraph, ModelGraphNode, StepExecution, StepReview } from '../../api/workflows';
 import { diagramColors, iconForType, paletteColor, softPrimary, statusColorName } from './graphVisuals';
@@ -135,16 +135,17 @@ function KeywordRow({
 // An approval is given before its step runs; a review is raised when its step fails.
 type GateKind = 'approval' | 'review';
 
-// Both gates are a person's decision: an approval is the person, a review the person with a wrench, since it decides a failed step's retry.
+// Both gates are a person's decision, marked by what it decides: a seal for an approval, a wrench for a failed step's retry.
+const GATE_MARKS: Record<GateKind, ComponentType<{ size?: number; x?: number; y?: number; color?: string; strokeWidth?: number }>> = { approval: BadgeCheck, review: Wrench };
+
 function GateGlyph({ kind }: { kind: GateKind }): ReactElement {
+  const Mark = GATE_MARKS[kind];
   return (
     <Box sx={{ position: 'relative', display: 'flex' }}>
       <User size={13} />
-      {kind === 'review' && (
-        <Box sx={{ position: 'absolute', right: -5, bottom: -4, display: 'flex', p: '1px', borderRadius: '50%', bgcolor: 'background.paper' }}>
-          <Wrench size={8} />
-        </Box>
-      )}
+      <Box sx={{ position: 'absolute', right: -5, bottom: -4, display: 'flex', p: '1px', borderRadius: '50%', bgcolor: 'background.paper' }}>
+        <Mark size={8} />
+      </Box>
     </Box>
   );
 }
@@ -562,6 +563,7 @@ function UmlActivityDiagram({
     const target = reviewToOpen(reviews);
     const open = target?.taskId && onOpenReview ? () => onOpenReview(target.taskId as string) : undefined;
     const sx = edgeX + dir * (SIDE_GAP + SIDE_R);
+    const Mark = GATE_MARKS[kind];
     return (
       <g
         key={`${stepId}#${kind}`}
@@ -576,12 +578,8 @@ function UmlActivityDiagram({
         <circle cx={sx} cy={y} r={SIDE_R + 4} fill="transparent" />
         <circle cx={sx} cy={y} r={SIDE_R} fill={c.paper} stroke={ran ? color : c.divider} strokeWidth={ran ? 1.5 : 1} strokeDasharray={ran ? undefined : '3 2'} />
         <User x={sx - 6} y={y - 6.5} size={12} color={color} />
-        {kind === 'review' && (
-          <>
-            <circle cx={sx + 4.5} cy={y + 4} r={4} fill={c.paper} />
-            <Wrench x={sx + 1.5} y={y + 1} size={6.5} color={color} strokeWidth={2.5} />
-          </>
-        )}
+        <circle cx={sx + 4.5} cy={y + 4} r={4} fill={c.paper} />
+        <Mark x={sx + 1.5} y={y + 1} size={6.5} color={color} strokeWidth={2.5} />
         {reviews.length > 1 && (
           <text x={sx + SIDE_R - 1} y={y - SIDE_R + 1} fill={color} stroke={c.paper} strokeWidth={3} paintOrder="stroke" fontSize={9} fontWeight={700}>
             {reviews.length}
