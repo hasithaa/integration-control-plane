@@ -18,7 +18,7 @@
 
 import { describe, expect, it } from 'vitest';
 import type { ModelGraph, StepReview } from '../../api/workflows';
-import { layoutFloorPlan, sequenceNodes } from './floorPlan';
+import { layoutFloorPlan, sequenceNodes, SIDE_GAP, SIDE_R, STEP_W } from './floorPlan';
 import { reviewToOpen, stepText } from './helpers';
 
 // A gated activity inside a do block, its review, and the step after it — the shape the compiler emits.
@@ -58,6 +58,17 @@ describe('layoutFloorPlan', () => {
     const plan = layoutFloorPlan(GRAPH);
     expect(plan.nodes).toHaveLength(1);
     expect(plan.nodes[0].arms[0].children.map((c) => c.node.stepId)).toEqual(['chargeCard#1', 'shipOrder#1']);
+  });
+});
+
+describe('side nodes', () => {
+  it('keeps a review beside its activity, with room for it on both sides so the flow stays centred', () => {
+    const arm = layoutFloorPlan(GRAPH).nodes[0].arms[0];
+    const [gated, plain] = arm.children;
+    expect(gated.side?.stepId).toBe('chargeCard#1#review');
+    expect(plain.side).toBeUndefined();
+    expect(gated.w).toBe(STEP_W + (SIDE_GAP + SIDE_R * 2) * 2);
+    expect(gated.x + gated.w / 2).toBe(plain.x + plain.w / 2);
   });
 });
 

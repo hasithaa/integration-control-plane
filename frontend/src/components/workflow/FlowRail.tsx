@@ -22,7 +22,7 @@ import { useEffect, useMemo, useRef, useState, type ComponentType, type ReactEle
 import type { InstanceGraph, ModelGraphNode, StepExecution, StepReview } from '../../api/workflows';
 import { diagramColors, iconForType, paletteColor, softPrimary, statusColorName } from './graphVisuals';
 import { isReviewPending, reviewToOpen, stepText } from './helpers';
-import { isContainer, layoutFloorPlan, sequenceNodes, type PlacedArm, type PlacedNode } from './floorPlan';
+import { isContainer, layoutFloorPlan, sequenceNodes, SIDE_GAP, SIDE_R, sideNodesOf, STEP_W, type PlacedArm, type PlacedNode } from './floorPlan';
 
 interface TreeNode {
   node: ModelGraphNode;
@@ -133,43 +133,53 @@ function KeywordRow({
 }
 
 function reviewTooltip(reviews: StepReview[]): string {
+  if (reviews.length === 0) return 'Review — a person decides if this step fails. Not raised in this run.';
   const pending = reviews.filter(isReviewPending).length;
-  const head = pending > 0 ? `${pending} of ${reviews.length} ${reviews.length === 1 ? 'review' : 'reviews'} waiting for a decision` : `Reviewed ${reviews.length === 1 ? 'once' : `${reviews.length} times`} after a failure`;
-  return `${head}${reviewToOpen(reviews) ? ' — click to open' : ''}`;
+  const head = pending > 0 ? `Review — ${pending} of ${reviews.length} waiting for a decision` : `Review — raised ${reviews.length === 1 ? 'once' : `${reviews.length} times`}, decided`;
+  return `${head}${reviewToOpen(reviews) ? '. Click to open.' : ''}`;
 }
 
-// The reviews raised on a failed step, drawn on the step rather than as steps of their own.
-function ReviewBadge({ reviews, onOpenReview }: { reviews: StepReview[]; onOpenReview?: (taskId: string) => void }): ReactElement {
+// The review a gated step raises, as a node beside the step: faded until a review runs, clickable once one has.
+function ReviewNode({ reviews, onOpenReview }: { reviews: StepReview[]; onOpenReview?: (taskId: string) => void }): ReactElement {
+  const ran = reviews.length > 0;
   const pending = reviews.some(isReviewPending);
   const target = reviewToOpen(reviews);
   const open = target?.taskId && onOpenReview ? () => onOpenReview(target.taskId as string) : undefined;
+  const color = pending ? 'warning.main' : ran ? 'text.secondary' : 'text.disabled';
   return (
-    <Tooltip title={reviewTooltip(reviews)}>
-      <Stack
-        direction="row"
-        alignItems="center"
-        gap={0.25}
-        role={open ? 'button' : undefined}
-        tabIndex={open ? 0 : undefined}
-        aria-label="open review"
-        onClick={(e) => {
-          e.stopPropagation();
-          open?.();
-        }}
-        onKeyDown={(e) => {
-          if (e.key !== 'Enter') return;
-          e.stopPropagation();
-          open?.();
-        }}
-        sx={{ flexShrink: 0, px: 0.5, borderRadius: 1, border: '1px solid', borderColor: pending ? 'warning.main' : 'divider', color: pending ? 'warning.main' : 'text.secondary', cursor: open ? 'pointer' : 'default' }}>
-        <Wrench size={11} />
-        {reviews.length > 1 && (
-          <Typography variant="caption" sx={{ fontWeight: 700, fontSize: 10, lineHeight: 1.4 }}>
-            {reviews.length}
-          </Typography>
-        )}
-      </Stack>
-    </Tooltip>
+    <Stack direction="row" alignItems="center" sx={{ flexShrink: 0 }}>
+      <Box sx={{ width: 10, borderTop: '1px dashed', borderColor: 'divider' }} />
+      <Tooltip title={reviewTooltip(reviews)}>
+        <Box
+          role={open ? 'button' : undefined}
+          tabIndex={open ? 0 : undefined}
+          aria-label="review"
+          onClick={open}
+          onKeyDown={(e) => (e.key === 'Enter' ? open?.() : undefined)}
+          sx={{
+            position: 'relative',
+            width: 26,
+            height: 26,
+            borderRadius: '50%',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            border: ran ? '1.5px solid' : '1px dashed',
+            borderColor: pending ? 'warning.main' : ran ? 'text.secondary' : 'divider',
+            bgcolor: 'background.paper',
+            color,
+            cursor: open ? 'pointer' : 'default',
+            '&:hover': open ? { bgcolor: (t) => softPrimary(t, 0.08) } : undefined,
+          }}>
+          <Wrench size={12} />
+          {reviews.length > 1 && (
+            <Typography variant="caption" sx={{ position: 'absolute', top: -7, right: -9, fontWeight: 700, fontSize: 9.5, lineHeight: 1, px: 0.4, py: 0.2, borderRadius: 1, bgcolor: 'background.paper', color }}>
+              {reviews.length}
+            </Typography>
+          )}
+        </Box>
+      </Tooltip>
+    </Stack>
   );
 }
 
@@ -181,7 +191,6 @@ function StepRow({
   isCurrent,
   onSelect,
   rowRef,
-  onOpenReview,
   chart = false,
 }: {
   node: ModelGraphNode;
@@ -191,7 +200,6 @@ function StepRow({
   isCurrent: boolean;
   onSelect: () => void;
   rowRef: (el: HTMLDivElement | null) => void;
-  onOpenReview?: (taskId: string) => void;
   chart?: boolean;
 }): ReactElement {
   const theme = useTheme();
@@ -247,7 +255,6 @@ function StepRow({
         title={`${title} · ${node.stepId}${ran ? ` · ${exec.status ?? ''}` : ' · not executed'}`}>
         {title}
       </Typography>
-      {exec?.reviews && exec.reviews.length > 0 && <ReviewBadge reviews={exec.reviews} onOpenReview={onOpenReview} />}
       {recovered && (
         <Tooltip title="Failed earlier in this run; the latest execution succeeded">
           <Box sx={{ color: 'warning.main', display: 'flex', flexShrink: 0 }}>
@@ -287,6 +294,7 @@ export default function FlowRail({
   const theme = useTheme();
   const graph = data.graph;
   const tree = useMemo(() => (graph && graph.nodes ? buildTree(sequenceNodes(graph)) : []), [graph]);
+  const sides = useMemo(() => (graph ? sideNodesOf(graph) : new Map<string, ModelGraphNode>()), [graph]);
   const rowRefs = useRef(new Map<string, HTMLDivElement>());
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set());
   const chart = true; // rows are always boxed now; 'uml' swaps the whole renderer below
@@ -338,7 +346,18 @@ export default function FlowRail({
     );
   };
 
-  const renderStep = (t: TreeNode, depth: number): ReactNode => (
+  const renderStep = (t: TreeNode, depth: number): ReactNode => {
+    const row = renderStepRow(t, depth);
+    if (!sides.has(t.node.stepId)) return row;
+    return (
+      <Stack key={t.node.stepId} direction="row" alignItems="center" sx={{ minWidth: 0 }}>
+        {row}
+        <ReviewNode reviews={steps[t.node.stepId]?.reviews ?? []} onOpenReview={onOpenReview} />
+      </Stack>
+    );
+  };
+
+  const renderStepRow = (t: TreeNode, depth: number): ReactNode => (
     <StepRow
       key={t.node.stepId}
       node={t.node}
@@ -347,7 +366,6 @@ export default function FlowRail({
       selected={selectedStepId === t.node.stepId}
       isCurrent={currentStepId === t.node.stepId}
       onSelect={() => onSelect(selectedStepId === t.node.stepId ? null : t.node.stepId)}
-      onOpenReview={onOpenReview}
       chart={chart}
       rowRef={(el) => {
         if (el) rowRefs.current.set(t.node.stepId, el);
@@ -511,32 +529,29 @@ function UmlActivityDiagram({
     );
   };
 
-  // The reviews of a failed step: a wrench on the box's top edge, the count beside it when there is more than one.
-  const umlReviewBadge = (stepId: string, reviews: StepReview[], x: number, y: number): ReactNode => {
-    const color = reviews.some(isReviewPending) ? paletteColor(theme, 'warning') : c.textSecondary;
+  // The review a gated step raises, as a circle beside the step joined by a dashed line; faded until a review runs.
+  const umlReviewNode = (stepId: string, reviews: StepReview[], fromX: number, y: number): ReactNode => {
+    const ran = reviews.length > 0;
+    const color = reviews.some(isReviewPending) ? paletteColor(theme, 'warning') : ran ? c.textSecondary : c.textDisabled;
     const target = reviewToOpen(reviews);
     const open = target?.taskId && onOpenReview ? () => onOpenReview(target.taskId as string) : undefined;
+    const sx = fromX + SIDE_GAP + SIDE_R;
     return (
       <g
-        key={`${stepId}#reviews`}
+        key={`${stepId}#side`}
         role={open ? 'button' : undefined}
         tabIndex={open ? 0 : undefined}
-        aria-label="open review"
-        onClick={(e) => {
-          e.stopPropagation();
-          open?.();
-        }}
-        onKeyDown={(e) => {
-          if ((e as unknown as { key: string }).key !== 'Enter') return;
-          e.stopPropagation();
-          open?.();
-        }}
+        aria-label="review"
+        onClick={open}
+        onKeyDown={(e) => ((e as unknown as { key: string }).key === 'Enter' ? open?.() : undefined)}
         style={{ cursor: open ? 'pointer' : 'default' }}>
         <title>{reviewTooltip(reviews)}</title>
-        <circle cx={x} cy={y} r={7} fill={c.paper} stroke={color} strokeWidth={1.25} />
-        <Wrench x={x - 4.5} y={y - 4.5} size={9} color={color} />
+        <line x1={fromX} y1={y} x2={sx - SIDE_R} y2={y} stroke={line} strokeWidth={1} strokeDasharray="3 3" />
+        <circle cx={sx} cy={y} r={SIDE_R + 4} fill="transparent" />
+        <circle cx={sx} cy={y} r={SIDE_R} fill={c.paper} stroke={ran ? color : c.divider} strokeWidth={ran ? 1.5 : 1} strokeDasharray={ran ? undefined : '3 2'} />
+        <Wrench x={sx - 5.5} y={y - 5.5} size={11} color={color} />
         {reviews.length > 1 && (
-          <text x={x + 10} y={y + 3} fill={color} fontSize={8.5} fontWeight={700}>
+          <text x={sx + SIDE_R - 1} y={y - SIDE_R + 1} fill={color} stroke={c.paper} strokeWidth={3} paintOrder="stroke" fontSize={9} fontWeight={700}>
             {reviews.length}
           </text>
         )}
@@ -568,6 +583,8 @@ function UmlActivityDiagram({
       }
       const dashed = kind === 'CODE';
       const text = dashed ? 'data processing' : stepText(node);
+      const stepX = cx - STEP_W / 2;
+      const maxChars = Math.floor((STEP_W - 20) / 6);
       const selected = selectedStepId === node.stepId;
       const isCurrent = currentStepId === node.stepId;
       const clickable = !dashed;
@@ -581,9 +598,9 @@ function UmlActivityDiagram({
           style={{ cursor: clickable ? 'pointer' : 'default' }}>
           <title>{dashed ? (node.label ?? 'data processing') : `${text} · ${node.stepId}${ran ? ` · ${exec.status ?? ''}` : ' · not executed'}`}</title>
           <rect
-            x={box.x + 4}
+            x={stepX + 4}
             y={box.y + 6}
-            width={box.w - 8}
+            width={STEP_W - 8}
             height={box.h - 12}
             rx={(box.h - 12) / 2}
             fill={selected ? softPrimary(theme, 0.12) : c.paper}
@@ -591,19 +608,19 @@ function UmlActivityDiagram({
             strokeWidth={selected ? 1.75 : ran ? 1.5 : 1}
             strokeDasharray={dashed ? '3 3' : ran ? undefined : '4 3'}
           />
-          {isCurrent && <circle cx={box.x + box.w - 14} cy={box.y + box.h / 2} r={3} fill={statusColor} />}
+          {isCurrent && <circle cx={stepX + STEP_W - 14} cy={box.y + box.h / 2} r={3} fill={statusColor} />}
           <text x={cx} y={box.y + box.h / 2 + 3.5} fill={ran ? c.textPrimary : c.textDisabled} fontSize={10.5} fontWeight={ran ? 600 : 400} fontStyle={dashed ? 'italic' : undefined} textAnchor="middle">
-            {text.length > Math.floor((box.w - 20) / 6) ? `${text.slice(0, Math.floor((box.w - 20) / 6) - 1)}…` : text}
+            {text.length > maxChars ? `${text.slice(0, maxChars - 1)}…` : text}
           </text>
           {exec && exec.count > 1 && (
-            <text x={box.x + box.w - 10} y={box.y + 14} fill={statusColor} fontSize={8.5} fontWeight={700} textAnchor="end">
+            <text x={stepX + STEP_W - 10} y={box.y + 14} fill={statusColor} fontSize={8.5} fontWeight={700} textAnchor="end">
               ×{exec.count}
             </text>
           )}
         </g>,
       );
-      if (exec?.reviews && exec.reviews.length > 0) {
-        shapes.push(umlReviewBadge(node.stepId, exec.reviews, box.x + 16, box.y + 6));
+      if (box.side) {
+        shapes.push(umlReviewNode(node.stepId, exec?.reviews ?? [], stepX + STEP_W - 4, box.y + box.h / 2));
       }
       return { x: cx, flows: true };
     }
@@ -659,7 +676,7 @@ function UmlActivityDiagram({
           wires.push(
             <path
               key={`w${wireKey++}`}
-              d={`M ${prev.x - (prevBox.w - 8) / 2} ${prevBox.y + prevBox.h / 2} L ${gx} ${prevBox.y + prevBox.h / 2} L ${gx} ${dy} L ${cx - 9} ${dy}`}
+              d={`M ${prev.x - ((isContainer(prevBox.node.kind) ? prevBox.w : STEP_W) - 8) / 2} ${prevBox.y + prevBox.h / 2} L ${gx} ${prevBox.y + prevBox.h / 2} L ${gx} ${dy} L ${cx - 9} ${dy}`}
               fill="none"
               stroke={line}
               strokeWidth={1}

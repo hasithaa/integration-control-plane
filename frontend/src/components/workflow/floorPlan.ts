@@ -36,6 +36,10 @@ export const EMPTY_ARM_H = 20;
 export const PILL_W = 84;
 export const PILL_H = 24;
 export const CANVAS_PAD = 14;
+// A side node (a step's review) is a circle right of its step; the step stays centred, so the room is kept on both sides.
+export const SIDE_R = 11;
+export const SIDE_GAP = 14;
+const SIDE_W = SIDE_GAP + SIDE_R * 2;
 
 // Kinds that contain other nodes. Everything else is a step and draws as a single box.
 const CONTAINER_KINDS = new Set(['BRANCH', 'LOOP', 'TRY']);
@@ -58,6 +62,8 @@ export interface PlacedNode {
   w: number;
   h: number;
   arms: PlacedArm[];
+  // The node hanging off this step, drawn beside it: the review a gated activity raises.
+  side?: ModelGraphNode;
 }
 
 export interface FloorPlan {
@@ -72,6 +78,7 @@ export interface FloorPlan {
 
 interface Measured {
   node: ModelGraphNode;
+  side?: ModelGraphNode;
   w: number;
   h: number;
   arms: MeasuredArm[];
@@ -87,9 +94,20 @@ interface MeasuredArm {
 // Edge labels that hang a node off a step instead of placing it in the sequence.
 const SIDE_EDGES = new Set(['on failure', 'before run']);
 
-// The nodes drawn in sequence. A review hangs off the step it gates and is drawn on that step as a badge instead.
+// Step id → the node hanging off it through a side edge.
+export function sideNodesOf(graph: ModelGraph): Map<string, ModelGraphNode> {
+  const byId = new Map((graph.nodes ?? []).map((n) => [n.stepId, n]));
+  const sides = new Map<string, ModelGraphNode>();
+  for (const e of graph.edges ?? []) {
+    const target = e.when !== undefined && SIDE_EDGES.has(e.when) ? byId.get(e.to) : undefined;
+    if (target) sides.set(e.from, target);
+  }
+  return sides;
+}
+
+// The nodes drawn in sequence. A review hangs off the step it gates and is drawn beside that step instead.
 export function sequenceNodes(graph: ModelGraph): ModelGraphNode[] {
-  const side = new Set((graph.edges ?? []).filter((e) => e.when !== undefined && SIDE_EDGES.has(e.when)).map((e) => e.to));
+  const side = new Set([...sideNodesOf(graph).values()].map((n) => n.stepId));
   return (graph.nodes ?? []).filter((n) => n.kind.toUpperCase() !== 'REVIEW' && !side.has(n.stepId));
 }
 
@@ -131,23 +149,26 @@ function armOrder(containerId: string, graph: ModelGraph, byArm: Map<string, Mod
   return order;
 }
 
-function measureSequence(nodes: ModelGraphNode[], graph: ModelGraph, armsOf: Map<string, Map<string, ModelGraphNode[]>>, depth: number): { children: Measured[]; w: number; h: number } {
-  const children = nodes.map((n) => measure(n, graph, armsOf, depth));
+type Sides = Map<string, ModelGraphNode>;
+
+function measureSequence(nodes: ModelGraphNode[], graph: ModelGraph, armsOf: Map<string, Map<string, ModelGraphNode[]>>, sides: Sides, depth: number): { children: Measured[]; w: number; h: number } {
+  const children = nodes.map((n) => measure(n, graph, armsOf, sides, depth));
   const w = children.reduce((max, c) => Math.max(max, c.w), 0);
   const h = children.reduce((sum, c) => sum + c.h, 0) + Math.max(0, children.length - 1) * V_GAP;
   return { children, w, h };
 }
 
-function measure(node: ModelGraphNode, graph: ModelGraph, armsOf: Map<string, Map<string, ModelGraphNode[]>>, depth: number): Measured {
+function measure(node: ModelGraphNode, graph: ModelGraph, armsOf: Map<string, Map<string, ModelGraphNode[]>>, sides: Sides, depth: number): Measured {
   if (!isContainer(node.kind) || depth > 24) {
     // The depth cap is a cycle guard: parent links that form a loop would otherwise recurse forever.
-    return { node, w: STEP_W, h: STEP_H, arms: [] };
+    const side = sides.get(node.stepId);
+    return { node, side, w: side ? STEP_W + SIDE_W * 2 : STEP_W, h: STEP_H, arms: [] };
   }
 
   const byArm = armsOf.get(node.stepId) ?? new Map<string, ModelGraphNode[]>();
   const names = armOrder(node.stepId, graph, byArm);
   const arms: MeasuredArm[] = names.map((name) => {
-    const seq = measureSequence(byArm.get(name) ?? [], graph, armsOf, depth + 1);
+    const seq = measureSequence(byArm.get(name) ?? [], graph, armsOf, sides, depth + 1);
     const empty = (byArm.get(name) ?? []).length === 0;
     return {
       name,
@@ -168,7 +189,7 @@ function measure(node: ModelGraphNode, graph: ModelGraph, armsOf: Map<string, Ma
 }
 
 function place(measured: Measured, x: number, y: number): PlacedNode {
-  const placed: PlacedNode = { node: measured.node, x, y, w: measured.w, h: measured.h, arms: [] };
+  const placed: PlacedNode = { node: measured.node, side: measured.side, x, y, w: measured.w, h: measured.h, arms: [] };
   if (measured.arms.length === 0) return placed;
 
   const innerW = measured.arms.reduce((sum, a) => sum + a.w, 0) + Math.max(0, measured.arms.length - 1) * ARM_GAP;
@@ -191,7 +212,7 @@ function place(measured: Measured, x: number, y: number): PlacedNode {
 export function layoutFloorPlan(graph: ModelGraph): FloorPlan {
   const nodes = sequenceNodes(graph);
   const { roots, armsOf } = groupByParent(nodes);
-  const top = measureSequence(roots, graph, armsOf, 0);
+  const top = measureSequence(roots, graph, armsOf, sideNodesOf(graph), 0);
 
   const contentW = Math.max(top.w, PILL_W);
   const width = contentW + CANVAS_PAD * 2;
