@@ -17,7 +17,7 @@
  */
 
 import { Box, Stack, Tooltip, Typography, useTheme } from '@wso2/oxygen-ui';
-import { ChevronDown, ChevronRight, Diamond, GitBranch, Info, RefreshCw, Repeat, Shield, Stamp, Wrench } from '@wso2/oxygen-ui-icons-react';
+import { ChevronDown, ChevronRight, Diamond, GitBranch, Info, RefreshCw, Repeat, Shield, User, Wrench } from '@wso2/oxygen-ui-icons-react';
 import { useEffect, useMemo, useRef, useState, type ComponentType, type ReactElement, type ReactNode } from 'react';
 import type { InstanceGraph, ModelGraphNode, StepExecution, StepReview } from '../../api/workflows';
 import { diagramColors, iconForType, paletteColor, softPrimary, statusColorName } from './graphVisuals';
@@ -135,7 +135,19 @@ function KeywordRow({
 // An approval is given before its step runs; a review is raised when its step fails.
 type GateKind = 'approval' | 'review';
 
-const GATE_ICONS: Record<GateKind, ComponentType<{ size?: number }>> = { approval: Stamp, review: Wrench };
+// Both gates are a person's decision: an approval is the person, a review the person with a wrench, since it decides a failed step's retry.
+function GateGlyph({ kind }: { kind: GateKind }): ReactElement {
+  return (
+    <Box sx={{ position: 'relative', display: 'flex' }}>
+      <User size={13} />
+      {kind === 'review' && (
+        <Box sx={{ position: 'absolute', right: -5, bottom: -4, display: 'flex', p: '1px', borderRadius: '50%', bgcolor: 'background.paper' }}>
+          <Wrench size={8} />
+        </Box>
+      )}
+    </Box>
+  );
+}
 
 function gateTooltip(kind: GateKind, reviews: StepReview[]): string {
   const name = kind === 'approval' ? 'Approval' : 'Review';
@@ -154,7 +166,6 @@ function GateNode({ kind, reviews, onOpenReview }: { kind: GateKind; reviews: St
   const target = reviewToOpen(reviews);
   const open = target?.taskId && onOpenReview ? () => onOpenReview(target.taskId as string) : undefined;
   const color = pending ? 'warning.main' : ran ? 'text.secondary' : 'text.disabled';
-  const Icon = GATE_ICONS[kind];
   return (
     <Stack direction="row" alignItems="center" sx={{ flexShrink: 0 }}>
       <Box sx={{ width: 10, borderTop: '1px dashed', borderColor: 'divider' }} />
@@ -180,7 +191,7 @@ function GateNode({ kind, reviews, onOpenReview }: { kind: GateKind; reviews: St
             cursor: open ? 'pointer' : 'default',
             '&:hover': open ? { bgcolor: (t) => softPrimary(t, 0.08) } : undefined,
           }}>
-          <Icon size={12} />
+          <GateGlyph kind={kind} />
           {reviews.length > 1 && (
             <Typography variant="caption" sx={{ position: 'absolute', top: -7, right: -9, fontWeight: 700, fontSize: 9.5, lineHeight: 1, px: 0.4, py: 0.2, borderRadius: 1, bgcolor: 'background.paper', color }}>
               {reviews.length}
@@ -551,7 +562,6 @@ function UmlActivityDiagram({
     const target = reviewToOpen(reviews);
     const open = target?.taskId && onOpenReview ? () => onOpenReview(target.taskId as string) : undefined;
     const sx = edgeX + dir * (SIDE_GAP + SIDE_R);
-    const Icon = GATE_ICONS[kind] as ComponentType<{ size?: number; x?: number; y?: number; color?: string }>;
     return (
       <g
         key={`${stepId}#${kind}`}
@@ -565,7 +575,13 @@ function UmlActivityDiagram({
         <line x1={edgeX} y1={y} x2={sx - dir * SIDE_R} y2={y} stroke={line} strokeWidth={1} strokeDasharray="3 3" />
         <circle cx={sx} cy={y} r={SIDE_R + 4} fill="transparent" />
         <circle cx={sx} cy={y} r={SIDE_R} fill={c.paper} stroke={ran ? color : c.divider} strokeWidth={ran ? 1.5 : 1} strokeDasharray={ran ? undefined : '3 2'} />
-        <Icon x={sx - 5.5} y={y - 5.5} size={11} color={color} />
+        <User x={sx - 6} y={y - 6.5} size={12} color={color} />
+        {kind === 'review' && (
+          <>
+            <circle cx={sx + 4.5} cy={y + 4} r={4} fill={c.paper} />
+            <Wrench x={sx + 1.5} y={y + 1} size={6.5} color={color} strokeWidth={2.5} />
+          </>
+        )}
         {reviews.length > 1 && (
           <text x={sx + SIDE_R - 1} y={y - SIDE_R + 1} fill={color} stroke={c.paper} strokeWidth={3} paintOrder="stroke" fontSize={9} fontWeight={700}>
             {reviews.length}
