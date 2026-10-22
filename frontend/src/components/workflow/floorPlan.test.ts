@@ -19,7 +19,7 @@
 import { describe, expect, it } from 'vitest';
 import type { ModelGraph, StepReview } from '../../api/workflows';
 import { layoutFloorPlan, sequenceNodes, SIDE_GAP, SIDE_R, sideNodesOf, STEP_W } from './floorPlan';
-import { reviewsByTrigger, reviewToOpen, stepText } from './helpers';
+import { gateTooltip, reviewsByTrigger, reviewToOpen, stepText } from './helpers';
 
 // A gated activity inside a do block, its review, and the step after it — the shape the compiler emits.
 const GRAPH: ModelGraph = {
@@ -60,6 +60,21 @@ describe('sequenceNodes', () => {
 });
 
 describe('sideNodesOf', () => {
+  it('never takes a step the sequence reaches for a gate, whichever way a side edge points', () => {
+    const graph: ModelGraph = {
+      nodes: [
+        { stepId: 'quote#1', kind: 'ACTIVITY', target: 'quote' },
+        { stepId: 'refund#1', kind: 'ACTIVITY', target: 'refund' },
+      ],
+      edges: [
+        { from: 'quote#1', to: 'refund#1' },
+        { from: 'quote#1', to: 'refund#1', when: 'before run' },
+      ],
+    };
+    expect(sideNodesOf(graph).size).toBe(0);
+    expect(sequenceNodes(graph).map((n) => n.stepId)).toEqual(['quote#1', 'refund#1']);
+  });
+
   it('files an approval and a review on the same step under their own sides', () => {
     const gates = sideNodesOf(GATED_TWICE).get('refund#1');
     expect(gates?.approval?.stepId).toBe('refund#1#approval');
@@ -123,5 +138,17 @@ describe('reviewsByTrigger', () => {
     const failure: StepReview = { taskId: 'b', trigger: 'ON_FAILURE' };
     const legacy: StepReview = { taskId: 'c' };
     expect(reviewsByTrigger([approval, failure, legacy])).toEqual({ approvals: [approval], failures: [failure, legacy] });
+  });
+});
+
+describe('gateTooltip', () => {
+  it('tells a review that ended without a decision apart from a decided one', () => {
+    expect(gateTooltip('review', [{ taskId: 'r1', status: 'COMPLETED' }, { taskId: 'r2', status: 'FAILED' }])).toBe(
+      'Review — raised 2 times: 1 decided, 1 ended without a decision. Click to open.',
+    );
+  });
+
+  it('leads with what is still waiting', () => {
+    expect(gateTooltip('approval', [{ taskId: 'a1', status: 'RUNNING' }])).toBe('Approval — raised once: 1 waiting for a decision. Click to open.');
   });
 });

@@ -101,13 +101,16 @@ export interface StepSides {
 // A side edge runs from the step to its gate, labelled with when the gate applies; it never places the gate in the sequence.
 const SIDE_EDGES: Record<string, keyof StepSides> = { 'before run': 'approval', 'on failure': 'review' };
 
-// Step id → the gates hanging off it.
+const sideSlotOf = (when: string | undefined): keyof StepSides | undefined => (when !== undefined ? SIDE_EDGES[when] : undefined);
+
+// Step id → the gates hanging off it. A node some sequence edge also reaches is a step, never a gate.
 export function sideNodesOf(graph: ModelGraph): Map<string, StepSides> {
   const byId = new Map((graph.nodes ?? []).map((n) => [n.stepId, n]));
+  const sequenced = new Set((graph.edges ?? []).filter((e) => !sideSlotOf(e.when)).map((e) => e.to));
   const sides = new Map<string, StepSides>();
   for (const e of graph.edges ?? []) {
-    const slot = e.when !== undefined ? SIDE_EDGES[e.when] : undefined;
-    const gate = slot ? byId.get(e.to) : undefined;
+    const slot = sideSlotOf(e.when);
+    const gate = slot && !sequenced.has(e.to) ? byId.get(e.to) : undefined;
     if (slot && gate) sides.set(e.from, { ...sides.get(e.from), [slot]: gate });
   }
   return sides;

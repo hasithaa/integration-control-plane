@@ -21,7 +21,7 @@ import { BadgeCheck, ChevronDown, ChevronRight, Diamond, GitBranch, Info, Refres
 import { useEffect, useMemo, useRef, useState, type ComponentType, type ReactElement, type ReactNode } from 'react';
 import type { InstanceGraph, ModelGraphNode, StepExecution, StepReview } from '../../api/workflows';
 import { diagramColors, iconForType, paletteColor, softPrimary, statusColorName } from './graphVisuals';
-import { isReviewPending, reviewsByTrigger, reviewToOpen, stepText } from './helpers';
+import { gateTooltip, isReviewPending, reviewsByTrigger, reviewToOpen, stepText, type GateKind } from './helpers';
 import { isContainer, layoutFloorPlan, sequenceNodes, SIDE_GAP, SIDE_R, sideNodesOf, STEP_W, type PlacedArm, type PlacedNode, type StepSides } from './floorPlan';
 
 interface TreeNode {
@@ -132,8 +132,13 @@ function KeywordRow({
   );
 }
 
-// An approval is given before its step runs; a review is raised when its step fails.
-type GateKind = 'approval' | 'review';
+
+// Enter or Space opens a gate, as on any button; Space would otherwise scroll the rail.
+function activateOnKey(e: { key: string; preventDefault: () => void }, open: (() => void) | undefined): void {
+  if (!open || (e.key !== 'Enter' && e.key !== ' ')) return;
+  e.preventDefault();
+  open();
+}
 
 // Both gates are a person's decision, marked by what it decides: a seal for an approval, a wrench for a failed step's retry.
 const GATE_MARKS: Record<GateKind, ComponentType<{ size?: number; x?: number; y?: number; color?: string; strokeWidth?: number }>> = { approval: BadgeCheck, review: Wrench };
@@ -150,15 +155,6 @@ function GateGlyph({ kind }: { kind: GateKind }): ReactElement {
   );
 }
 
-function gateTooltip(kind: GateKind, reviews: StepReview[]): string {
-  const name = kind === 'approval' ? 'Approval' : 'Review';
-  if (reviews.length === 0) {
-    return `${name} — ${kind === 'approval' ? 'a person approves this step before it runs' : 'a person decides if this step fails'}. Not raised in this run.`;
-  }
-  const pending = reviews.filter(isReviewPending).length;
-  const head = pending > 0 ? `${name} — ${pending} of ${reviews.length} waiting for a decision` : `${name} — raised ${reviews.length === 1 ? 'once' : `${reviews.length} times`}, decided`;
-  return `${head}${reviewToOpen(reviews) ? '. Click to open.' : ''}`;
-}
 
 // A gate on a step, as a circle beside it: faded until it is raised in this run, clickable once it has been.
 function GateNode({ kind, reviews, onOpenReview }: { kind: GateKind; reviews: StepReview[]; onOpenReview?: (taskId: string) => void }): ReactElement {
@@ -176,7 +172,7 @@ function GateNode({ kind, reviews, onOpenReview }: { kind: GateKind; reviews: St
           tabIndex={open ? 0 : undefined}
           aria-label={kind}
           onClick={open}
-          onKeyDown={(e) => (e.key === 'Enter' ? open?.() : undefined)}
+          onKeyDown={(e) => activateOnKey(e, open)}
           sx={{
             position: 'relative',
             width: 26,
@@ -571,7 +567,7 @@ function UmlActivityDiagram({
         tabIndex={open ? 0 : undefined}
         aria-label={kind}
         onClick={open}
-        onKeyDown={(e) => ((e as unknown as { key: string }).key === 'Enter' ? open?.() : undefined)}
+        onKeyDown={(e) => activateOnKey(e, open)}
         style={{ cursor: open ? 'pointer' : 'default' }}>
         <title>{gateTooltip(kind, reviews)}</title>
         <line x1={edgeX} y1={y} x2={sx - dir * SIDE_R} y2={y} stroke={line} strokeWidth={1} strokeDasharray="3 3" />

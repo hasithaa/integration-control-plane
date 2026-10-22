@@ -986,6 +986,30 @@ export function stepText(node: ModelGraphNode): string {
 // A review still running is waiting on a person; a decided one has completed or failed.
 export const isReviewPending = (review: StepReview): boolean => (review.status ?? '').toUpperCase() === 'RUNNING';
 
+// A review whose own run ended without anyone deciding it: it failed, timed out, or was terminated or cancelled.
+const UNDECIDED_REVIEW_STATUSES = new Set(['FAILED', 'TIMED_OUT', 'TERMINATED', 'CANCELED']);
+const isReviewUndecided = (review: StepReview): boolean => UNDECIDED_REVIEW_STATUSES.has((review.status ?? '').toUpperCase());
+
+// An approval is given before its step runs; a review is raised when its step fails.
+export type GateKind = 'approval' | 'review';
+
+export function gateTooltip(kind: GateKind, reviews: StepReview[]): string {
+  const name = kind === 'approval' ? 'Approval' : 'Review';
+  if (reviews.length === 0) {
+    return `${name} — ${kind === 'approval' ? 'a person approves this step before it runs' : 'a person decides if this step fails'}. Not raised in this run.`;
+  }
+  const pending = reviews.filter(isReviewPending).length;
+  const undecided = reviews.filter(isReviewUndecided).length;
+  const decided = reviews.length - pending - undecided;
+  const raised = reviews.length === 1 ? 'once' : `${reviews.length} times`;
+  const outcomes = [
+    pending > 0 ? `${pending} waiting for a decision` : '',
+    decided > 0 ? `${decided} decided` : '',
+    undecided > 0 ? `${undecided} ended without a decision` : '',
+  ].filter(Boolean);
+  return `${name} — raised ${raised}: ${outcomes.join(', ')}${reviewToOpen(reviews) ? '. Click to open.' : ''}`;
+}
+
 // A step's reviews split by when they ran. A review with no trigger comes from a runtime that only had failure reviews.
 export function reviewsByTrigger(reviews: StepReview[]): { approvals: StepReview[]; failures: StepReview[] } {
   const isApproval = (r: StepReview) => (r.trigger ?? '').toUpperCase() === 'PRE_RUN';
