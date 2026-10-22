@@ -143,12 +143,27 @@ describe('reviewsByTrigger', () => {
 
 describe('gateTooltip', () => {
   it('tells a review that ended without a decision apart from a decided one', () => {
-    expect(gateTooltip('review', [{ taskId: 'r1', status: 'COMPLETED' }, { taskId: 'r2', status: 'FAILED' }])).toBe(
-      'Review — raised 2 times: 1 decided, 1 ended without a decision. Click to open.',
-    );
+    expect(
+      gateTooltip(
+        'review',
+        [
+          { taskId: 'r1', status: 'COMPLETED' },
+          { taskId: 'r2', status: 'FAILED' },
+        ],
+        true,
+      ),
+    ).toBe('Review — raised 2 times: 1 decided, 1 ended without a decision. Click to open.');
+  });
+
+  it('does not count a review with no status as decided', () => {
+    expect(gateTooltip('review', [{ taskId: 'r1', status: 'COMPLETED' }, { taskId: 'r2' }], true)).toBe('Review — raised 2 times: 1 decided, 1 with no reported status. Click to open.');
+  });
+
+  it('offers a click only when the gate can open the review', () => {
+    expect(gateTooltip('review', [{ taskId: 'r1', status: 'COMPLETED' }], false)).toBe('Review — raised once: 1 decided');
   });
 
   it('leads with what is still waiting', () => {
-    expect(gateTooltip('approval', [{ taskId: 'a1', status: 'RUNNING' }])).toBe('Approval — raised once: 1 waiting for a decision. Click to open.');
+    expect(gateTooltip('approval', [{ taskId: 'a1', status: 'RUNNING' }], true)).toBe('Approval — raised once: 1 waiting for a decision. Click to open.');
   });
 });

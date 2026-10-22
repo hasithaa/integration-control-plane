@@ -132,7 +132,6 @@ function KeywordRow({
   );
 }
 
-
 // Enter or Space opens a gate, as on any button; Space would otherwise scroll the rail.
 function activateOnKey(e: { key: string; preventDefault: () => void }, open: (() => void) | undefined): void {
   if (!open || (e.key !== 'Enter' && e.key !== ' ')) return;
@@ -155,7 +154,6 @@ function GateGlyph({ kind }: { kind: GateKind }): ReactElement {
   );
 }
 
-
 // A gate on a step, as a circle beside it: faded until it is raised in this run, clickable once it has been.
 function GateNode({ kind, reviews, onOpenReview }: { kind: GateKind; reviews: StepReview[]; onOpenReview?: (taskId: string) => void }): ReactElement {
   const ran = reviews.length > 0;
@@ -166,7 +164,7 @@ function GateNode({ kind, reviews, onOpenReview }: { kind: GateKind; reviews: St
   return (
     <Stack direction="row" alignItems="center" sx={{ flexShrink: 0 }}>
       <Box sx={{ width: 10, borderTop: '1px dashed', borderColor: 'divider' }} />
-      <Tooltip title={gateTooltip(kind, reviews)}>
+      <Tooltip title={gateTooltip(kind, reviews, open !== undefined)}>
         <Box
           role={open ? 'button' : undefined}
           tabIndex={open ? 0 : undefined}
@@ -561,15 +559,8 @@ function UmlActivityDiagram({
     const sx = edgeX + dir * (SIDE_GAP + SIDE_R);
     const Mark = GATE_MARKS[kind];
     return (
-      <g
-        key={`${stepId}#${kind}`}
-        role={open ? 'button' : undefined}
-        tabIndex={open ? 0 : undefined}
-        aria-label={kind}
-        onClick={open}
-        onKeyDown={(e) => activateOnKey(e, open)}
-        style={{ cursor: open ? 'pointer' : 'default' }}>
-        <title>{gateTooltip(kind, reviews)}</title>
+      <g key={`${stepId}#${kind}`} role={open ? 'button' : undefined} tabIndex={open ? 0 : undefined} aria-label={kind} onClick={open} onKeyDown={(e) => activateOnKey(e, open)} style={{ cursor: open ? 'pointer' : 'default' }}>
+        <title>{gateTooltip(kind, reviews, open !== undefined)}</title>
         <line x1={edgeX} y1={y} x2={sx - dir * SIDE_R} y2={y} stroke={line} strokeWidth={1} strokeDasharray="3 3" />
         <circle cx={sx} cy={y} r={SIDE_R + 4} fill="transparent" />
         <circle cx={sx} cy={y} r={SIDE_R} fill={c.paper} stroke={ran ? color : c.divider} strokeWidth={ran ? 1.5 : 1} strokeDasharray={ran ? undefined : '3 2'} />

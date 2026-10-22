@@ -993,21 +993,19 @@ const isReviewUndecided = (review: StepReview): boolean => UNDECIDED_REVIEW_STAT
 // An approval is given before its step runs; a review is raised when its step fails.
 export type GateKind = 'approval' | 'review';
 
-export function gateTooltip(kind: GateKind, reviews: StepReview[]): string {
+// `openable` is whether the gate can actually open a review here, which decides the click prompt.
+export function gateTooltip(kind: GateKind, reviews: StepReview[], openable: boolean): string {
   const name = kind === 'approval' ? 'Approval' : 'Review';
   if (reviews.length === 0) {
     return `${name} — ${kind === 'approval' ? 'a person approves this step before it runs' : 'a person decides if this step fails'}. Not raised in this run.`;
   }
   const pending = reviews.filter(isReviewPending).length;
   const undecided = reviews.filter(isReviewUndecided).length;
-  const decided = reviews.length - pending - undecided;
+  const decided = reviews.filter((r) => (r.status ?? '').toUpperCase() === 'COMPLETED').length;
+  const unknown = reviews.length - pending - undecided - decided;
   const raised = reviews.length === 1 ? 'once' : `${reviews.length} times`;
-  const outcomes = [
-    pending > 0 ? `${pending} waiting for a decision` : '',
-    decided > 0 ? `${decided} decided` : '',
-    undecided > 0 ? `${undecided} ended without a decision` : '',
-  ].filter(Boolean);
-  return `${name} — raised ${raised}: ${outcomes.join(', ')}${reviewToOpen(reviews) ? '. Click to open.' : ''}`;
+  const outcomes = [pending > 0 ? `${pending} waiting for a decision` : '', decided > 0 ? `${decided} decided` : '', undecided > 0 ? `${undecided} ended without a decision` : '', unknown > 0 ? `${unknown} with no reported status` : ''].filter(Boolean);
+  return `${name} — raised ${raised}: ${outcomes.join(', ')}${openable ? '. Click to open.' : ''}`;
 }
 
 // A step's reviews split by when they ran. A review with no trigger comes from a runtime that only had failure reviews.
